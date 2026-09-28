@@ -1,0 +1,69 @@
+{
+  "name": "sshdeck",
+  "version": "1.0.0",
+  "description": "SSH terminal + SFTP file manager (Xshell/Xftp style) for Linux",
+  "main": "src/main/main.js",
+  "scripts": {
+    "start": "electron .",
+    "dev": "SSHDECK_DEV=1 electron .",
+    "dist": "electron-builder --linux AppImage pacman",
+    "dist:appimage": "electron-builder --linux AppImage",
+    "test": "bash test/run.sh"
+  },
+  "author": {
+    "name": "Abdulsamed Kayaduman",
+    "email": "abdulsamedkayaduman@gmail.com"
+  },
+  "license": "MIT",
+  "dependencies": {
+    "@xterm/addon-fit": "^0.11.0",
+    "@xterm/addon-search": "^0.16.0",
+    "@xterm/addon-web-links": "^0.12.0",
+    "@xterm/xterm": "^6.0.0",
+    "ssh2": "^1.17.0"
+  },
+  "devDependencies": {
+    "electron": "^44.4.5",
+    "electron-builder": "^26.15.3"
+  },
+  "productName": "SSHDeck",
+  "build": {
+    "appId": "dev.sshdeck.app",
+    "productName": "SSHDeck",
+    "files": [
+      "src/**/*",
+      "build/icon.png",
+      "package.json",
+      "node_modules/**/*",
+      "!node_modules/**/*.map",
+      "!node_modules/**/*.mjs",
+      "!test/**/*"
+    ],
+    "linux": {
+      "category": "Network;RemoteAccess",
+      "icon": "build/icon.png",
+      "target": [
+        "AppImage",
+        "pacman"
+      ],
+      "desktop": {
+        "entry": {
+          "Name": "SSHDeck",
+          "Comment": "SSH terminal ve SFTP istemcisi",
+          "Keywords": "ssh;sftp;terminal;xshell;xftp;"
+        }
+      },
+      "maintainer": "Abdulsamed Kayaduman <abdulsamedkayaduman@gmail.com>"
+    },
+    "pacman": {
+      "depends": [
+        "gtk3",
+        "nss",
+        "libxss",
+        "libsecret"
+      ]
+    },
+    "publish": null
+  },
+  "homepage": "https://sshdeck.local"
+}
