@@ -1,7 +1,8 @@
 import { h, icon, uid } from './util.js';
 
 // ---------------------------------------------------------------- modal core
-export function modal({ title, body, buttons = [{ label: 'Tamam', value: true, primary: true }], width = 440, onButton, cls }) {
+// bind(close): pencereyi dışarıdan kapatmak için (ör. listeden seçim yapılınca)
+export function modal({ title, body, buttons = [{ label: 'Tamam', value: true, primary: true }], width = 440, onButton, cls, bind }) {
   return new Promise((resolve) => {
     const prevFocus = document.activeElement;
     const close = (v) => { overlay.remove(); document.removeEventListener('keydown', onKey, true); if (prevFocus && prevFocus.focus) prevFocus.focus(); resolve(v); };
@@ -19,6 +20,8 @@ export function modal({ title, body, buttons = [{ label: 'Tamam', value: true, p
     const overlay = h('div.overlay', { onmousedown: (e) => { if (e.target === overlay) close(null); } }, box);
     const onKey = (e) => {
       if (!document.body.contains(overlay)) return;
+      const all = document.querySelectorAll('.overlay'); // only the topmost modal reacts
+      if (all[all.length - 1] !== overlay) return;
       if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); close(null); }
       else if (e.key === 'Enter' && !(e.target && (e.target.tagName === 'TEXTAREA' || e.target.closest('[data-noenter]')))) {
         const i = buttons.findIndex((b) => b.primary);
@@ -27,19 +30,33 @@ export function modal({ title, body, buttons = [{ label: 'Tamam', value: true, p
     };
     document.addEventListener('keydown', onKey, true);
     document.body.append(overlay);
-    setTimeout(() => { const f = box.querySelector('[autofocus], input, select, textarea, button.primary'); if (f) { f.focus(); if (f.select) f.select(); } }, 0);
+    if (bind) bind(close);
+    setTimeout(() => { const f = box.querySelector('[autofocus]') || box.querySelector('input:not(:disabled), select, textarea, button.primary'); if (f) { f.focus(); if (f.select) f.select(); } }, 0);
   });
 }
 
-export async function promptText({ title, label, value = '', password = false, placeholder = '' }) {
+// save verilirse (true/false) "Kaydet" kutusu gösterilir ve sonuç { value, save } olur
+// username verilirse (parola tekrar sorulurken) düzenlenebilir kullanıcı adı alanı da gösterilir; sonuç { value, username, save? }
+export async function promptText({ title, label, value = '', password = false, placeholder = '', ok = 'Tamam', cancel = 'Vazgeç', save, username }) {
   const input = h('input.input', { type: password ? 'password' : 'text', value, placeholder, autofocus: true, spellcheck: false });
+  // Kullanıcı adı kilitli gelir (imleç parolada); kalem düğmesiyle düzenlenebilir
+  const userInput = username == null ? null : h('input.input.locked', { type: 'text', value: username, spellcheck: false, disabled: true });
+  const userEdit = userInput && h('button.icon-btn', { type: 'button', title: 'Kullanıcı adını düzenle', onclick: () => {
+    userInput.disabled = false; userEdit.classList.add('on'); userInput.focus(); userInput.select();
+  } }, icon('edit', 14));
+  const saveChk = save === undefined ? null : h('input', { type: 'checkbox', checked: !!save });
   const r = await modal({
     title,
-    body: h('label.field', null, h('span', null, label), input),
-    buttons: [{ label: 'Vazgeç', value: null }, { label: 'Tamam', value: 'ok', primary: true }],
+    body: h('div', null,
+      userInput ? h('div.field', null, h('span', null, 'Kullanıcı adı'), h('div.row.user-row', null, userInput, userEdit)) : null,
+      h('label.field', null, h('span', null, label), input),
+      saveChk ? h('label.check', null, saveChk, password ? 'Parolayı oturuma kaydet' : 'Oturuma kaydet') : null),
+    buttons: [{ label: cancel, value: null }, { label: ok, value: 'ok', primary: true }],
     width: 380,
   });
-  return r === 'ok' ? input.value : null;
+  if (r !== 'ok') return null;
+  if (userInput) return { value: input.value, username: userInput.value, ...(saveChk ? { save: saveChk.checked } : {}) };
+  return saveChk ? { value: input.value, save: saveChk.checked } : input.value;
 }
 
 export function confirmBox({ title, message, detail, ok = 'Tamam', danger = false, extra = [] }) {
@@ -171,7 +188,7 @@ export async function sessionEditor({ session, sessions, groups, secrets, api })
 
   const groupList = h('datalist', { id: 'grp-list' }, groups.map((g) => h('option', { value: g })));
   f.authType = h('select.input', null, Object.entries(AUTH_LABELS).map(([v, l]) => h('option', { value: v, selected: s.authType === v }, l)));
-  f.password = h('input.input', { type: 'password', placeholder: s.has_password ? '•••••• (kayıtlı — değiştirmek için yazın)' : 'Boş bırakılırsa bağlanırken sorulur' });
+  f.password = h('input.input', { type: 'password', value: s.password || '', placeholder: s.has_password ? '•••••• (kayıtlı — değiştirmek için yazın)' : 'Boş bırakılırsa bağlanırken sorulur' });
   f.clearPassword = h('input', { type: 'checkbox' });
   f.keyPath = h('input.input', { value: s.keyPath || '', placeholder: '~/.ssh/id_ed25519', spellcheck: false });
   f.passphrase = h('input.input', { type: 'password', placeholder: s.has_passphrase ? '•••••• (kayıtlı)' : 'Gerekirse bağlanırken sorulur' });
@@ -272,39 +289,119 @@ export const THEMES = {
   light: { name: 'Açık', background: '#fafafa', foreground: '#383a42', cursor: '#526eff', selectionBackground: '#cfe0ff', black: '#383a42', red: '#e45649', green: '#50a14f', yellow: '#c18401', blue: '#4078f2', magenta: '#a626a4', cyan: '#0184bc', white: '#a0a1a7', brightBlack: '#696c77', brightRed: '#e45649', brightGreen: '#50a14f', brightYellow: '#c18401', brightBlue: '#4078f2', brightMagenta: '#a626a4', brightCyan: '#0184bc', brightWhite: '#ffffff' },
 };
 
-export async function settingsDialog(settings) {
+// Genel arayüz temaları; renkler styles.css içinde :root[data-ui=...] altında. swatch: [arka plan, panel, vurgu]
+export const UI_THEMES = {
+  dark: { name: 'Koyu', swatch: ['#0f1115', '#1e222a', '#4f9dff'] },
+  light: { name: 'Açık', swatch: ['#f4f5f7', '#e3e6eb', '#2f7de0'] },
+  orange: { name: 'Turuncu', swatch: ['#15110d', '#292018', '#ff8f3f'] },
+  red: { name: 'Kırmızı', swatch: ['#140e10', '#2b1d22', '#ff5c70'] },
+  pink: { name: 'Pembe', swatch: ['#fdf1f6', '#f5d8e5', '#df5390'] },
+  peach: { name: 'Şeftali', swatch: ['#fdf4ee', '#f4ddcd', '#e46f35'] },
+  lavender: { name: 'Lavanta', swatch: ['#f5f3fc', '#e1daf4', '#7a58d4'] },
+  mint: { name: 'Nane', swatch: ['#f0faf5', '#d5ece1', '#2a9a6d'] },
+};
+
+export function applyUiTheme(key) {
+  document.documentElement.dataset.ui = UI_THEMES[key] ? key : 'dark';
+}
+
+export async function settingsDialog(settings, ctx = {}) {
   const f = {};
+  let uiTheme = UI_THEMES[settings.uiTheme] ? settings.uiTheme : 'dark';
+  const uiBtns = Object.entries(UI_THEMES).map(([k, t]) => h('button.ui-theme', {
+    type: 'button', dataset: { key: k }, class: k === uiTheme ? 'on' : '',
+    onclick: () => { uiTheme = k; applyUiTheme(k); for (const b of uiBtns) b.classList.toggle('on', b.dataset.key === k); },
+  }, h('span.ui-sw', null, ...t.swatch.map((c) => h('i', { style: { background: c } }))), t.name));
   const chk = (k, label) => h('label.check', null, (f[k] = h('input', { type: 'checkbox', checked: !!settings[k] })), label);
   f.fontFamily = h('input.input', { value: settings.fontFamily, spellcheck: false });
   f.fontSize = h('input.input', { type: 'number', min: 8, max: 32, value: settings.fontSize });
   f.scrollback = h('input.input', { type: 'number', min: 500, max: 200000, step: 500, value: settings.scrollback });
   f.theme = h('select.input', null, Object.entries(THEMES).map(([k, t]) => h('option', { value: k, selected: settings.theme === k }, t.name)));
+  const sel = (k, opts) => (f[k] = h('select.input', null, Object.entries(opts).map(([v, l]) => h('option', { value: v, selected: settings[k] === v }, l))));
+  sel('rightClick', { menu: 'Menü göster', paste: 'Doğrudan yapıştır (menü: Shift+sağ tık)' });
+  sel('tabActivity', { rainbow: 'Büyüyüp renkli parlasın', blink: 'Yanıp sönsün', off: 'Kapalı' });
+  sel('fileDblClick', { open: 'Dosyayı aç', transfer: 'Aktar (indir / yükle)' });
+  f.maxTransfers = h('input.input', { type: 'number', min: 1, max: 10, value: settings.maxTransfers || 3 });
+  f.logDir = h('input.input', { value: settings.logDir || '', placeholder: ctx.logDefaultDir || '', spellcheck: false });
+  const logBrowse = h('button.btn.sm', { type: 'button', onclick: async () => { const d = await ctx.api?.openDirDialog({ title: 'Kayıt klasörü', defaultPath: f.logDir.value || ctx.logDefaultDir }); if (d) f.logDir.value = d; } }, icon('folder', 13), 'Seç…');
+  const fh = settings.focusHide || {};
+  const fhChk = (k, label, def = true) => h('label.check', null, (f['fh_' + k] = h('input', { type: 'checkbox', checked: fh[k] === undefined ? def : !!fh[k] })), label);
   const r = await modal({
     title: 'Ayarlar',
     width: 520,
     body: h('div', null,
+      h('div.field', null, h('span', null, 'Arayüz teması'), h('div.ui-themes', null, uiBtns)),
       h('label.field', null, h('span', null, 'Terminal yazı tipi'), f.fontFamily),
       h('div.grid2', null,
         h('label.field', null, h('span', null, 'Yazı boyutu'), f.fontSize),
         h('label.field', null, h('span', null, 'Geri kaydırma (satır)'), f.scrollback)),
-      h('label.field', null, h('span', null, 'Renk teması'), f.theme),
+      h('label.field', null, h('span', null, 'Terminal renk teması'), f.theme),
       chk('copyOnSelect', 'Seçince kopyala'),
-      chk('rightClickPaste', 'Sağ tık ile yapıştır (menü için Shift+sağ tık)'),
+      h('div.grid2', null,
+        h('label.field', null, h('span', null, 'Terminalde sağ tık'), f.rightClick),
+        h('label.field', null, h('span', null, 'Dosyaya çift tık'), f.fileDblClick)),
+      h('label.field', null, h('span', null, 'Arka plan sekmesinde çıktı akınca'), f.tabActivity),
       chk('cursorBlink', 'Yanıp sönen imleç'),
       chk('confirmClose', 'Açık bağlantı varken kapatmadan önce sor'),
-      chk('showHidden', 'Dosya panelinde gizli dosyaları göster')),
+      chk('autoReconnect', 'Bağlantı koparsa otomatik yeniden bağlan'),
+      chk('showStats', 'Durum çubuğunda sunucu kaynaklarını göster (CPU, RAM, disk, ağ)'),
+      chk('showHidden', 'Dosya panelinde gizli dosyaları göster'),
+      h('div.field-row', null,
+        h('div', null, h('b', null, 'Aynı anda aktarım'), h('div.hint', null, 'Sekme başına en fazla kaç dosya aktarımı birlikte çalışsın; fazlası sıraya girer.')),
+        h('div', { style: { width: '80px' } }, f.maxTransfers)),
+      h('div.settings-sep'),
+      h('div.field-row', null,
+        h('div', null, h('b', null, 'Oturum kaydı'), h('div.hint', null, 'Terminal çıktısı her oturum için ayrı bir dosyaya yazılır.'))),
+      chk('logEnabled', 'Terminal çıktısını dosyaya kaydet'),
+      chk('logStrip', 'Renk ve kontrol kodlarını temizle (düz metin)'),
+      h('label.field', null, h('span', null, 'Kayıt klasörü'), h('div.row', null, f.logDir, logBrowse)),
+      h('div.settings-sep'),
+      h('div.field-row', null,
+        h('div', null, h('b', null, 'Hazır komutlar'), h('div.hint', null, 'Sık kullanılan komutlar; Ctrl+Shift+K ile gönderilir.')),
+        h('button.btn.sm', { type: 'button', onclick: () => ctx.onSnippets && ctx.onSnippets() }, icon('snippet', 14), 'Düzenle…')),
+      h('div.field-row', null,
+        h('div', null, h('b', null, 'SSH anahtarları'), h('div.hint', null, 'Anahtar oluştur, açık anahtarı kopyala veya sunucuya yükle.')),
+        h('button.btn.sm', { type: 'button', onclick: () => ctx.onKeys && ctx.onKeys() }, icon('key', 14), 'Yönet…')),
+      h('div.settings-sep'),
+      h('div.field-row', null,
+        h('div', null, h('b', null, 'Odak modu (Alt+Enter)'), h('div.hint', null, 'Açıkken işaretli parçalar gizlenir; terminal her zaman kalır.'))),
+      h('div.grid2', null,
+        fhChk('toolbar', 'Üst araç çubuğunu gizle'),
+        fhChk('sidebar', 'Oturum listesini gizle'),
+        fhChk('tabs', 'Sekme çubuğunu gizle'),
+        fhChk('status', 'Durum çubuğunu gizle'),
+        fhChk('sftp', 'SFTP panelini gizle', false)),
+      h('div.settings-sep'),
+      h('div.field-row', null,
+        h('div', null, h('b', null, 'Ana parola'), h('div.hint', null, ctx.masterEnabled ? 'Etkin — kayıtlı parolalar ana parolayla şifreli.' : 'Kapalı — kayıtlı parolalar sistem anahtarlığı/base64 ile saklanıyor.')),
+        h('button.btn.sm', { type: 'button', onclick: () => ctx.onManageMaster && ctx.onManageMaster() }, icon(ctx.masterEnabled ? 'unlock' : 'lock', 14), ctx.masterEnabled ? 'Değiştir / kaldır…' : 'Belirle…')),
+      h('div.field-row', null,
+        h('div', null, h('b', null, 'Yedekleme'), h('div.hint', null, 'Oturumları ve ayarları JSON olarak dışa/içe aktar.')),
+        h('div.btn-row', null,
+          h('button.btn.sm', { type: 'button', onclick: () => ctx.onExport && ctx.onExport() }, icon('save', 14), 'Dışa aktar…'),
+          h('button.btn.sm', { type: 'button', onclick: () => ctx.onImport && ctx.onImport() }, icon('import', 14), 'İçe aktar…')))),
     buttons: [{ label: 'Vazgeç', value: null }, { label: 'Kaydet', value: 'ok', primary: true }],
   });
-  if (r !== 'ok') return null;
+  if (r !== 'ok') { applyUiTheme(settings.uiTheme); return null; }
   return {
+    uiTheme,
     fontFamily: f.fontFamily.value.trim() || settings.fontFamily,
     fontSize: Math.min(32, Math.max(8, Number(f.fontSize.value) || 14)),
     scrollback: Math.max(500, Number(f.scrollback.value) || 10000),
     theme: f.theme.value,
     copyOnSelect: f.copyOnSelect.checked,
-    rightClickPaste: f.rightClickPaste.checked,
+    rightClick: f.rightClick.value,
+    fileDblClick: f.fileDblClick.value,
+    tabActivity: f.tabActivity.value,
     cursorBlink: f.cursorBlink.checked,
     confirmClose: f.confirmClose.checked,
+    autoReconnect: f.autoReconnect.checked,
+    showStats: f.showStats.checked,
+    maxTransfers: Math.min(10, Math.max(1, Number(f.maxTransfers.value) || 3)),
+    logEnabled: f.logEnabled.checked,
+    logStrip: f.logStrip.checked,
+    logDir: f.logDir.value.trim(),
     showHidden: f.showHidden.checked,
+    focusHide: { toolbar: f.fh_toolbar.checked, sidebar: f.fh_sidebar.checked, tabs: f.fh_tabs.checked, status: f.fh_status.checked, sftp: f.fh_sftp.checked },
   };
 }

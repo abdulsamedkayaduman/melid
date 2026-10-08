@@ -1,7 +1,7 @@
 {
   "name": "sshdeck",
   "version": "1.0.0",
-  "description": "SSH terminal + SFTP file manager (Xshell/Xftp style) for Linux",
+  "description": "Linux için Xshell/Xftp tarzı SSH terminali ve SFTP dosya yöneticisi",
   "main": "src/main/main.js",
   "scripts": {
     "start": "electron .",
@@ -16,6 +16,7 @@
   },
   "license": "MIT",
   "dependencies": {
+    "@noble/hashes": "^2.4.0",
     "@xterm/addon-fit": "^0.11.0",
     "@xterm/addon-search": "^0.16.0",
     "@xterm/addon-web-links": "^0.12.0",
@@ -30,6 +31,7 @@
   "build": {
     "appId": "dev.sshdeck.app",
     "productName": "SSHDeck",
+    "npmRebuild": false,
     "files": [
       "src/**/*",
       "build/icon.png",

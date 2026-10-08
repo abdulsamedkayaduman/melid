@@ -1,13 +1,16 @@
 'use strict';
-const { app, BrowserWindow, ipcMain, dialog, shell, clipboard, safeStorage, nativeTheme } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, shell, clipboard, safeStorage, nativeTheme, nativeImage, powerMonitor } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const fsp = require('fs/promises');
 const os = require('os');
 const crypto = require('crypto');
-const { SshManager, expandHome } = require('./ssh-manager');
+const { SshManager, expandHome, globMatcher } = require('./ssh-manager');
 const { Store } = require('./store');
 const { readSshConfig } = require('./sshconfig');
+const importers = require('./importers');
+const { TermLogger } = require('./termlog');
+const keys = require('./keys');
 
 app.setName('SSHDeck');
 let win = null;
@@ -95,21 +98,196 @@ async function localList(dir) {
   return out;
 }
 
+// ---------- oturum kaydı ----------
+const logger = new TermLogger();
+const logDir = () => expandHome(store.settings.logDir) || path.join(app.getPath('documents'), 'SSHDeck', 'kayitlar');
+function logShellData(connId, data, sid) {
+  if (!store.settings.logEnabled) return;
+  const c = manager.conns.get(connId);
+  const s = c && c.session;
+  if (!s) return; // bağlantı kapandıktan sonra gelen artık veri
+  try {
+    logger.write(`${connId}:${sid}`, data, { dir: logDir(), name: (s && (s.name || s.host)) || 'oturum', suffix: sid === 'main' ? '' : sid, strip: store.settings.logStrip !== false });
+  } catch (e) {
+    store.saveSettings({ logEnabled: false });
+    send('app:toast', `Oturum kaydı durduruldu: ${e.message}`, 'err');
+  }
+}
+
+// ---------- dosya önizleme ----------
+const IMG_MIME = { png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', webp: 'image/webp', bmp: 'image/bmp', ico: 'image/x-icon', svg: 'image/svg+xml', avif: 'image/avif' };
+async function localRead(p, max) {
+  const st = await fsp.stat(p);
+  if (st.isDirectory()) throw new Error('Bu bir klasör');
+  const fh = await fsp.open(p, 'r');
+  try {
+    const len = Math.min(st.size, max);
+    const buf = Buffer.alloc(len);
+    const { bytesRead } = await fh.read(buf, 0, len, 0);
+    return { size: st.size, data: buf.subarray(0, bytesRead), truncated: st.size > bytesRead };
+  } finally { await fh.close(); }
+}
+async function preview(read, p) {
+  const ext = path.extname(p).slice(1).toLowerCase();
+  const mime = IMG_MIME[ext];
+  if (mime) {
+    const r = await read(p, 15 * 1024 * 1024);
+    if (r.truncated) return { kind: 'too-big', size: r.size };
+    return { kind: 'image', size: r.size, dataUrl: `data:${mime};base64,${r.data.toString('base64')}` };
+  }
+  const r = await read(p, 512 * 1024);
+  if (r.data.subarray(0, 8000).includes(0)) return { kind: 'binary', size: r.size };
+  return { kind: 'text', size: r.size, text: r.data.toString('utf8'), truncated: r.truncated };
+}
+
+// ---------- klasör karşılaştırma (eşitleme) ----------
+async function walkLocal(root, exclude) {
+  const ex = globMatcher(exclude);
+  const out = new Map();
+  const walk = async (rel) => {
+    const ents = await fsp.readdir(rel ? path.join(root, rel) : root, { withFileTypes: true });
+    for (const e of ents) {
+      if (ex(e.name)) continue;
+      const r = rel ? rel + '/' + e.name : e.name;
+      if (e.isDirectory()) { out.set(r, { isDir: true }); await walk(r); } else if (e.isFile()) {
+        const st = await fsp.stat(path.join(root, r));
+        out.set(r, { isDir: false, size: st.size, mtime: Math.floor(st.mtimeMs / 1000) });
+      }
+    }
+    if (out.size > 200000) throw new Error('Çok fazla dosya (200 000 sınırı)');
+  };
+  await walk('');
+  return out;
+}
+// -> [{ rel, isDir, local: {size,mtime}|null, remote: ...|null, status: 'local-only'|'remote-only'|'local-newer'|'remote-newer'|'differs' }]
+async function compareDirs(connId, localDir, remoteDir, exclude) {
+  const [L, R] = await Promise.all([walkLocal(localDir, exclude), manager.walkRemote(connId, remoteDir, exclude)]);
+  const out = [];
+  for (const [rel, l] of L) {
+    const r = R.get(rel);
+    if (!r) { out.push({ rel, isDir: l.isDir, local: l, remote: null, status: 'local-only' }); continue; }
+    if (l.isDir || r.isDir) {
+      if (l.isDir !== r.isDir) out.push({ rel, isDir: l.isDir, local: l, remote: r, status: 'differs' });
+      continue;
+    }
+    if (l.size === r.size && Math.abs(l.mtime - r.mtime) <= 1) continue;
+    out.push({ rel, isDir: false, local: l, remote: r, status: l.mtime > r.mtime + 1 ? 'local-newer' : r.mtime > l.mtime + 1 ? 'remote-newer' : 'differs' });
+  }
+  for (const [rel, r] of R) if (!L.has(rel)) out.push({ rel, isDir: r.isDir, local: null, remote: r, status: 'remote-only' });
+  return out.sort((a, b) => a.rel.localeCompare(b.rel));
+}
+
+// ---------- native drag out to the OS (file manager, desktop, ...) ----------
+const DRAG_ROOT = path.join(os.tmpdir(), 'sshdeck-drag');
+let dragIcon = null;
+function getDragIcon() {
+  if (!dragIcon) {
+    dragIcon = nativeImage.createFromPath(path.join(__dirname, '..', '..', 'build', 'icon.png'));
+    if (!dragIcon.isEmpty()) dragIcon = dragIcon.resize({ width: 32, height: 32 });
+  }
+  return dragIcon;
+}
+// Remote files must exist locally before the OS can take them: download into a temp dir first.
+async function prepareDrag(connId, tid, items) {
+  const dir = path.join(DRAG_ROOT, crypto.randomBytes(4).toString('hex'));
+  await fsp.mkdir(dir, { recursive: true });
+  const dsts = items.map((it) => path.join(dir, path.basename(it.name)));
+  let result = null;
+  const l = (id, info) => { if (id === connId && info.tid === tid && ['done', 'error', 'cancelled'].includes(info.state)) result = info; };
+  manager.on('transfer', l);
+  try { await manager.transfer(connId, { tid, direction: 'download', items: items.map((it, i) => ({ src: it.path, dst: dsts[i] })) }); } finally { manager.off('transfer', l); }
+  if (result && result.state === 'done') return dsts;
+  fsp.rm(dir, { recursive: true, force: true }).catch(() => {});
+  if (result && result.state === 'cancelled') return null;
+  throw new Error(result ? result.error : 'İndirilemedi');
+}
+
 function registerIpc() {
   const h = (ch, fn) => ipcMain.handle(ch, (_e, ...a) => fn(...a));
 
   // app / store
   h('app:init', () => ({
     sessions: store.publicSessions(),
-    settings: store.settings,
+    settings: store.publicSettings(),
     home: os.homedir(),
+    logDefaultDir: path.join(app.getPath('documents'), 'SSHDeck', 'kayitlar'),
     secrets: store.secretsBackend(),
     platform: process.platform,
     version: app.getVersion(),
   }));
-  h('sessions:save', (s) => { const id = store.saveSession(s); return { id, sessions: store.publicSessions() }; });
+  // When a master password is set but not yet unlocked, ask for it before writing secrets.
+  async function ensureUnlocked() {
+    if (!store.masterEnabled() || store.isUnlocked()) return true;
+    for (let tries = 0; tries < 3; tries++) {
+      const pw = await uiRequest('password', { title: 'Ana parola', label: tries ? 'Parola yanlış, tekrar deneyin' : 'Devam etmek için ana parolanızı girin' });
+      if (pw == null) return false;
+      if (store.unlock(pw)) return true;
+    }
+    return false;
+  }
+  h('sessions:save', async (s) => {
+    const hasSecret = s && (s.password || s.passphrase);
+    if (hasSecret && !(await ensureUnlocked())) throw new Error('Ana parola girilmedi');
+    const id = store.saveSession(s);
+    return { id, sessions: store.publicSessions() };
+  });
   h('sessions:delete', (id) => { store.deleteSession(id); return store.publicSessions(); });
   h('sessions:renameGroup', (a, b) => { store.renameGroup(a, b); return store.publicSessions(); });
+  h('sessions:deleteGroup', (g) => ({ removed: store.deleteGroup(g), sessions: store.publicSessions() }));
+  // Adds parsed sessions, skipping ones already present (same name/host/port/user).
+  const addImported = (parsed) => {
+    const key = (s) => `${s.name}|${s.host}|${s.port}|${s.username || ''}`;
+    const existing = new Set(store.sessions.map(key));
+    let added = 0; let withPassword = 0;
+    for (const s of parsed) {
+      if (existing.has(key(s))) continue;
+      existing.add(key(s));
+      store.saveSession(s); added++;
+      if (s.password) withPassword++;
+    }
+    return { added, found: parsed.length, withPassword, sessions: store.publicSessions() };
+  };
+  h('sessions:import', async (kind) => {
+    let parsed;
+    if (kind === 'windterm') {
+      const found = importers.findWindTermFiles();
+      const r = await dialog.showOpenDialog(win, {
+        title: 'WindTerm oturum dosyası (user.sessions)',
+        defaultPath: found[0] || os.homedir(),
+        properties: ['openFile', 'showHiddenFiles'],
+        filters: [{ name: 'WindTerm oturumları', extensions: ['sessions'] }, { name: 'Tüm dosyalar', extensions: ['*'] }],
+      });
+      if (r.canceled) return null;
+      const file = r.filePaths[0];
+      let text;
+      try { text = await fsp.readFile(file, 'utf8'); } catch (e) { throw new Error(`WindTerm dosyası okunamadı: ${e.message}`); }
+      // WindTerm encrypts passwords with the master password. If any exist, ask for it (optional).
+      let fingerprint = null; let master = null;
+      if (importers.windTermHasSecrets(text)) {
+        fingerprint = importers.readWindTermFingerprint(file);
+        if (fingerprint) {
+          for (let tries = 0; tries < 3; tries++) {
+            const ans = await uiRequest('password', {
+              title: 'WindTerm ana parolası',
+              label: tries ? 'Parola yanlış. Tekrar deneyin veya boş bırakıp parolasız aktarın.'
+                : 'Parolaları da aktarmak için WindTerm ana parolanızı girin (boş bırakabilirsiniz).',
+            });
+            if (ans == null || ans === '') break;
+            if (importers.verifyWindTermMaster(text, fingerprint, ans)) { master = ans; break; }
+          }
+        }
+      }
+      try { parsed = importers.parseWindTerm(text, { fingerprint, master }); } catch (e) { throw new Error(`WindTerm dosyası okunamadı: ${e.message}`); }
+    } else if (kind === 'xshell-dir' || kind === 'xshell-files') {
+      const r = await dialog.showOpenDialog(win, kind === 'xshell-dir'
+        ? { title: 'Xshell Sessions klasörü', defaultPath: os.homedir(), properties: ['openDirectory', 'showHiddenFiles'] }
+        : { title: 'Xshell oturumları (.xsh / .xts)', defaultPath: os.homedir(), properties: ['openFile', 'multiSelections', 'showHiddenFiles'], filters: [{ name: 'Xshell', extensions: ['xsh', 'xts'] }] });
+      if (r.canceled) return null;
+      try { parsed = importers.parseXshellPaths(r.filePaths); } catch (e) { throw new Error(`Xshell oturumları okunamadı: ${e.message}`); }
+    } else throw new Error('Bilinmeyen içe aktarma türü');
+    if (parsed.some((s) => s.password) && !(await ensureUnlocked())) throw new Error('Ana parola girilmedi');
+    return addImported(parsed);
+  });
   h('sessions:importSshConfig', () => {
     const parsed = readSshConfig();
     const existing = new Set(store.sessions.map((s) => `${s.name}|${s.host}|${s.port}`));
@@ -130,7 +308,64 @@ function registerIpc() {
     }
     return { added, found: parsed.length, sessions: store.publicSessions() };
   });
-  h('settings:save', (patch) => store.saveSettings(patch));
+  h('settings:save', (patch) => { store.saveSettings(patch); if ('uiTheme' in patch) applyNativeTheme(); return store.publicSettings(); });
+
+  // master password
+  h('master:status', () => ({ enabled: store.masterEnabled(), unlocked: store.isUnlocked() }));
+  h('master:unlock', (pw) => store.unlock(pw));
+  h('master:lock', () => { store.lock(); return true; });
+  h('master:set', (oldPw, newPw) => {
+    store.setMasterPassword(oldPw, newPw);
+    return { settings: store.publicSettings(), secrets: store.secretsBackend() };
+  });
+
+  // backup export / import
+  h('backup:export', async (withSecrets) => {
+    if (withSecrets && store.masterEnabled() && !store.isUnlocked()) {
+      const pw = await uiRequest('password', { title: 'Ana parola', label: 'Yedek almak için ana parolanızı girin' });
+      if (!pw || !store.unlock(pw)) return { ok: false, error: 'Ana parola gerekli' };
+    }
+    let passphrase = null;
+    if (withSecrets) {
+      passphrase = await uiRequest('password', { title: 'Yedek parolası', label: 'Parolaları şifrelemek için bir yedek parolası belirleyin (geri yüklerken sorulur)' });
+      if (passphrase == null) return { ok: false };
+    }
+    const r = await dialog.showSaveDialog(win, {
+      title: 'Yedeği dışa aktar', defaultPath: path.join(os.homedir(), `sshdeck-yedek-${new Date().toISOString().slice(0, 10)}.json`),
+      filters: [{ name: 'SSHDeck yedeği', extensions: ['json'] }],
+    });
+    if (r.canceled) return { ok: false };
+    await fsp.writeFile(r.filePath, JSON.stringify(store.exportData({ passphrase: passphrase || undefined }), null, 2), { mode: 0o600 });
+    return { ok: true, path: r.filePath };
+  });
+  h('backup:import', async () => {
+    const r = await dialog.showOpenDialog(win, {
+      title: 'Yedeği içe aktar', defaultPath: os.homedir(), properties: ['openFile'],
+      filters: [{ name: 'SSHDeck yedeği', extensions: ['json'] }],
+    });
+    if (r.canceled) return null;
+    let obj;
+    try { obj = JSON.parse(await fsp.readFile(r.filePaths[0], 'utf8')); } catch (e) { throw new Error(`Yedek okunamadı: ${e.message}`); }
+    if (!obj || obj.app !== 'SSHDeck' || !Array.isArray(obj.sessions)) throw new Error('Bu bir SSHDeck yedek dosyası değil');
+    // local master must be unlocked to store secrets
+    if (store.masterEnabled() && !store.isUnlocked()) {
+      const pw = await uiRequest('password', { title: 'Ana parola', label: 'İçe aktarmak için ana parolanızı girin' });
+      if (!pw || !store.unlock(pw)) throw new Error('Ana parola gerekli');
+    }
+    let passphrase = null;
+    if (obj.encrypted) {
+      for (let tries = 0; tries < 3; tries++) {
+        passphrase = await uiRequest('password', { title: 'Yedek parolası', label: tries ? 'Parola yanlış, tekrar deneyin' : 'Yedekteki parolaları çözmek için yedek parolasını girin (boş: parolasız aktar)' });
+        if (passphrase == null || passphrase === '') { passphrase = null; break; }
+        if (store.verifyBackupPassphrase(obj, passphrase)) break;
+        passphrase = null;
+        if (tries === 2) return { ok: false, error: 'Yedek parolası yanlış' };
+      }
+    }
+    const res = store.importData(obj, passphrase);
+    applyNativeTheme();
+    return { ok: true, ...res, sessions: store.publicSessions(), settings: store.publicSettings() };
+  });
 
   // ssh
   h('ssh:connect', async (connId, ref) => {
@@ -142,10 +377,30 @@ function registerIpc() {
     await manager.connect(connId, session);
     return { host: session.host, username: session.username, remoteDir: session.remoteDir, localDir: session.localDir };
   });
-  h('ssh:shell', (connId, cols, rows, startup) => manager.openShell(connId, cols, rows, startup));
-  ipcMain.on('ssh:write', (_e, connId, data) => manager.write(connId, data));
-  ipcMain.on('ssh:resize', (_e, connId, cols, rows) => manager.resize(connId, cols, rows));
+  h('ssh:shell', (connId, cols, rows, startup, sid) => manager.openShell(connId, cols, rows, startup, sid));
+  h('ssh:closeShell', (connId, sid) => manager.closeShell(connId, sid));
+  h('ssh:cwd', (connId, sid) => manager.shellCwd(connId, sid));
+  h('ssh:stats', (connId) => manager.stats(connId));
+  ipcMain.on('ssh:write', (_e, connId, data, sid) => manager.write(connId, data, sid));
+  ipcMain.on('ssh:resize', (_e, connId, cols, rows, sid) => manager.resize(connId, cols, rows, sid));
   h('ssh:disconnect', (connId) => { stopEdits(connId); manager.disconnect(connId); });
+  h('ssh:installKey', async (connId, pubPath) => {
+    const k = keys.listKeys(path.join(os.homedir(), '.ssh')).find((x) => x.pubPath === pubPath);
+    if (!k) throw new Error('Açık anahtar bulunamadı');
+    return manager.installPublicKey(connId, k.publicKey);
+  });
+
+  // ssh anahtarları
+  h('keys:list', () => keys.listKeys(path.join(os.homedir(), '.ssh')));
+  h('keys:generate', (opts) => keys.generateKey(path.join(os.homedir(), '.ssh'), opts));
+
+  // oturum kaydı
+  h('logs:dir', () => logDir());
+  h('logs:open', async () => { const d = logDir(); await fsp.mkdir(d, { recursive: true }); return shell.openPath(d); });
+  h('dialog:openDir', async (opts) => {
+    const r = await dialog.showOpenDialog(win, { title: opts && opts.title, properties: ['openDirectory', 'createDirectory', 'showHiddenFiles'], defaultPath: expandHome(opts && opts.defaultPath) || os.homedir() });
+    return r.canceled ? null : r.filePaths[0];
+  });
   h('ssh:forwardStart', (connId, fw) => manager.startForward(connId, fw));
   h('ssh:forwardStop', (connId, fid) => manager.stopForward(connId, fid));
   h('ssh:forwardList', (connId) => manager.listForwards(connId));
@@ -160,8 +415,15 @@ function registerIpc() {
   h('sftp:chmod', (c, p, m) => manager.chmod(c, p, m));
   h('sftp:exists', (c, p) => manager.exists(c, p));
   h('sftp:edit', (c, p) => editRemote(c, p));
+  h('sftp:preview', (c, p) => preview((x, max) => manager.readFile(c, x, max), p));
+  h('sync:compare', (c, localDir, remoteDir, exclude) => compareDirs(c, localDir, remoteDir, exclude));
   h('sftp:transfer', (c, t) => { manager.transfer(c, t); return true; });
   h('sftp:cancel', (c, tid) => manager.cancelTransfer(c, tid));
+  h('drag:prepare', (c, tid, items) => prepareDrag(c, tid, items));
+  ipcMain.on('drag:start', (e, files) => {
+    files = (Array.isArray(files) ? files : []).filter((f) => typeof f === 'string' && path.isAbsolute(f));
+    if (files.length) e.sender.startDrag({ file: files[0], files, icon: getDragIcon() });
+  });
 
   // local fs
   h('local:list', (p) => localList(p));
@@ -172,6 +434,7 @@ function registerIpc() {
   h('local:open', (p) => shell.openPath(p));
   h('local:reveal', (p) => shell.showItemInFolder(p));
   h('local:resolve', (p) => path.resolve(expandHome(p)));
+  h('local:preview', (p) => preview(localRead, p));
 
   // misc
   h('clipboard:read', () => clipboard.readText());
@@ -182,12 +445,24 @@ function registerIpc() {
   });
   h('shell:openExternal', (url) => { if (/^https?:\/\//.test(url)) shell.openExternal(url); });
 
-  manager.on('status', (id, state, msg) => { if (state === 'closed' || state === 'error') stopEdits(id); send('ssh:status', id, state, msg); });
-  manager.on('shell-data', (id, data) => send('ssh:data', id, data));
-  manager.on('shell-exit', (id) => send('ssh:exit', id));
+  manager.on('status', (id, state, msg) => {
+    if (state === 'closed' || state === 'error') { stopEdits(id); logger.closePrefix(id + ':'); }
+    send('ssh:status', id, state, msg);
+  });
+  manager.on('shell-data', (id, data, sid) => { send('ssh:data', id, data, sid); logShellData(id, data, sid); });
+  manager.on('shell-exit', (id, sid) => { logger.close(`${id}:${sid}`); send('ssh:exit', id, sid); });
   manager.on('banner', (id, msg) => send('ssh:banner', id, msg));
   manager.on('forward', (id, fid, state, msg) => send('ssh:forward', id, fid, state, msg));
   manager.on('transfer', (id, info) => send('sftp:transfer', id, info));
+}
+
+// Arayüz temasının pencere arka planı (açılışta beyaz/siyah parlama olmasın) ve yerel diyalogların açık/koyu modu
+const UI_BG = { dark: '#0f1115', light: '#f4f5f7', orange: '#15110d', red: '#140e10', pink: '#fdf1f6', peach: '#fdf4ee', lavender: '#f5f3fc', mint: '#f0faf5' };
+const LIGHT_UI = new Set(['light', 'pink', 'peach', 'lavender', 'mint']);
+function applyNativeTheme() {
+  const t = store?.settings.uiTheme;
+  nativeTheme.themeSource = LIGHT_UI.has(t) ? 'light' : 'dark';
+  if (win) win.setBackgroundColor(UI_BG[t] || UI_BG.dark);
 }
 
 function createWindow() {
@@ -196,7 +471,7 @@ function createWindow() {
     height: 900,
     minWidth: 900,
     minHeight: 560,
-    backgroundColor: '#14161b',
+    backgroundColor: UI_BG[store.settings.uiTheme] || UI_BG.dark,
     title: 'SSHDeck',
     icon: path.join(__dirname, '..', '..', 'build', 'icon.png'),
     autoHideMenuBar: true,
@@ -215,13 +490,25 @@ function createWindow() {
   win.webContents.on('before-input-event', (_e, input) => {
     if (input.type === 'keyDown' && input.key === 'F12' && process.env.SSHDECK_DEV) win.webContents.toggleDevTools();
   });
+  let closingConfirmed = false, closeAsking = false;
   win.on('close', (e) => {
-    if (manager.conns.size && store.settings.confirmClose) {
-      const r = dialog.showMessageBoxSync(win, {
+    if (!closingConfirmed && manager.conns.size && store.settings.confirmClose) {
+      // Onay kutusu durumu için async showMessageBox; kapanışı durdurup onaydan sonra yeniden tetikle
+      e.preventDefault();
+      if (closeAsking) return;
+      closeAsking = true;
+      dialog.showMessageBox(win, {
         type: 'question', buttons: ['Kapat', 'Vazgeç'], defaultId: 1, cancelId: 1,
         title: 'SSHDeck', message: `${manager.conns.size} açık bağlantı var. Kapatılsın mı?`,
+        checkboxLabel: 'Bir daha sorma (Ayarlar\'dan tekrar açılabilir)',
+      }).then(({ response, checkboxChecked }) => {
+        closeAsking = false;
+        if (response !== 0 || !win) return;
+        if (checkboxChecked) store.saveSettings({ confirmClose: false });
+        closingConfirmed = true;
+        win.close();
       });
-      if (r !== 0) { e.preventDefault(); return; }
+      return;
     }
     manager.closeAll();
   });
@@ -229,7 +516,7 @@ function createWindow() {
 }
 
 app.whenReady().then(() => {
-  nativeTheme.themeSource = 'dark';
+  fsp.rm(DRAG_ROOT, { recursive: true, force: true }).catch(() => {});
   store = new Store(path.join(app.getPath('userData')), {
     available: () => { try { return safeStorage.isEncryptionAvailable() && safeStorage.getSelectedStorageBackend?.() !== 'basic_text'; } catch { return false; } },
     encrypt: (s) => safeStorage.encryptString(s).toString('base64'),
@@ -239,9 +526,22 @@ app.whenReady().then(() => {
     getSession: (id) => store.getSession(id),
     verifyHostKey,
     prompt: (kind, payload) => uiRequest(kind, payload),
+    saveCredentials: (id, creds) => {
+      if (!store.getSession(id)) return;
+      let err = null;
+      try { store.saveSession({ id, ...creds }); } catch (e) {
+        err = e.message === 'MASTER_LOCKED' ? 'Ana parola kilitli olduğu için parola kaydedilemedi' : `Bilgiler kaydedilemedi: ${e.message}`;
+        if (creds.username) { try { store.saveSession({ id, username: creds.username }); } catch {} }
+      }
+      send('sessions:updated', store.publicSessions(), err);
+    },
   });
   registerIpc();
+  applyNativeTheme();
   createWindow();
+  // Uykudan uyanınca: renderer kopmuş bağlantıları hemen yeniden denesin
+  powerMonitor.on('resume', () => send('app:resume'));
 });
 
-app.on('window-all-closed', () => { if (manager) manager.closeAll(); app.quit(); });
+app.on('window-all-closed', () => { if (manager) manager.closeAll(); logger.closeAll(); app.quit(); });
+app.on('will-quit', () => { try { fs.rmSync(DRAG_ROOT, { recursive: true, force: true }); } catch {} });

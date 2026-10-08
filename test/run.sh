@@ -3,6 +3,9 @@
 # Kullanım: npm test     (Docker veya Podman gerekir)
 set -euo pipefail
 cd "$(dirname "$0")"
+node importers.test.js
+node store.test.js
+node termlog.test.js
 DOCKER=${DOCKER:-$(command -v docker || command -v podman)}
 mkdir -p .work
 [ -f .work/userkey ] || ssh-keygen -q -t ed25519 -N kpass -f .work/userkey

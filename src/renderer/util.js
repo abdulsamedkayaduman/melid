@@ -70,6 +70,72 @@ export function parseQuick(str) {
   return host ? { username: user, host, port } : null;
 }
 
+// Parses free-form pasted connection info, e.g. lines of "name / host / user / password",
+// "host user pass", "ssh -p 2222 user@host", or "Host: x" / "Kullanıcı: y" / "Parola: z" lines.
+// Returns { name, host, port, username, password } or null.
+const HOSTISH = /^(\[[0-9a-f:.]+\]|\d{1,3}(\.\d{1,3}){3}|[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+|[0-9a-f]{0,4}(:[0-9a-f]{0,4}){2,7})(:\d{1,5})?$/i;
+const KEYS = [
+  [/^(host|hostname|ip|ip adresi|adres|address|server|sunucu)$/i, 'host'],
+  [/^(user|username|login|kullan[ıi]c[ıi]( ad[ıi])?|kullan[ıi]c[ıi]ad[ıi])$/i, 'username'],
+  [/^(pass|password|passwd|pw|parola|[şs]ifre)$/i, 'password'],
+  [/^port$/i, 'port'],
+  [/^(name|ad|ad[ıi]|isim|oturum|session)$/i, 'name'],
+];
+export function parseConnText(text) {
+  const lines = String(text || '').split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+  if (!lines.length) return null;
+  const r = { name: '', host: '', port: 22, username: '', password: '' };
+  let items = [];
+  if (lines.length === 1) {
+    const toks = lines[0].split(/\s+/);
+    if (/^ssh$/i.test(toks[0])) {
+      // ssh [-p port] [-l user] [user@]host[:port]
+      let target = '';
+      for (let i = 1; i < toks.length; i++) {
+        if (toks[i] === '-p') r.port = Number(toks[++i]) || 22;
+        else if (toks[i] === '-l') r.username = toks[++i] || '';
+        else if (/^-[bcDEeFIiJLmOoQRSWw]$/.test(toks[i])) i++; // options that take a value
+        else if (!toks[i].startsWith('-') && !target) target = toks[i];
+      }
+      const q = target && parseQuick(target);
+      if (!q) return null;
+      return { ...r, host: q.host, port: q.port !== 22 ? q.port : r.port, username: q.username || r.username };
+    }
+    items = toks;
+  } else {
+    for (const l of lines) {
+      const m = l.match(/^([^:=]{1,20}?)\s*[:=]\s*(.+)$/);
+      const key = m && KEYS.find(([re]) => re.test(m[1].trim()));
+      if (key) {
+        if (key[1] === 'port') r.port = Number(m[2]) || 22;
+        else if (key[1] === 'host') { const q = parseQuick(m[2]); if (q) { r.host = q.host; if (q.port !== 22) r.port = q.port; if (q.username) r.username = q.username; } }
+        else r[key[1]] = m[2].trim();
+      } else items.push(l);
+    }
+  }
+  const hostOf = (it) => {
+    const at = it.lastIndexOf('@');
+    const rest = at > 0 ? it.slice(at + 1) : it;
+    return HOSTISH.test(rest) ? parseQuick(it) : null;
+  };
+  if (!r.host) {
+    let idx = items.findIndex(hostOf);
+    // no dotted host/IP: a lone single-line word, or the first line of a block
+    if (idx < 0) { if (items.length === 1 || lines.length > 1) idx = 0; else return null; }
+    const q = parseQuick(items[idx]);
+    if (!q || /\s/.test(q.host)) return null;
+    r.host = q.host;
+    if (q.port !== 22) r.port = q.port;
+    if (q.username) r.username = q.username;
+    if (!r.name) r.name = items.slice(0, idx).join(' ');
+    items = items.slice(idx + 1);
+  }
+  if (items.length >= 2 && /^\d{1,5}$/.test(items[0]) && Number(items[0]) <= 65535 && r.port === 22) r.port = Number(items.shift());
+  if (!r.username && items.length) r.username = items.shift();
+  if (!r.password && items.length) r.password = items.shift();
+  return r.host ? r : null;
+}
+
 // Minimal inline SVG icon set (stroke icons, 16px).
 const I = {
   plus: 'M12 5v14M5 12h14',
@@ -92,6 +158,12 @@ const I = {
   terminal: 'M4 17l6-5-6-5M12 19h8',
   server: 'M4 4h16v6H4zM4 14h16v6H4zM8 7h.01M8 17h.01',
   chevron: 'M9 6l6 6-6 6',
+  expand: 'M7 13l5 5 5-5M7 6l5 5 5-5',
+  collapse: 'M7 11l5-5 5 5M7 18l5-5 5 5',
+  lock: 'M6 10V8a6 6 0 0 1 12 0v2M5 10h14v10H5zM12 14v3',
+  unlock: 'M7 10V8a5 5 0 0 1 9.9-1M5 10h14v10H5zM12 14v3',
+  save: 'M5 3h11l3 3v15H5zM8 3v6h7V3M8 14h8',
+  focus: 'M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5',
   search: 'M11 19a8 8 0 1 0 0-16 8 8 0 0 0 0 16zM21 21l-4.3-4.3',
   edit: 'M12 20h9M16.5 3.5a2.1 2.1 0 1 1 3 3L7 19l-4 1 1-4z',
   trash: 'M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6',
@@ -100,6 +172,12 @@ const I = {
   play: 'M6 4l14 8-14 8z',
   stop: 'M6 6h12v12H6z',
   key: 'M15 7a4 4 0 1 1-3.9 5H3v3h3v3h3v-3h2.1A4 4 0 0 1 15 7zM16 10h.01',
+  snippet: 'M8 7l-5 5 5 5M16 7l5 5-5 5M14 4l-4 16',
+  splitH: 'M3 4h18v16H3zM12 4v16',
+  splitV: 'M3 4h18v16H3zM3 12h18',
+  sync: 'M4 9a8 8 0 0 1 14-3l2 2M20 4v4h-4M20 15a8 8 0 0 1-14 3l-2-2M4 20v-4h4',
+  record: 'M12 19a7 7 0 1 0 0-14 7 7 0 0 0 0 14zM12 14.5a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5',
+  cpu: 'M7 7h10v10H7zM10 3v4M14 3v4M10 17v4M14 17v4M3 10h4M3 14h4M17 10h4M17 14h4',
 };
 export function icon(name, size = 16) {
   const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');

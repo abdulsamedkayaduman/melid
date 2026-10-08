@@ -1,14 +1,17 @@
-import { h, icon, formatSize, formatDate, permString } from './util.js';
-import { contextMenu, promptText, confirmBox, toast } from './dialogs.js';
+import { h, icon, formatSize, formatDate, permString, uid } from './util.js';
+import { contextMenu, promptText, confirmBox, toast, modal } from './dialogs.js';
 
-const DRAG_MIME = 'application/x-sshdeck-files';
+// Native (OS) drag started from a pane: { pane, items }. The OS only carries file paths,
+// so drops inside the app look up the original items here. Cleared once the mouse is free again.
+let outDrag = null;
+document.addEventListener('mousemove', (e) => { if (!e.buttons) outDrag = null; }, true);
 
 /**
  * One side of the Xftp-style dual pane. `adapter` abstracts local vs remote filesystem.
  * adapter: { list, home, join, dirname, mkdir, rename, remove, resolve?, label }
  */
 export class FilePane {
-  constructor({ side, adapter, api, settings, onTransfer, onExtraMenu, onOpenFile }) {
+  constructor({ side, adapter, api, settings, onTransfer, onExtraMenu, onOpenFile, onColResize, extraTools }) {
     this.side = side;
     this.ad = adapter;
     this.api = api;
@@ -16,6 +19,9 @@ export class FilePane {
     this.onTransfer = onTransfer; // (fromSide, items[{path,name,isDir}], destDir) => void
     this.onExtraMenu = onExtraMenu; // (entries) => items[]
     this.onOpenFile = onOpenFile; // (entry) => void   (double click on file)
+    this.onColResize = onColResize; // (widths {key: px}) => void
+    this.colW = { ...(settings.colWidths || {}) };
+    this.extraTools = extraTools || []; // extra header buttons
     this.cwd = null;
     this.entries = [];
     this.sel = new Set();
@@ -23,6 +29,7 @@ export class FilePane {
     this.sortKey = 'name';
     this.sortDir = 1;
     this.showHidden = !!settings.showHidden;
+    this.filter = '';
     this.history = [];
     this.loading = false;
     this.build();
@@ -34,6 +41,20 @@ export class FilePane {
       onkeydown: (e) => { if (e.key === 'Enter') { e.preventDefault(); this.cd(this.pathInput.value.trim()); } else if (e.key === 'Escape') { this.pathInput.value = this.cwd || ''; this.body.focus(); } },
       onfocus: () => this.pathInput.select(),
     });
+    this.filterInput = h('input.filter-input', {
+      placeholder: 'Süz…', spellcheck: false, title: 'Bu dizindeki öğeleri süz (Ctrl+F)',
+      oninput: () => { this.filter = this.filterInput.value; this.render(); },
+      onkeydown: (e) => {
+        if (e.key === 'Escape') { e.preventDefault(); this.setFilter(''); this.body.focus(); }
+        else if (e.key === 'Enter' || e.key === 'ArrowDown') {
+          e.preventDefault();
+          const first = (this.vis || [])[0];
+          if (first) { this.sel = new Set([first.name]); this.anchor = first.name; this.paintSel(); }
+          this.body.focus();
+          if (e.key === 'Enter' && first && (this.vis || []).length === 1) this.activate(first);
+        }
+      },
+    });
     const tb = (ic, title, fn, extra) => h('button.icon-btn', { title, onclick: fn, ...extra }, icon(ic, 15));
     this.hiddenBtn = tb('eye', 'Gizli dosyaları göster/gizle', () => { this.showHidden = !this.showHidden; this.hiddenBtn.classList.toggle('on', this.showHidden); this.render(); });
     this.hiddenBtn.classList.toggle('on', this.showHidden);
@@ -44,13 +65,23 @@ export class FilePane {
         tb('home', 'Ev dizini', () => this.goHome()),
         tb('refresh', 'Yenile (F5)', () => this.refresh()),
         tb('newfolder', 'Yeni klasör', () => this.newFolder()),
-        this.hiddenBtn),
-      this.pathInput);
+        this.hiddenBtn, ...this.extraTools),
+      h('div.path-row', null, this.pathInput, this.filterInput));
 
-    const col = (key, label, cls) => h('th.' + cls, { dataset: { key }, onclick: () => this.sortBy(key) }, label, h('span.sort'));
+    const last = this.side === 'remote' ? 'owner' : 'mode';
+    const col = (key, label, cls) => {
+      const th = h('th.' + cls, { dataset: { key }, onclick: () => { if (!this._colDrag) this.sortBy(key); } }, label, h('span.sort'));
+      if (key !== last) {
+        const grip = h('span.col-grip', { title: 'Sürükleyerek sütunu boyutlandır' });
+        grip.addEventListener('mousedown', (e) => this.startColResize(e, th));
+        th.append(grip);
+      }
+      return th;
+    };
     this.thead = h('thead', null, h('tr', null,
       col('name', 'Ad', 'c-name'), col('size', 'Boyut', 'c-size'), col('mtime', 'Değiştirilme', 'c-date'),
       col('mode', 'İzinler', 'c-perm'), this.side === 'remote' ? col('owner', 'Sahip', 'c-owner') : null));
+    this.applyColWidths(this.colW);
     this.tbody = h('tbody');
     this.table = h('table.files', null, this.thead, this.tbody);
     this.empty = h('div.pane-empty');
@@ -83,9 +114,9 @@ export class FilePane {
   }
 
   acceptsDrag(e) {
-    const types = [...e.dataTransfer.types];
-    if (types.includes(DRAG_MIME)) return !types.includes('x-side-' + this.side);
-    return this.side === 'remote' && types.includes('Files');
+    if (outDrag && outDrag.pane === this.peer) return true;
+    if (outDrag && outDrag.pane === this) return false;
+    return this.side === 'remote' && [...e.dataTransfer.types].includes('Files');
   }
 
   onDrop(e) {
@@ -95,13 +126,33 @@ export class FilePane {
     e.preventDefault();
     let dest = this.cwd;
     if (row) { const t = this.entryByName(row.dataset.name); if (t && t.isDir) dest = this.ad.join(this.cwd, t.name); }
-    const raw = e.dataTransfer.getData(DRAG_MIME);
-    if (raw) {
-      const d = JSON.parse(raw);
-      this.onTransfer(d.side, d.items, dest);
+    const d = outDrag; outDrag = null;
+    if (d && d.pane === this.peer) {
+      this.onTransfer(d.pane.side, d.items, dest);
     } else if (e.dataTransfer.files.length) {
       const items = [...e.dataTransfer.files].map((f) => { const p = this.api.pathForFile(f); return { path: p, name: p.split('/').pop() }; }).filter((x) => x.path);
       if (items.length) this.onTransfer('local', items, dest);
+    }
+  }
+
+  async startNativeDrag(items) {
+    if (!items.length) return;
+    outDrag = { pane: this, items };
+    if (this.side === 'local') { this.api.drag.start(items.map((it) => it.path)); return; }
+    // remote: download to a temp dir while the button is held, then hand the copies to the OS
+    const tid = uid('drag');
+    let released = false;
+    const up = () => { released = true; this.ad.cancelDrag(tid).catch(() => {}); };
+    document.addEventListener('mouseup', up, { once: true });
+    const slow = setTimeout(() => toast('Sürükleme için indiriliyor… Fareyi bırakmayın.'), 400);
+    try {
+      const files = await this.ad.prepareDrag(tid, items);
+      if (files && !released && outDrag && outDrag.pane === this) this.api.drag.start(files);
+    } catch (err) {
+      if (!released) toast(cleanErr(err), 'err');
+    } finally {
+      clearTimeout(slow);
+      document.removeEventListener('mouseup', up);
     }
   }
 
@@ -123,6 +174,7 @@ export class FilePane {
     this.el.classList.add('loading');
     try {
       const list = await this.ad.list(dir);
+      if (dir !== this.cwd) { this.filter = ''; this.filterInput.value = ''; }
       this.cwd = dir;
       this.entries = list;
       this.sel.clear();
@@ -153,6 +205,43 @@ export class FilePane {
   }
 
   // ------------------------------------------------ render
+  // "Ad" sütunu kalan genişliği alır; onun tutamacı sağındaki sütunu küçültüp büyütür.
+  startColResize(e, th) {
+    if (e.button !== 0) return;
+    e.preventDefault(); e.stopPropagation();
+    const ths = [...this.thead.querySelectorAll('th')].filter((x) => x.offsetWidth > 0);
+    const i = ths.indexOf(th);
+    const target = th.dataset.key === 'name' ? ths[i + 1] : th;
+    if (!target) return;
+    const sign = target === th ? 1 : -1;
+    const startX = e.clientX;
+    const startW = target.offsetWidth;
+    const others = ths.reduce((a, x) => a + (x === target || x.dataset.key === 'name' ? 0 : x.offsetWidth), 0);
+    const maxW = Math.max(40, this.table.offsetWidth - others - 110);
+    this._colDrag = true;
+    const move = (ev) => {
+      const w = Math.round(Math.min(maxW, Math.max(40, startW + sign * (ev.clientX - startX))));
+      this.colW[target.dataset.key] = w;
+      target.style.width = w + 'px';
+    };
+    const up = () => {
+      document.removeEventListener('mousemove', move); document.removeEventListener('mouseup', up);
+      document.body.classList.remove('resizing-h');
+      setTimeout(() => { this._colDrag = false; }, 0); // mouseup'tan sonraki click sıralama yapmasın
+      this.onColResize?.({ ...this.colW });
+    };
+    document.body.classList.add('resizing-h');
+    document.addEventListener('mousemove', move); document.addEventListener('mouseup', up);
+  }
+
+  applyColWidths(widths) {
+    this.colW = { ...widths };
+    for (const th of this.thead.querySelectorAll('th')) {
+      const w = this.colW[th.dataset.key];
+      th.style.width = th.dataset.key !== 'name' && w ? w + 'px' : '';
+    }
+  }
+
   sortBy(key) {
     if (this.sortKey === key) this.sortDir = -this.sortDir; else { this.sortKey = key; this.sortDir = key === 'mtime' || key === 'size' ? -1 : 1; }
     this.render();
@@ -161,8 +250,10 @@ export class FilePane {
   visible() {
     const k = this.sortKey; const d = this.sortDir;
     const coll = new Intl.Collator('tr', { numeric: true, sensitivity: 'base' });
+    const q = this.filter.trim().toLocaleLowerCase('tr');
     return this.entries
       .filter((e) => this.showHidden || !e.name.startsWith('.'))
+      .filter((e) => !q || e.name.toLocaleLowerCase('tr').includes(q))
       .sort((a, b) => {
         if (a.isDir !== b.isDir) return a.isDir ? -1 : 1;
         let r;
@@ -200,15 +291,16 @@ export class FilePane {
         this.menu(ev.clientX, ev.clientY, this.selected());
       });
       tr.addEventListener('dragstart', (ev) => {
+        // native drag instead of HTML5 so files can also be dropped into the file manager
+        ev.preventDefault();
         if (!this.sel.has(e.name)) { this.sel = new Set([e.name]); this.paintSel(); }
-        ev.dataTransfer.effectAllowed = 'copy';
-        ev.dataTransfer.setData(DRAG_MIME, JSON.stringify({ side: this.side, items: this.itemsFor(this.selected()) }));
-        ev.dataTransfer.setData('x-side-' + this.side, '1');
+        this.startNativeDrag(this.itemsFor(this.selected()));
       });
       frag.append(tr);
     }
     this.tbody.replaceChildren(frag);
-    this.empty.textContent = vis.length ? '' : (this.entries.length ? 'Yalnızca gizli dosyalar var' : 'Klasör boş');
+    this.empty.textContent = vis.length ? '' : this.filter.trim() ? 'Süzgeçle eşleşen öğe yok' : (this.entries.length ? 'Yalnızca gizli dosyalar var' : 'Klasör boş');
+    this.filterInput.classList.toggle('on', !!this.filter.trim());
     this.paintSel();
   }
 
@@ -280,6 +372,9 @@ export class FilePane {
     else if (k === 'Delete') { e.preventDefault(); this.remove(this.selected()); }
     else if (k === 'a' && e.ctrlKey) { e.preventDefault(); this.sel = new Set(names); this.paintSel(); }
     else if (k === 'l' && e.ctrlKey) { e.preventDefault(); this.pathInput.focus(); }
+    else if (k === 'f' && e.ctrlKey && !e.shiftKey) { e.preventDefault(); this.filterInput.focus(); this.filterInput.select(); }
+    else if (k === 'Escape' && this.filter) { e.preventDefault(); this.setFilter(''); }
+    else if (k === ' ' && !this._ta && !e.ctrlKey) { e.preventDefault(); const s = this.selected(); if (s.length === 1 && !s[0].isDir) this.preview(s[0]); }
     else if (k.length === 1 && !e.ctrlKey && !e.altKey && !e.metaKey) {
       // type-ahead
       clearTimeout(this._taT);
@@ -290,7 +385,38 @@ export class FilePane {
     }
   }
 
+  setFilter(v) { this.filter = v; this.filterInput.value = v; this.render(); }
+
   // ------------------------------------------------ actions
+  async preview(e) {
+    if (!this.ad.preview || e.isDir) return;
+    const p = this.ad.join(this.cwd, e.name);
+    let r;
+    this.el.classList.add('loading');
+    try { r = await this.ad.preview(p); } catch (err) { toast(`${e.name}: ${cleanErr(err)}`, 'err'); return; } finally { this.el.classList.remove('loading'); }
+    let body;
+    if (r.kind === 'image') body = h('div.preview-img', null, h('img', { src: r.dataUrl, alt: e.name }));
+    else if (r.kind === 'text') {
+      body = h('div', null,
+        h('pre.preview-text', null, r.text || ' '),
+        r.truncated ? h('p.hint', null, `Dosyanın yalnızca ilk ${formatSize(r.text.length)} kısmı gösteriliyor (toplam ${formatSize(r.size)}).`) : null);
+    } else {
+      body = h('p.muted', null, r.kind === 'too-big' ? `Resim önizleme için çok büyük (${formatSize(r.size)}).` : `İkili dosya, önizlenemez (${formatSize(r.size)}).`);
+    }
+    const act = await modal({
+      title: `${e.name} · ${formatSize(r.size)}`,
+      width: r.kind === 'text' || r.kind === 'image' ? 'min(900px, calc(100vw - 60px))' : 440,
+      cls: 'preview-modal',
+      body,
+      buttons: [
+        this.onOpenFile ? { label: this.side === 'local' ? 'Yükle' : 'İndir', value: 'transfer' } : null,
+        { label: 'Kapat', value: null, primary: true },
+      ].filter(Boolean),
+    });
+    if (act === 'transfer') this.onTransfer(this.side, this.itemsFor([e]), null);
+    this.body.focus();
+  }
+
   transferSelection() {
     const s = this.selected();
     if (s.length) this.onTransfer(this.side, this.itemsFor(s), null);
@@ -330,8 +456,9 @@ export class FilePane {
     const one = sel.length === 1 ? sel[0] : null;
     const other = this.side === 'local' ? 'Yükle' : 'İndir';
     const items = [
-      sel.length ? { label: `${other}${sel.length > 1 ? ` (${sel.length})` : ''}`, icon: this.side === 'local' ? 'upload' : 'download', hint: 'Enter', action: () => this.transferSelection() } : null,
+      sel.length ? { label: `${other}${sel.length > 1 ? ` (${sel.length})` : ''}`, icon: this.side === 'local' ? 'upload' : 'download', hint: sel.length > 1 ? 'Enter' : null, action: () => this.transferSelection() } : null,
       one && one.isDir ? { label: 'Aç', icon: 'folder', action: () => this.activate(one) } : null,
+      one && !one.isDir && this.ad.preview ? { label: 'Önizle', icon: 'eye', hint: 'Boşluk', action: () => this.preview(one) } : null,
       ...(this.onExtraMenu ? this.onExtraMenu(sel) : []),
       sel.length ? '-' : null,
       one ? { label: 'Yeniden adlandır', icon: 'edit', hint: 'F2', action: () => this.rename(one) } : null,

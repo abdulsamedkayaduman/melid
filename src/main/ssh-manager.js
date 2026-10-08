@@ -12,6 +12,33 @@ const { EventEmitter } = require('events');
 const { StringDecoder } = require('string_decoder');
 const { createSocksServer } = require('./socks');
 
+// Terminal cwd (Linux /proc): find this connection's interactive shell by $SSH_CONNECTION
+// (session leader with a tty), then read the cwd of its foreground process group.
+// No single quotes inside: it is wrapped in sh -c '...' so it also works under fish etc.
+// Aynı bağlantıdaki kabuklar aynı $SSH_CONNECTION'ı paylaşır: diğer kabukların pid'leri (exclude) atlanır.
+const CWD_SCRIPT = (pid, exclude = []) => [
+  `p=${pid || ''}`,
+  `x=" ${exclude.filter((e) => /^\d+$/.test(e)).join(' ')} "`,
+  'if [ -z "$p" ] || [ ! -r /proc/$p/stat ]; then p=; for d in /proc/[0-9]*; do q=${d#/proc/}; case "$x" in *" $q "*) continue;; esac; [ -r $d/environ ] || continue;'
+    + ' tr "\\0" "\\n" < $d/environ 2>/dev/null | grep -qxF "SSH_CONNECTION=$SSH_CONNECTION" || continue;'
+    + ' set -- $(sed "s/^.*) //" $d/stat 2>/dev/null); [ "$4" = "$q" ] && [ "$5" != 0 ] && { p=$q; break; }; done; fi',
+  '[ -n "$p" ] || exit 1',
+  'set -- $(sed "s/^.*) //" /proc/$p/stat)',
+  'echo $p',
+  'readlink /proc/$6/cwd 2>/dev/null || readlink /proc/$p/cwd',
+].join('\n');
+
+// Sunucu kaynakları: tek exec ile /proc'tan okunur, bölümler @@ ile ayrılır.
+const STATS_SCRIPT = [
+  'echo @@cpu; head -1 /proc/stat',
+  'echo @@mem; grep -E "^(MemTotal|MemAvailable|MemFree|Buffers|Cached|SwapTotal|SwapFree):" /proc/meminfo',
+  'echo @@net; tail -n +3 /proc/net/dev',
+  'echo @@disk; df -Pk / 2>/dev/null | tail -1',
+  'echo @@up; cat /proc/uptime',
+  'echo @@load; cat /proc/loadavg',
+  'echo @@nproc; nproc 2>/dev/null || grep -c ^processor /proc/cpuinfo',
+].join('; ');
+
 const rpath = path.posix;
 
 function expandHome(p) {
@@ -44,6 +71,13 @@ function friendlyError(e, s) {
   return new Error(m);
 }
 
+// Basit ad deseni eşleyici: "node_modules", "*.log", ".git" gibi (yalnızca dosya/klasör adına bakar)
+function globMatcher(patterns) {
+  const res = (patterns || []).map((x) => String(x).trim()).filter(Boolean)
+    .map((g) => new RegExp('^' + g.replace(/[.+^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*').replace(/\?/g, '.') + '$'));
+  return (name) => res.some((r) => r.test(name));
+}
+
 const p1 = (fn) => new Promise((res, rej) => fn((err, v) => (err ? rej(err) : res(v))));
 
 class SshManager extends EventEmitter {
@@ -52,6 +86,8 @@ class SshManager extends EventEmitter {
    *   getSession(id) -> session with decrypted secrets (for jump hosts)
    *   verifyHostKey({host, port, type, fingerprint}) -> Promise<boolean>
    *   prompt(kind, payload) -> Promise<any|null>   kind: 'text' | 'password' | 'kbd'
+   *     payload.canSave: true ise yanıt { value, save } olabilir (kayıtlı oturumlar için "Kaydet" kutusu)
+   *   saveCredentials(sessionId, { username?, password?, passphrase? })  bağlantı başarılı olunca çağrılır
    */
   constructor(hooks) {
     super();
@@ -84,16 +120,26 @@ class SshManager extends EventEmitter {
 
   async connect(id, session) {
     if (this.conns.has(id)) throw new Error('Bu sekme zaten bağlı');
-    const conn = { id, session, client: null, chain: [], sftpP: null, shell: null, forwards: new Map(), transfers: new Map(), outBuf: '', closing: false };
+    const conn = { id, session, client: null, chain: [], sftpP: null, shells: new Map(), forwards: new Map(), transfers: new Map(), closing: false, stat: null };
     this.conns.set(id, conn);
     try {
       const chain = this._resolveChain(session);
       let sock = null;
       for (let i = 0; i < chain.length; i++) {
-        const s = chain[i];
+        let s = chain[i];
         const via = i > 0 ? ` (${chain[i - 1].host} üzerinden)` : '';
         this._status(id, 'connecting', `${s.host}:${s.port || 22} bağlanılıyor${via}…`);
-        const client = await this._connectOne(id, s, sock);
+        let client;
+        for (let carry = null; ;) {
+          try { client = await this._connectOne(id, s, sock, carry); break; } catch (e) {
+            if (!e.userChange || conn.closing) throw e;
+            // Parola ekranında kullanıcı adı değişti: OpenSSH aynı bağlantıda buna izin vermez, yeni adla baştan bağlan
+            carry = e.userChange;
+            s = chain[i] = { ...s, username: carry.username, password: carry.password };
+            this._status(id, 'connecting', `${s.username}@${s.host}:${s.port || 22} bağlanılıyor${via}…`);
+            sock = i > 0 ? await p1((cb) => conn.chain[i - 1].forwardOut('127.0.0.1', 0, s.host, Number(s.port) || 22, cb)) : null;
+          }
+        }
         conn.chain.push(client);
         if (conn.closing) throw new CancelError();
         if (i < chain.length - 1) {
@@ -120,7 +166,7 @@ class SshManager extends EventEmitter {
     }
   }
 
-  async _connectOne(id, s, sock) {
+  async _connectOne(id, s, sock, carry) {
     const cfg = {
       host: s.host,
       port: Number(s.port) || 22,
@@ -135,8 +181,20 @@ class SshManager extends EventEmitter {
         .then((ok) => cb(!!ok), () => cb(false));
     };
 
+    // Kayıtlı oturumlarda sorulan bilgiler "Kaydet" işaretliyse bağlantı başarılı olunca saklanır
+    const canSave = !!(s.id && this.hooks.saveCredentials);
+    const toSave = { ...(carry && carry.toSave) };
+    const ask = async (kind, payload, field) => {
+      const r = await this.hooks.prompt(kind, canSave ? { ...payload, canSave: true } : payload);
+      if (r && typeof r === 'object') {
+        if (r.value != null) { if (r.save) toSave[field] = r.value; else delete toSave[field]; }
+        return r.value;
+      }
+      return r;
+    };
+
     if (!cfg.username) {
-      const u = await this.hooks.prompt('text', { title: `${s.host} için kullanıcı adı`, label: 'Kullanıcı adı' });
+      const u = await ask('text', { title: `${s.host} için kullanıcı adı`, label: 'Kullanıcı adı' }, 'username');
       if (u == null || u === '') throw new CancelError();
       cfg.username = u;
       s.username = u;
@@ -153,7 +211,7 @@ class SshManager extends EventEmitter {
       let parsed = utils.parseKey(buf, pass);
       for (let tries = 0; parsed instanceof Error && /encrypt|passphrase|decrypt|bad/i.test(parsed.message) && tries < 3; tries++) {
         if (!required) return; // default keys: skip encrypted ones silently
-        pass = await this.hooks.prompt('password', { title: 'Anahtar parolası', label: path.basename(keyPath) + (tries ? ' (hatalı, tekrar deneyin)' : '') });
+        pass = await ask('password', { title: 'Anahtar parolası', label: path.basename(keyPath) + (tries ? ' (hatalı, tekrar deneyin)' : '') }, 'passphrase');
         if (pass == null) throw new CancelError();
         parsed = utils.parseKey(buf, pass);
       }
@@ -172,13 +230,30 @@ class SshManager extends EventEmitter {
     }
 
     let savedPassword = s.password || undefined;
-    let pwTries = 0;
+    let pwTries = (carry && carry.pwTries) || 0;
     let cancelled = false;
+    let userChange = null;
+    let triedSaved = false;
     const askPassword = async () => {
-      if (savedPassword) { const p = savedPassword; savedPassword = undefined; return p; }
+      if (savedPassword) { const p = savedPassword; savedPassword = undefined; triedSaved = true; return p; }
       if (pwTries >= 3) return null;
-      const p = await this.hooks.prompt('password', { title: who, label: pwTries++ ? 'Parola hatalı, tekrar deneyin' : 'Parola' });
-      if (p == null) cancelled = true;
+      // Tekrar sorarken (kayıtlı parola da tutmadıysa) kullanıcı adı da gösterilir ve değiştirilebilir
+      const retry = pwTries++ > 0 || triedSaved;
+      const r = await this.hooks.prompt('password', {
+        title: who, label: retry ? 'Parola hatalı, tekrar deneyin' : 'Parola',
+        ...(retry ? { username } : {}), ...(canSave ? { canSave: true } : {}),
+      });
+      const p = r && typeof r === 'object' ? r.value : r;
+      if (p == null) { cancelled = true; return null; }
+      const save = !!(r && typeof r === 'object' && r.save);
+      if (save) toSave.password = p; else delete toSave.password;
+      const u = r && typeof r === 'object' && typeof r.username === 'string' ? r.username.trim() : '';
+      if (u && u !== username) {
+        if (save) toSave.username = u;
+        userChange = { username: u, password: p, pwTries, toSave: { ...toSave } };
+        cancelled = true;
+        return null;
+      }
       return p;
     };
     const kbdPrompt = (name, instructions, lang, prompts, finish) => {
@@ -225,14 +300,23 @@ class SshManager extends EventEmitter {
     await new Promise((resolve, reject) => {
       let done = false;
       client.once('ready', () => { done = true; resolve(); });
-      client.on('error', (e) => { if (!done) { done = true; reject(cancelled ? new CancelError() : e); } });
+      client.on('error', (e) => {
+        if (done) return;
+        done = true;
+        if (userChange) { try { client.end(); } catch {} reject(Object.assign(new Error('Kullanıcı adı değişti'), { userChange })); }
+        else reject(cancelled ? new CancelError() : e);
+      });
       client.connect(cfg);
     });
+    if (canSave && Object.keys(toSave).length) {
+      try { this.hooks.saveCredentials(s.id, toSave); } catch {}
+    }
     return client;
   }
 
   _onClosed(conn) {
     if (!this.conns.has(conn.id)) return;
+    for (const sh of conn.shells.values()) sh.flush(); // son çıktı durum mesajından önce gitsin
     this._teardown(conn);
     this.conns.delete(conn.id);
     this._status(conn.id, 'closed', conn.closing ? 'Bağlantı kapatıldı' : 'Bağlantı koptu');
@@ -255,26 +339,139 @@ class SshManager extends EventEmitter {
   }
 
   // ---------------- shell ----------------
-  async openShell(id, cols, rows, startupCommand) {
+  // Bir bağlantıda birden çok kabuk olabilir (bölünmüş terminal); her biri sid ile tutulur.
+  async openShell(id, cols, rows, startupCommand, sid = 'main') {
     const conn = this._get(id);
+    if (conn.shells.has(sid)) throw new Error('Bu kabuk zaten açık');
     const stream = await p1((cb) => conn.client.shell({ term: 'xterm-256color', cols, rows }, cb));
-    conn.shell = stream;
+    const sh = { stream, pid: null, pidP: null, buf: '', flushT: null };
+    conn.shells.set(sid, sh);
+    // Kabuğun uzak pid'ini hemen bul (diğer kabuklar hariç); dizin takibi buna dayanır.
+    const others = () => [...conn.shells.values()].filter((o) => o !== sh).map((o) => o.pid).filter(Boolean);
+    sh.pidP = (async () => {
+      await Promise.all([...conn.shells.values()].filter((o) => o !== sh && o.pidP).map((o) => o.pidP));
+      for (let i = 0; i < 6 && conn.shells.get(sid) === sh; i++) {
+        try {
+          const { stdout } = await this.exec(id, `sh -c '${CWD_SCRIPT(null, others())}'`, { timeout: 5000 });
+          const pid = stdout.trim().split('\n')[0];
+          if (/^\d+$/.test(pid)) { sh.pid = pid; return; }
+        } catch { return; }
+        await new Promise((r) => setTimeout(r, 200));
+      }
+    })();
     const dec = new StringDecoder('utf8');
+    sh.flush = () => { clearTimeout(sh.flushT); sh.flushT = null; const b = sh.buf; sh.buf = ''; if (b) this.emit('shell-data', id, b, sid); };
     const push = (d) => {
-      conn.outBuf += dec.write(d);
-      if (!conn.flushT) conn.flushT = setTimeout(() => { conn.flushT = null; const b = conn.outBuf; conn.outBuf = ''; if (b) this.emit('shell-data', id, b); }, 6);
+      sh.buf += dec.write(d);
+      if (!sh.flushT) sh.flushT = setTimeout(sh.flush, 6);
     };
     stream.on('data', push);
     stream.stderr.on('data', push);
     stream.on('close', () => {
-      if (conn.shell === stream) conn.shell = null;
-      this.emit('shell-exit', id);
+      sh.flush();
+      if (conn.shells.get(sid) === sh) conn.shells.delete(sid);
+      this.emit('shell-exit', id, sid);
     });
     if (startupCommand) setTimeout(() => stream.write(startupCommand.replace(/\r?\n?$/, '\n')), 300);
   }
 
-  write(id, data) { const c = this.conns.get(id); if (c && c.shell) c.shell.write(data); }
-  resize(id, cols, rows) { const c = this.conns.get(id); if (c && c.shell) c.shell.setWindow(rows, cols, 0, 0); }
+  closeShell(id, sid) {
+    const c = this.conns.get(id);
+    const sh = c && c.shells.get(sid);
+    if (sh) { try { sh.stream.close(); } catch {} }
+  }
+
+  // Tek seferlik komut (ayrı exec kanalı). -> { code, stdout, stderr }
+  async exec(id, cmd, { timeout = 15000, stdin } = {}) {
+    const conn = this._get(id);
+    return new Promise((res, rej) => {
+      conn.client.exec(cmd, (err, ch) => {
+        if (err) return rej(err);
+        let stdout = ''; let stderr = ''; let code = null;
+        const t = setTimeout(() => ch.close(), timeout);
+        ch.on('data', (d) => { stdout += d; });
+        ch.stderr.on('data', (d) => { stderr += d; });
+        ch.on('exit', (c) => { code = c; });
+        ch.on('close', () => { clearTimeout(t); res({ code, stdout, stderr }); });
+        if (stdin != null) ch.end(stdin);
+      });
+    });
+  }
+
+  // -> cwd, '' (unreadable), or null (shell not found / not Linux)
+  async shellCwd(id, sid = 'main') {
+    const conn = this._get(id);
+    const sh = conn.shells.get(sid);
+    if (!sh) return null;
+    await sh.pidP;
+    const others = [...conn.shells.values()].filter((o) => o !== sh).map((o) => o.pid);
+    const { stdout } = await this.exec(id, `sh -c '${CWD_SCRIPT(sh.pid, others)}'`, { timeout: 5000 });
+    const [pid, cwd] = stdout.trim().split('\n');
+    if (!/^\d+$/.test(pid || '')) return null;
+    sh.pid = pid;
+    return cwd && cwd.startsWith('/') ? cwd : ''; // '' = shell found but cwd unreadable (e.g. sudo)
+  }
+
+  write(id, data, sid = 'main') { const sh = this.conns.get(id)?.shells.get(sid); if (sh) sh.stream.write(data); }
+  resize(id, cols, rows, sid = 'main') { const sh = this.conns.get(id)?.shells.get(sid); if (sh) sh.stream.setWindow(rows, cols, 0, 0); }
+
+  // Sunucu kaynakları (Linux /proc). CPU ve ağ hızı önceki ölçümle farktan hesaplanır. Linux değilse null.
+  async stats(id) {
+    const conn = this._get(id);
+    const { stdout } = await this.exec(id, `sh -c '${STATS_SCRIPT}'`, { timeout: 5000 });
+    const now = Date.now();
+    const sec = {};
+    let cur = null;
+    for (const line of stdout.split('\n')) {
+      const m = /^@@(\w+)$/.exec(line);
+      if (m) { cur = m[1]; sec[cur] = []; } else if (cur && line.trim()) sec[cur].push(line);
+    }
+    if (!sec.cpu || !sec.cpu.length || !sec.mem) return null;
+    const cpuF = sec.cpu[0].trim().split(/\s+/).slice(1).map(Number);
+    const cpuTotal = cpuF.slice(0, 8).reduce((a, b) => a + (b || 0), 0);
+    const cpuIdle = (cpuF[3] || 0) + (cpuF[4] || 0);
+    const mem = {};
+    for (const l of sec.mem) { const mm = /^(\w+):\s+(\d+)/.exec(l); if (mm) mem[mm[1]] = Number(mm[2]) * 1024; }
+    let rx = 0; let tx = 0;
+    for (const l of sec.net || []) {
+      const mm = /^\s*([^:]+):\s*(.*)$/.exec(l);
+      if (!mm || mm[1] === 'lo') continue;
+      const f = mm[2].trim().split(/\s+/).map(Number);
+      rx += f[0] || 0; tx += f[8] || 0;
+    }
+    const df = (sec.disk && sec.disk[0] || '').trim().split(/\s+/);
+    const prev = conn.stat;
+    conn.stat = { t: now, cpuTotal, cpuIdle, rx, tx };
+    const dt = prev ? (now - prev.t) / 1000 : 0;
+    const out = {
+      cpu: prev && cpuTotal > prev.cpuTotal ? Math.max(0, Math.min(100, 100 * (1 - (cpuIdle - prev.cpuIdle) / (cpuTotal - prev.cpuTotal)))) : null,
+      cores: Number((sec.nproc || [])[0]) || null,
+      memTotal: mem.MemTotal || 0,
+      memUsed: (mem.MemTotal || 0) - (mem.MemAvailable != null ? mem.MemAvailable : (mem.MemFree || 0) + (mem.Buffers || 0) + (mem.Cached || 0)),
+      swapTotal: mem.SwapTotal || 0,
+      swapUsed: (mem.SwapTotal || 0) - (mem.SwapFree || 0),
+      diskTotal: Number(df[1]) * 1024 || 0,
+      diskUsed: Number(df[2]) * 1024 || 0,
+      uptime: Number(((sec.up || [])[0] || '').split(/\s+/)[0]) || 0,
+      load: ((sec.load || [])[0] || '').split(/\s+/).slice(0, 3).join(' '),
+      rxRate: prev && dt > 0 ? Math.max(0, (rx - prev.rx) / dt) : null,
+      txRate: prev && dt > 0 ? Math.max(0, (tx - prev.tx) / dt) : null,
+    };
+    return out;
+  }
+
+  // Açık anahtarı sunucudaki ~/.ssh/authorized_keys dosyasına ekler (ssh-copy-id karşılığı).
+  async installPublicKey(id, pubKey) {
+    const key = String(pubKey || '').trim();
+    if (!/^(ssh-|ecdsa-|sk-)\S+ [A-Za-z0-9+/=]+( .*)?$/.test(key) || key.includes('\n')) throw new Error('Geçersiz açık anahtar');
+    const q = `'${key.replace(/'/g, `'\\''`)}'`;
+    const cmd = `sh -c 'umask 077; mkdir -p "$HOME/.ssh" && touch "$HOME/.ssh/authorized_keys" && chmod 700 "$HOME/.ssh" && chmod 600 "$HOME/.ssh/authorized_keys" && `
+      + `if grep -qxF "$1" "$HOME/.ssh/authorized_keys"; then echo EXISTS; else printf "%s\\n" "$1" >> "$HOME/.ssh/authorized_keys" && echo ADDED; fi' sh ${q}`;
+    const r = await this.exec(id, cmd);
+    if (/ADDED/.test(r.stdout)) return 'added';
+    if (/EXISTS/.test(r.stdout)) return 'exists';
+    throw new Error(`Anahtar eklenemedi: ${(r.stderr || r.stdout).trim() || 'çıkış kodu ' + r.code}`);
+  }
 
   // ---------------- sftp ----------------
   _sftp(conn) {
@@ -339,15 +536,56 @@ class SshManager extends EventEmitter {
   async fastGet(id, remote, local) { const s = await this._sftp(this._get(id)); return p1((cb) => s.fastGet(remote, local, cb)); }
   async fastPut(id, local, remote) { const s = await this._sftp(this._get(id)); return p1((cb) => s.fastPut(local, remote, cb)); }
 
+  // Uzak dosyanın başını okur (önizleme). -> { size, data: Buffer, truncated }
+  async readFile(id, p, maxBytes = 512 * 1024) {
+    const s = await this._sftp(this._get(id));
+    const st = await p1((cb) => s.stat(p, cb));
+    if (st.isDirectory()) throw new Error('Bu bir klasör');
+    const len = Math.min(st.size, maxBytes);
+    const buf = Buffer.alloc(len);
+    const h = await p1((cb) => s.open(p, 'r', cb));
+    try {
+      let off = 0;
+      while (off < len) {
+        const n = await new Promise((res, rej) => s.read(h, buf, off, len - off, off, (e, bytes) => (e ? rej(e) : res(bytes))));
+        if (!n) break;
+        off += n;
+      }
+      return { size: st.size, data: buf.subarray(0, off), truncated: st.size > off };
+    } finally { s.close(h, () => {}); }
+  }
+
+  // Uzak dizini özyinelemeli listeler: Map(rel -> {isDir, size, mtime(sn)}). exclude: ad desenleri (glob * ?)
+  async walkRemote(id, root, exclude = []) {
+    const s = await this._sftp(this._get(id));
+    const out = new Map();
+    const ex = globMatcher(exclude);
+    const walk = async (rel) => {
+      const list = await p1((cb) => s.readdir(rel ? rpath.join(root, rel) : root, cb));
+      for (const e of list) {
+        if (ex(e.filename)) continue;
+        const r = rel ? rel + '/' + e.filename : e.filename;
+        const fmt = e.attrs.mode & 0o170000;
+        if (fmt === 0o040000) { out.set(r, { isDir: true }); await walk(r); } else if (fmt === 0o100000) out.set(r, { isDir: false, size: e.attrs.size, mtime: e.attrs.mtime });
+      }
+      if (out.size > 200000) throw new Error('Çok fazla dosya (200 000 sınırı)');
+    };
+    await walk('');
+    return out;
+  }
+
   // ---------------- transfers ----------------
   // Each transfer gets its own SFTP channel so it can be cancelled and doesn't block browsing.
+  // t.resume: hedefte aynı boyut+tarihte olan dosyalar atlanır, daha küçük olanlar kaldığı yerden sürdürülür.
+  // t.mkdirs: dosya öğelerinin hedef üst klasörleri yoksa oluşturulur (klasör eşitleme).
   async transfer(id, t) {
-    // t: { tid, direction: 'download'|'upload', items: [{src, dst}] }
+    // t: { tid, direction: 'download'|'upload', items: [{src, dst}], resume?, mkdirs? }
     const conn = this._get(id);
     const rec = { cancelled: false, sftp: null };
     conn.transfers.set(t.tid, rec);
     const emit = (extra) => this.emit('transfer', id, { tid: t.tid, ...extra });
-    let total = 0; let done = 0; let lastEmit = 0;
+    const down = t.direction === 'download';
+    let total = 0; let done = 0; let lastEmit = 0; let skipped = 0; let resumed = 0;
     const tick = (file, force) => {
       const now = Date.now();
       if (force || now - lastEmit > 120) { lastEmit = now; emit({ state: 'running', done, total, file }); }
@@ -371,31 +609,69 @@ class SshManager extends EventEmitter {
           for (const name of await fsp.readdir(src)) await walkLocal(path.join(src, name), rpath.join(dst, name));
         } else { jobs.push({ src, dst, size: st.size, mtime: Math.floor(st.mtimeMs / 1000), atime: Math.floor(st.atimeMs / 1000), mode: st.mode & 0o777 }); total += st.size; }
       };
+      const dstStat = async (p) => {
+        try {
+          if (down) { const st = await fsp.stat(p); return { size: st.size, mtime: Math.floor(st.mtimeMs / 1000) }; }
+          const st = await p1((cb) => sftp.stat(p, cb)); return { size: st.size, mtime: st.mtime };
+        } catch { return null; }
+      };
+      const madeDirs = new Set();
+      const ensureParent = async (p) => {
+        const dir = down ? path.dirname(p) : rpath.dirname(p);
+        if (madeDirs.has(dir)) return;
+        if (down) await fsp.mkdir(dir, { recursive: true });
+        else {
+          const parts = dir.split('/'); let cur = '';
+          for (const part of parts) {
+            cur = cur ? (cur === '/' ? '/' + part : cur + '/' + part) : (part || '/');
+            if (madeDirs.has(cur) || cur === '/') continue;
+            try { await p1((cb) => sftp.mkdir(cur, cb)); } catch {}
+            madeDirs.add(cur);
+          }
+        }
+        madeDirs.add(dir);
+      };
+      // Kaldığı yerden sürdürme: fastGet/fastPut ofset desteklemediği için akışlarla kopyalanır.
+      const copyFrom = (j, start, step) => new Promise((res, rej) => {
+        const rs = down ? sftp.createReadStream(j.src, { start }) : fs.createReadStream(j.src, { start });
+        const ws = down ? fs.createWriteStream(j.dst, { flags: 'r+', start }) : sftp.createWriteStream(j.dst, { flags: 'r+', start });
+        let n = start;
+        rs.on('data', (d) => { n += d.length; step(n); });
+        rs.on('error', rej); ws.on('error', rej);
+        ws.on('finish', res); ws.on('close', res);
+        rs.pipe(ws);
+      });
       emit({ state: 'scanning', done: 0, total: 0 });
       for (const it of t.items) {
-        if (t.direction === 'download') await walkRemote(it.src, it.dst); else await walkLocal(it.src, it.dst);
+        if (down) await walkRemote(it.src, it.dst); else await walkLocal(it.src, it.dst);
       }
       for (const j of jobs) {
         if (rec.cancelled) throw new CancelError();
         if (j.dir) {
-          if (t.direction === 'download') await fsp.mkdir(j.dst, { recursive: true });
+          if (down) await fsp.mkdir(j.dst, { recursive: true });
           else { try { await p1((cb) => sftp.mkdir(j.dst, cb)); } catch (e) { /* exists */ } }
+          madeDirs.add(j.dst);
           continue;
         }
         const base = done;
         const step = (sofar) => { done = base + sofar; tick(j.src); };
-        const name = t.direction === 'download' ? path.basename(j.dst) : rpath.basename(j.dst);
-        tick(name, true);
-        if (t.direction === 'download') {
-          await p1((cb) => sftp.fastGet(j.src, j.dst, { step }, cb));
-          try { await fsp.utimes(j.dst, j.atime, j.mtime); } catch {}
-        } else {
-          await p1((cb) => sftp.fastPut(j.src, j.dst, { step, mode: j.mode }, cb));
-          try { await p1((cb) => sftp.utimes(j.dst, j.atime, j.mtime, cb)); } catch {}
+        const name = down ? path.basename(j.dst) : rpath.basename(j.dst);
+        if (t.mkdirs) await ensureParent(j.dst);
+        let start = 0;
+        if (t.resume) {
+          const ds = await dstStat(j.dst);
+          if (ds && ds.size === j.size && ds.mtime === j.mtime) { done = base + j.size; skipped++; continue; }
+          if (ds && ds.size > 0 && ds.size < j.size) { start = ds.size; resumed++; }
         }
+        tick(name, true);
+        if (start) await copyFrom(j, start, step);
+        else if (down) await p1((cb) => sftp.fastGet(j.src, j.dst, { step }, cb));
+        else await p1((cb) => sftp.fastPut(j.src, j.dst, { step, mode: j.mode }, cb));
+        if (down) { try { await fsp.utimes(j.dst, j.atime, j.mtime); } catch {} }
+        else { try { await p1((cb) => sftp.utimes(j.dst, j.atime, j.mtime, cb)); } catch {} }
         done = base + j.size;
       }
-      emit({ state: 'done', done: total, total });
+      emit({ state: 'done', done: total, total, skipped, resumed });
     } catch (e) {
       emit({ state: rec.cancelled ? 'cancelled' : 'error', done, total, error: rec.cancelled ? 'İptal edildi' : e.message });
     } finally {
@@ -500,4 +776,4 @@ class SshManager extends EventEmitter {
   closeAll() { for (const id of [...this.conns.keys()]) this.disconnect(id); }
 }
 
-module.exports = { SshManager, expandHome, fingerprint };
+module.exports = { SshManager, expandHome, fingerprint, globMatcher };
