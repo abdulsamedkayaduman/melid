@@ -328,7 +328,9 @@ export class SessionTab {
           h('div.stat', null, h('small', null, 'Disk ( / )'), h('b', null, `${formatSize(s.diskUsed)}`), h('small', null, `/ ${formatSize(s.diskTotal)}`), bar(pct(s.diskUsed, s.diskTotal))),
           h('div.stat', null, h('small', null, 'Ağ ↓ / ↑'), h('b', { style: { fontSize: '15px' } }, s.rxRate == null ? '…' : `${formatSize(s.rxRate)}/s · ${formatSize(s.txRate)}/s`)),
           h('div.stat', null, h('small', null, 'Çalışma süresi'), h('b', { style: { fontSize: '15px' } }, uptime(s.uptime))),
-          s.swapTotal ? h('div.stat', null, h('small', null, 'Takas (swap)'), h('b', null, formatSize(s.swapUsed)), h('small', null, `/ ${formatSize(s.swapTotal)}`), bar(pct(s.swapUsed, s.swapTotal))) : null);
+          s.swapTotal ? h('div.stat', null, h('small', null, 'Takas (swap)'), h('b', null, formatSize(s.swapUsed)), h('small', null, `/ ${formatSize(s.swapTotal)}`), bar(pct(s.swapUsed, s.swapTotal))) : null,
+          s.sessions ? h('div.stat.wide', null, h('small', null, 'Açık oturumlar'), h('b', null, String(s.sessions.length)),
+            h('small.who', null, s.sessions.map((x) => `${x.user} ${x.tty}${x.from ? ' · ' + x.from : ''}`).join('\n'))) : null);
       } catch (e) { body.replaceChildren(h('p.muted', null, e.message)); }
       if (open) timer = setTimeout(tick, 2000);
     };
@@ -394,5 +396,16 @@ export function parseStats(stdout, prev) {
     load: ((sec.load || [])[0] || '').split(/\s+/).slice(0, 3).join(' '),
     rxRate: prev && dt > 0 ? Math.max(0, (rx - prev.rx) / dt) : null,
     txRate: prev && dt > 0 ? Math.max(0, (tx - prev.tx) / dt) : null,
+    sessions: parseWho(sec.who),
   };
+}
+
+// `who` satırları: "kullanıcı tty tarih saat (nereden)". Kayıt yoksa (utmp tutmayan sunucu) null.
+function parseWho(lines) {
+  if (!lines || !lines.length) return null;
+  return lines.map((l) => {
+    const f = l.trim().split(/\s+/);
+    const from = /\(([^)]*)\)\s*$/.exec(l);
+    return { user: f[0], tty: f[1] || '', from: from ? from[1] : '' };
+  });
 }

@@ -85,7 +85,7 @@ async function handle(id, m, a) {
       return { code: 0, stdout: 'ok\n', stderr: '' };
     case 'stats': {
       const t = Date.now() / 1000;
-      return { code: 0, stderr: '', stdout: `@@cpu\ncpu ${Math.floor(t * 40)} 0 ${Math.floor(t * 10)} ${Math.floor(t * 100)} 0 0 0 0\n@@mem\nMemTotal: 8000000 kB\nMemAvailable: 3000000 kB\nSwapTotal: 2000000 kB\nSwapFree: 1500000 kB\n@@net\n  eth0: ${Math.floor(t * 5000)} 0 0 0 0 0 0 0 ${Math.floor(t * 2000)} 0\n@@disk\n/dev/sda1 100000000 42000000 58000000 42% /\n@@up\n123456.7 0\n@@load\n0.42 0.36 0.30 1/200 999\n@@nproc\n4\n` };
+      return { code: 0, stderr: '', stdout: `@@cpu\ncpu ${Math.floor(t * 40)} 0 ${Math.floor(t * 10)} ${Math.floor(t * 100)} 0 0 0 0\n@@mem\nMemTotal: 8000000 kB\nMemAvailable: 3000000 kB\nSwapTotal: 2000000 kB\nSwapFree: 1500000 kB\n@@net\n  eth0: ${Math.floor(t * 5000)} 0 0 0 0 0 0 0 ${Math.floor(t * 2000)} 0\n@@disk\n/dev/sda1 100000000 42000000 58000000 42% /\n@@up\n123456.7 0\n@@load\n0.42 0.36 0.30 1/200 999\n@@nproc\n4\n@@who\nroot     pts/0        2026-10-09 09:12 (192.168.1.20)\ndeploy   pts/1        2026-10-09 10:40 (10.0.0.7)\n` };
     }
     case 'installKey': return 'added';
     case 'sftpHome': return '/root';

@@ -37,7 +37,19 @@ const STATS_SCRIPT = [
   'echo @@up; cat /proc/uptime',
   'echo @@load; cat /proc/loadavg',
   'echo @@nproc; nproc 2>/dev/null || grep -c ^processor /proc/cpuinfo',
+  // açık oturumlar (utmp); who yoksa bölüm hiç yazılmaz
+  'command -v who >/dev/null 2>&1 && { echo @@who; who; }',
 ].join('; ');
+
+// `who` satırları: "kullanıcı tty tarih saat (nereden)". Kayıt yoksa (ör. utmp tutmayan container) null.
+function parseWho(lines) {
+  if (!lines || !lines.length) return null;
+  return lines.map((l) => {
+    const f = l.trim().split(/\s+/);
+    const from = /\(([^)]*)\)\s*$/.exec(l);
+    return { user: f[0], tty: f[1] || '', from: from ? from[1] : '' };
+  });
+}
 
 const rpath = path.posix;
 
@@ -465,6 +477,7 @@ class SshManager extends EventEmitter {
       load: ((sec.load || [])[0] || '').split(/\s+/).slice(0, 3).join(' '),
       rxRate: prev && dt > 0 ? Math.max(0, (rx - prev.rx) / dt) : null,
       txRate: prev && dt > 0 ? Math.max(0, (tx - prev.tx) / dt) : null,
+      sessions: parseWho(sec.who),
     };
     return out;
   }
