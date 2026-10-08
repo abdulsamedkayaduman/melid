@@ -66,7 +66,8 @@ public class SshCore {
             "echo @@disk; df -Pk / 2>/dev/null | tail -1",
             "echo @@up; cat /proc/uptime",
             "echo @@load; cat /proc/loadavg",
-            "echo @@nproc; nproc 2>/dev/null || grep -c ^processor /proc/cpuinfo");
+            "echo @@nproc; nproc 2>/dev/null || grep -c ^processor /proc/cpuinfo",
+            "command -v who >/dev/null 2>&1 && { echo @@who; who; }");
 
     final Host host;
     final Map<String, Conn> conns = new ConcurrentHashMap<>();

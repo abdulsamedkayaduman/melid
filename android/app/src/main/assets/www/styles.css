@@ -293,6 +293,8 @@ select.input { appearance: none; background-image: linear-gradient(45deg, transp
 .stat small { display: block; color: var(--muted); font-size: 12px; margin-bottom: 4px; }
 .stat b { font-size: 18px; font-weight: 600; }
 .stat .bar { margin-top: 8px; height: 6px; border-radius: 3px; }
+.stat.wide { grid-column: 1 / -1; }
+.stat small.who { white-space: pre-line; margin: 6px 0 0; line-height: 1.5; }
 
 /* ---- snippet */
 .snip { display: flex; align-items: center; gap: 12px; padding: 10px 8px 10px 16px; min-height: 56px; }

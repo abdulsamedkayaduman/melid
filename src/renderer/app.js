@@ -859,13 +859,15 @@ class App {
       st.swapTotal ? `Takas: ${formatSize(st.swapUsed)} / ${formatSize(st.swapTotal)}` : 'Takas: yok',
       `Disk (/): ${formatSize(st.diskUsed)} / ${formatSize(st.diskTotal)}`,
       `Çalışma süresi: ${upText}`,
-    ].join('\n');
+      st.sessions ? `Açık oturumlar (${st.sessions.length}):\n${st.sessions.map((x) => `  ${x.user}  ${x.tty}${x.from ? `  ${x.from}` : ''}`).join('\n')}` : null,
+    ].filter(Boolean).join('\n');
     this.sbStats.replaceChildren(...[
       icon('cpu', 12),
       cpu == null ? null : item(lvl(cpu), 'CPU', `${cpu}%`),
       item(lvl(mem), 'RAM', `${gb(st.memUsed)}/${gb(st.memTotal)} GB`),
       st.diskTotal ? item(lvl(disk), 'Disk', `${disk}%`) : null,
       st.rxRate == null ? null : h('span.st', null, `↓${formatSize(Math.round(st.rxRate))}/s ↑${formatSize(Math.round(st.txRate))}/s`),
+      st.sessions ? item('', 'Oturum', String(st.sessions.length)) : null,
       h('span.st', null, `⏱ ${upText}`)].filter(Boolean));
   }
 

@@ -105,6 +105,8 @@ const wait = (ms) => new Promise((r) => setTimeout(r, ms));
   const st1 = await m.stats('t1'); await wait(300); const st2 = await m.stats('t1');
   assert(st1.memTotal > 0 && st1.diskTotal > 0 && st1.uptime > 0 && st1.cores > 0, JSON.stringify(st1));
   assert(st1.cpu === null && typeof st2.cpu === 'number' && st2.rxRate >= 0, JSON.stringify(st2));
+  // utmp tutmayan sunucuda (Alpine/musl) null; tutanda açık kabuk (pty) en az bir oturum
+  assert(st2.sessions === null || st2.sessions.some((x) => x.user === U), JSON.stringify(st2.sessions));
   await m.exec('t1', 'printf "satir1\\nsatir2" > /tmp/pv.txt');
   const rf = await m.readFile('t1', '/tmp/pv.txt', 4);
   assert.deepEqual([rf.size, rf.data.toString(), rf.truncated], [13, 'sati', true]);
