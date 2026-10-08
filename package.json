@@ -1,14 +1,15 @@
 {
   "name": "sshdeck",
   "version": "1.0.0",
-  "description": "Linux için Xshell/Xftp tarzı SSH terminali ve SFTP dosya yöneticisi",
+  "description": "Linux ve Windows için Xshell/Xftp tarzı SSH terminali ve SFTP dosya yöneticisi",
   "main": "src/main/main.js",
   "scripts": {
     "start": "electron .",
     "dev": "SSHDECK_DEV=1 electron .",
     "dist": "electron-builder --linux AppImage pacman",
     "dist:appimage": "electron-builder --linux AppImage",
-    "test": "bash test/run.sh"
+    "test": "bash test/run.sh",
+    "dist:win": "electron-builder --win"
   },
   "author": {
     "name": "Abdulsamed Kayaduman",
@@ -65,7 +66,42 @@
         "libsecret"
       ]
     },
-    "publish": null
+    "win": {
+      "icon": "build/icon.png",
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "shortcutName": "SSHDeck",
+      "artifactName": "SSHDeck-${version}-kurulum.${ext}",
+      "language": "1055",
+      "installerLanguages": [
+        "tr_TR"
+      ]
+    },
+    "portable": {
+      "artifactName": "SSHDeck-${version}-tasinabilir.${ext}"
+    },
+    "publish": null,
+    "asarUnpack": [
+      "node_modules/ssh2/util/pagent.exe"
+    ]
   },
   "homepage": "https://sshdeck.local"
 }

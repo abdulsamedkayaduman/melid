@@ -15,6 +15,9 @@ Bekleyen işler için `YAPILACAKLAR.md` (otomatik güncelleme, AUR paketi, elect
   + sunucusuz: `test/importers.test.js` (WindTerm/Xshell), `test/store.test.js`, `test/termlog.test.js` (ANSI temizleme)
 - `npm run dist` — `dist/` içine `.pacman` ve `.AppImage` (pacman için `bsdtar` gerekir: `sudo pacman -S libarchive`).
   `npmRebuild:false` — ssh2'nin opsiyonel native `cpu-features` modülü derlenmez (ssh2 onsuz saf-JS çalışır)
+- `npm run dist:win` — Windows 10/11 x64: `SSHDeck-<sürüm>-kurulum.exe` (NSIS) + `SSHDeck-<sürüm>-tasinabilir.exe`.
+  Linux'ta NSIS kurulumu için `wine` gerekir; wine'sız yalnız `npx electron-builder --win portable zip` çalışır.
+  İmzasız: SmartScreen ilk açılışta uyarır ("Ek bilgi" -> "Yine de çalıştır")
 
 Değişiklikten sonra en az `npm test` çalıştır. Arayüz değişikliklerini uygulamayı açıp elle kontrol et.
 
@@ -61,6 +64,26 @@ src/renderer/util.js     h() DOM yardımcısı, biçimlendirme, SVG ikon seti
 
 Renderer'da bundler yok: ES modülleri doğrudan yüklenir, xterm UMD dosyaları `index.html` içinde
 `../../node_modules/...` yolundan gelir (paketli sürümde de asar içinde çalışır).
+
+## Windows notları
+
+- Yerel panel yolları `C:\...`; renderer'da `tab.js` `win32` yardımcıları (`app.platform === 'win32'`). Sürücü kökünün
+  üstü sanal `Bu Bilgisayar` listesi (`main.js` `DRIVES`, `listDrives()`).
+- ssh-agent: `SSH_AUTH_SOCK` yoksa `\\.\pipe\openssh-ssh-agent`, o da yoksa Pageant (`findAgent()`);
+  Pageant için `pagent.exe` `asarUnpack` ile asar dışında.
+
+## Android sürümü (`android/`)
+
+Ayrıntılar: `android/README.md`. Arayüz WebView'da (`app/src/main/assets/www`, bundler yok, xterm dosyaları
+derlemede `../node_modules`'tan kopyalanır); SSH Java'da: JSch (mwiede) + BouncyCastle.
+
+- `android/app/src/main/java/dev/sshdeck/core/` Android'den bağımsız (ssh-manager.js'in karşılığı) —
+  `bash android/coretest/run.sh` ile JVM'de geçici sshd + ssh2 sunucusuna karşı test edilir.
+- Köprü: JS `SSHDeckNative.call(id, metot, json)` -> `window.__nreply`; olaylar `window.__nevent` (Bridge.java).
+  Yeni çağrı: `Bridge.dispatch` içine `case` + JS'te `N.call('metot', {...})`.
+- Sırlar Android Keystore ile şifreli (`Store.java`), WebView'a gitmez. Yedek biçimi masaüstüyle aynı (`Backup.java`).
+- Derleme: `cd android && ./gradlew assembleRelease` (JDK 17 + SDK; `local.properties`, imza için
+  `keystore.properties` + `sshdeck-release.jks` — git dışı, kaybolmamalı). Değişiklikten sonra `./gradlew lintDebug`.
 
 ## Kurallar
 

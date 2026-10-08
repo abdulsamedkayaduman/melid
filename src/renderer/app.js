@@ -21,6 +21,7 @@ class App {
     this.sessions = d.sessions;
     this.settings = d.settings;
     this.home = d.home;
+    this.platform = d.platform;
     this.logDefaultDir = d.logDefaultDir;
     this.secrets = d.secrets;
     this.version = d.version;
