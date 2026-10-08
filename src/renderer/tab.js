@@ -13,6 +13,20 @@ const posix = {
     return '/' + out.join('/');
   },
 };
+// Yerel yollar: Windows'ta C:\... biçimi; sürücü kökünün üstü sanal "Bu Bilgisayar" listesi (main.js DRIVES).
+const DRIVES = 'Bu Bilgisayar';
+const win32 = {
+  join: (a, b) => (a === DRIVES ? b + '\\' : a.replace(/[\\/]+$/, '') + '\\' + b),
+  dirname: (p) => {
+    if (p === DRIVES || /^[a-z]:[\\/]?$/i.test(p)) return DRIVES;
+    const s = p.replace(/[\\/]+$/, ''); const i = Math.max(s.lastIndexOf('\\'), s.lastIndexOf('/'));
+    if (i < 0) return DRIVES;
+    const d = s.slice(0, i);
+    return /^[a-z]:$/i.test(d) ? d + '\\' : (d || DRIVES);
+  },
+  basename: (p) => p.replace(/[\\/]+$/, '').split(/[\\/]/).pop(),
+  isRoot: (p) => p === DRIVES,
+};
 const shq = (s) => `'${s.replace(/'/g, `'\\''`)}'`;
 
 export class SessionTab {
@@ -83,13 +97,14 @@ export class SessionTab {
         ];
       },
     });
+    const lp = this.lpath = app.platform === 'win32' ? win32 : posix;
     this.local = new FilePane({
       side: 'local', api: this.api, settings: st,
       adapter: {
         label: 'Yerel',
         list: (d) => this.api.local.list(d),
         home: async () => this.app.home,
-        join: posix.join, dirname: posix.dirname, basename: posix.basename,
+        join: lp.join, dirname: lp.dirname, basename: lp.basename, isRoot: lp.isRoot,
         mkdir: (p) => this.api.local.mkdir(p),
         rename: (a, b) => this.api.local.rename(a, b),
         remove: (p) => this.api.local.remove(p),
@@ -98,12 +113,12 @@ export class SessionTab {
       },
       onTransfer: (from, items, dest) => this.transfer(from, items, dest),
       onColResize: (w) => this.saveColWidths(w),
-      onOpenFile: (e) => (this.app.settings.fileDblClick === 'transfer' ? this.transfer('local', this.local.itemsFor([e]), null) : this.api.local.open(posix.join(this.local.cwd, e.name))),
+      onOpenFile: (e) => (this.app.settings.fileDblClick === 'transfer' ? this.transfer('local', this.local.itemsFor([e]), null) : this.api.local.open(lp.join(this.local.cwd, e.name))),
       onExtraMenu: (sel) => {
         const one = sel.length === 1 ? sel[0] : null;
         return [
-          one && !one.isDir ? { label: 'Aç', icon: 'file', action: () => this.api.local.open(posix.join(this.local.cwd, one.name)) } : null,
-          { label: 'Dosya yöneticisinde göster', icon: 'folder', action: () => this.api.local.reveal(one ? posix.join(this.local.cwd, one.name) : this.local.cwd) },
+          one && !one.isDir ? { label: 'Aç', icon: 'file', action: () => this.api.local.open(lp.join(this.local.cwd, one.name)) } : null,
+          { label: 'Dosya yöneticisinde göster', icon: 'folder', action: () => this.api.local.reveal(one ? lp.join(this.local.cwd, one.name) : this.local.cwd) },
         ];
       },
     });
@@ -591,14 +606,15 @@ export class SessionTab {
     if (!dest) { toast('Hedef dizin hazır değil', 'err'); return; }
     const direction = fromSide === 'local' ? 'upload' : 'download';
     let resume = false;
-    let list = items.filter((it) => !(posix.dirname(it.path) === dest && fromSide === destPane.side));
+    const sp = fromSide === 'local' ? this.lpath : posix; const dp = fromSide === 'local' ? posix : this.lpath;
+    let list = items.filter((it) => !(sp.dirname(it.path) === dest && fromSide === destPane.side));
     // conflicts
     let existing;
     if (dest === destPane.cwd) existing = new Set(destPane.entries.map((e) => e.name));
     else {
       existing = new Set();
       for (const it of list) {
-        const ex = direction === 'upload' ? await this.api.sftp.exists(this.connId, posix.join(dest, it.name)) : await this.api.local.exists(posix.join(dest, it.name));
+        const ex = direction === 'upload' ? await this.api.sftp.exists(this.connId, dp.join(dest, it.name)) : await this.api.local.exists(dp.join(dest, it.name));
         if (ex) existing.add(it.name);
       }
     }
@@ -621,7 +637,7 @@ export class SessionTab {
     this.enqueue({
       direction, dest, destSide: destPane.side, resume,
       label: list.length === 1 ? list[0].name : `${list.length} öğe`,
-      items: list.map((it) => ({ src: it.path, dst: posix.join(dest, it.name) })),
+      items: list.map((it) => ({ src: it.path, dst: dp.join(dest, it.name) })),
     });
   }
 
@@ -820,12 +836,12 @@ export class SessionTab {
       this.enqueue({
         direction: p.up ? 'upload' : 'download', dest: dstRoot, destSide: p.up ? 'remote' : 'local', mkdirs: true,
         label: `Eşitleme (${p.copy.length} öğe)`,
-        items: p.copy.map((d) => ({ src: posix.join(srcRoot, d.rel), dst: posix.join(dstRoot, d.rel) })),
+        items: p.copy.map((d) => ({ src: (p.up ? this.lpath : posix).join(srcRoot, d.rel), dst: (p.up ? posix : this.lpath).join(dstRoot, d.rel) })),
       });
     }
     let removed = 0;
     for (const d of p.remove) {
-      try { if (p.up) await this.api.sftp.remove(this.connId, posix.join(dstRoot, d.rel)); else await this.api.local.remove(posix.join(dstRoot, d.rel)); removed++; } catch (e) { toast(`${d.rel}: ${cleanErr(e)}`, 'err'); }
+      try { if (p.up) await this.api.sftp.remove(this.connId, posix.join(dstRoot, d.rel)); else await this.api.local.remove(this.lpath.join(dstRoot, d.rel)); removed++; } catch (e) { toast(`${d.rel}: ${cleanErr(e)}`, 'err'); }
     }
     if (removed) { toast(`${removed} öğe silindi`, 'ok'); (p.up ? this.remote : this.local).refresh(); }
   }

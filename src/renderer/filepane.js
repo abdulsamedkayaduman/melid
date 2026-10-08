@@ -130,7 +130,7 @@ export class FilePane {
     if (d && d.pane === this.peer) {
       this.onTransfer(d.pane.side, d.items, dest);
     } else if (e.dataTransfer.files.length) {
-      const items = [...e.dataTransfer.files].map((f) => { const p = this.api.pathForFile(f); return { path: p, name: p.split('/').pop() }; }).filter((x) => x.path);
+      const items = [...e.dataTransfer.files].map((f) => { const p = this.api.pathForFile(f); return { path: p, name: p.split(/[\\/]/).pop() }; }).filter((x) => x.path);
       if (items.length) this.onTransfer('local', items, dest);
     }
   }
@@ -165,7 +165,9 @@ export class FilePane {
   // ------------------------------------------------ navigation
   async goHome() { await this.cd(await this.ad.home()); }
 
-  async up() { if (this.cwd && this.cwd !== '/') await this.cd(this.ad.dirname(this.cwd), this.ad.basename(this.cwd)); }
+  atRoot() { return !this.cwd || this.cwd === '/' || (this.ad.isRoot && this.ad.isRoot(this.cwd)); }
+
+  async up() { if (!this.atRoot()) await this.cd(this.ad.dirname(this.cwd), this.ad.basename(this.cwd)); }
 
   async cd(dir, focusName) {
     if (!dir) return;
@@ -272,7 +274,7 @@ export class FilePane {
     const vis = this.visible();
     this.vis = vis;
     const frag = document.createDocumentFragment();
-    if (this.cwd && this.cwd !== '/') {
+    if (!this.atRoot()) {
       frag.append(h('tr.parent', { ondblclick: () => this.up() }, h('td.c-name', null, h('span.fname', null, icon('up', 14), h('span', null, '..'))), h('td'), h('td'), h('td'), this.side === 'remote' ? h('td') : null));
     }
     for (const e of vis) {

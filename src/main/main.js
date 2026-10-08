@@ -83,7 +83,17 @@ function stopEdits(connId) {
 }
 
 // ---------- local filesystem ----------
+// Windows: sürücü kökünden yukarı çıkınca sanal "Bu Bilgisayar" (DRIVES) listesi gösterilir.
+const DRIVES = 'Bu Bilgisayar';
+async function listDrives() {
+  const out = [];
+  for (const c of 'CDEFGHIJKLMNOPQRSTUVWXYZAB') {
+    try { await fsp.access(c + ':\\'); out.push({ name: c + ':', size: 0, mtime: 0, mode: 0, isDir: true, isLink: false }); } catch {}
+  }
+  return out;
+}
 async function localList(dir) {
+  if (process.platform === 'win32' && dir === DRIVES) return listDrives();
   const names = await fsp.readdir(dir);
   const out = [];
   for (const name of names) {
@@ -202,6 +212,17 @@ async function prepareDrag(connId, tid, items) {
   throw new Error(result ? result.error : 'İndirilemedi');
 }
 
+// Windows'ta Xshell oturumları: Belgeler\NetSarang Computer\<sürüm>\Xshell\Sessions (en yeni sürüm)
+function xshellDefaultDir() {
+  if (process.platform !== 'win32') return os.homedir();
+  try {
+    const base = path.join(app.getPath('documents'), 'NetSarang Computer');
+    const vers = fs.readdirSync(base).filter((v) => /^\d+$/.test(v)).sort((a, b) => b - a);
+    for (const v of vers) { const d = path.join(base, v, 'Xshell', 'Sessions'); if (fs.existsSync(d)) return d; }
+  } catch {}
+  return os.homedir();
+}
+
 function registerIpc() {
   const h = (ch, fn) => ipcMain.handle(ch, (_e, ...a) => fn(...a));
 
@@ -279,9 +300,10 @@ function registerIpc() {
       }
       try { parsed = importers.parseWindTerm(text, { fingerprint, master }); } catch (e) { throw new Error(`WindTerm dosyası okunamadı: ${e.message}`); }
     } else if (kind === 'xshell-dir' || kind === 'xshell-files') {
+      const xsDir = xshellDefaultDir();
       const r = await dialog.showOpenDialog(win, kind === 'xshell-dir'
-        ? { title: 'Xshell Sessions klasörü', defaultPath: os.homedir(), properties: ['openDirectory', 'showHiddenFiles'] }
-        : { title: 'Xshell oturumları (.xsh / .xts)', defaultPath: os.homedir(), properties: ['openFile', 'multiSelections', 'showHiddenFiles'], filters: [{ name: 'Xshell', extensions: ['xsh', 'xts'] }] });
+        ? { title: 'Xshell Sessions klasörü', defaultPath: xsDir, properties: ['openDirectory', 'showHiddenFiles'] }
+        : { title: 'Xshell oturumları (.xsh / .xts)', defaultPath: xsDir, properties: ['openFile', 'multiSelections', 'showHiddenFiles'], filters: [{ name: 'Xshell', extensions: ['xsh', 'xts'] }] });
       if (r.canceled) return null;
       try { parsed = importers.parseXshellPaths(r.filePaths); } catch (e) { throw new Error(`Xshell oturumları okunamadı: ${e.message}`); }
     } else throw new Error('Bilinmeyen içe aktarma türü');
@@ -433,7 +455,13 @@ function registerIpc() {
   h('local:exists', (p) => fsp.access(p).then(() => true, () => false));
   h('local:open', (p) => shell.openPath(p));
   h('local:reveal', (p) => shell.showItemInFolder(p));
-  h('local:resolve', (p) => path.resolve(expandHome(p)));
+  h('local:resolve', (p) => {
+    if (process.platform === 'win32') {
+      if (/^(bu bilgisayar|this pc)$/i.test(p)) return DRIVES;
+      if (/^[a-z]:$/i.test(p)) p += '\\';
+    }
+    return path.resolve(expandHome(p));
+  });
   h('local:preview', (p) => preview(localRead, p));
 
   // misc

@@ -41,10 +41,19 @@ const STATS_SCRIPT = [
 
 const rpath = path.posix;
 
+// SSH agent: SSH_AUTH_SOCK; Windows'ta yoksa OpenSSH agent named pipe'ı, o da yoksa Pageant.
+const WIN_AGENT_PIPE = '\\\\.\\pipe\\openssh-ssh-agent';
+function findAgent() {
+  if (process.env.SSH_AUTH_SOCK) return process.env.SSH_AUTH_SOCK;
+  if (process.platform !== 'win32') return null;
+  try { if (fs.existsSync(WIN_AGENT_PIPE)) return WIN_AGENT_PIPE; } catch {}
+  return 'pageant';
+}
+
 function expandHome(p) {
   if (!p) return p;
   if (p === '~') return os.homedir();
-  if (p.startsWith('~/')) return path.join(os.homedir(), p.slice(2));
+  if (p.startsWith('~/') || (process.platform === 'win32' && p.startsWith('~\\'))) return path.join(os.homedir(), p.slice(2));
   return p;
 }
 
@@ -218,11 +227,11 @@ class SshManager extends EventEmitter {
       if (parsed instanceof Error) { if (required) throw new Error(`Anahtar okunamadı: ${parsed.message}`); return; }
       methods.push({ type: 'publickey', username, key: buf, passphrase: pass });
     };
-    const agentSock = process.env.SSH_AUTH_SOCK;
+    const agentSock = findAgent();
     if (auth === 'key') {
       await loadKey(expandHome(s.keyPath || '~/.ssh/id_ed25519'), s.passphrase, true);
     } else if (auth === 'agent') {
-      if (!agentSock) throw new Error('ssh-agent bulunamadı (SSH_AUTH_SOCK tanımlı değil)');
+      if (!agentSock) throw new Error(process.platform === 'win32' ? 'ssh-agent bulunamadı (OpenSSH Authentication Agent hizmeti veya Pageant çalışmıyor)' : 'ssh-agent bulunamadı (SSH_AUTH_SOCK tanımlı değil)');
       methods.push({ type: 'agent', username, agent: agentSock });
     } else if (auth === 'auto') {
       if (agentSock) methods.push({ type: 'agent', username, agent: agentSock });

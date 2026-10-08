@@ -1,0 +1,10 @@
+.gradle/
+build/
+app/build/
+local.properties
+keystore.properties
+*.jks
+app/src/main/assets/www/vendor/
+coretest/.work/
+coretest/.lib/
+dist/
