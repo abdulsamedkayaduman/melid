@@ -1,0 +1,198 @@
+# Linux (AppImage + pacman), Windows (kurulum + taşınabilir .exe) ve Android (imzalı APK) derlemesi.
+# Ayrıntılar: docs/ci.md
+#
+#  - Elle başlatma (Actions > derle > "Run workflow"): testler + üç platform; çıktılar çalıştırma sayfasında
+#    "Artifacts" altında. "yayinla" işaretliyse ayrıca "gelistirme" ön sürümü yenilenir (Sürümler sayfası).
+#  - vX.Y.Z etiketi push'u: aynı derleme + kalıcı "vX.Y.Z" sürümü (etiket package.json sürümüyle aynı olmalı).
+name: derle
+
+on:
+  workflow_dispatch:
+    inputs:
+      yayinla:
+        description: 'Sürümler sayfasında "gelistirme" ön sürümü olarak yayınla'
+        type: boolean
+        default: true
+  push:
+    tags: ['v*']
+
+env:
+  GRADLE_OPTS: "-Dorg.gradle.daemon=false -Dorg.gradle.jvmargs=-Xmx3g"
+  ANDROID_HOME: /opt/android-sdk
+  # android/app/build.gradle'daki compileSdk ile aynı tutun
+  ANDROID_CMDLINE_TOOLS: commandlinetools-linux-16111833_latest.zip
+  ANDROID_SDK_PACKAGES: "platform-tools platforms;android-35 build-tools;35.0.0"
+
+jobs:
+  test:
+    runs-on: docker
+    container: node:22-bookworm
+    env:
+      ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
+    steps:
+      - uses: https://data.forgejo.org/actions/checkout@v4
+      - uses: https://data.forgejo.org/actions/cache@v4
+        with:
+          path: ~/.npm
+          key: npm-${{ hashFiles('package-lock.json') }}
+          restore-keys: npm-
+      - run: npm ci --no-audit --no-fund
+      - name: Birim testleri (içe aktarma, store, oturum kaydı)
+        run: |
+          node test/importers.test.js
+          node test/store.test.js
+          node test/termlog.test.js
+      - name: Çekirdek testleri (geçici sshd)
+        run: |
+          ci/test-sshd.sh
+          env -u SSH_AUTH_SOCK node test/core.test.js
+
+  linux:
+    needs: test
+    runs-on: docker
+    container: node:22-bookworm
+    steps:
+      - uses: https://data.forgejo.org/actions/checkout@v4
+      - uses: https://data.forgejo.org/actions/cache@v4
+        with:
+          path: |
+            ~/.npm
+            ~/.cache/electron
+            ~/.cache/electron-builder
+          key: electron-linux-${{ hashFiles('package-lock.json') }}
+          restore-keys: electron-linux-
+      # pacman paketi için bsdtar
+      - run: apt-get update -qq && apt-get install -y -qq libarchive-tools > /dev/null
+      - run: npm ci --no-audit --no-fund
+      - run: npx electron-builder --linux AppImage pacman --publish never
+      - uses: https://data.forgejo.org/actions/upload-artifact@v4
+        with:
+          name: sshdeck-linux
+          retention-days: 14
+          path: |
+            dist/*.AppImage
+            dist/*.pacman
+
+  windows:
+    needs: test
+    runs-on: docker
+    # NSIS kaldırıcıyı üretmek için wine gerekir; electron-builder'ın resmi imajı (Node 22 + wine)
+    container: electronuserland/builder:22-wine-05.26
+    steps:
+      - uses: https://data.forgejo.org/actions/checkout@v4
+      - uses: https://data.forgejo.org/actions/cache@v4
+        with:
+          path: |
+            ~/.npm
+            ~/.cache/electron
+            ~/.cache/electron-builder
+          key: electron-win-${{ hashFiles('package-lock.json') }}
+          restore-keys: electron-win-
+      - run: npm ci --no-audit --no-fund
+      - run: npx electron-builder --win --publish never
+      - uses: https://data.forgejo.org/actions/upload-artifact@v4
+        with:
+          name: sshdeck-windows
+          retention-days: 14
+          path: dist/*.exe
+
+  android:
+    needs: test
+    runs-on: docker
+    container: node:22-bookworm
+    env:
+      ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
+    steps:
+      - uses: https://data.forgejo.org/actions/checkout@v4
+      - uses: https://data.forgejo.org/actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - uses: https://data.forgejo.org/actions/cache@v4
+        with:
+          path: |
+            ~/.npm
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-${{ hashFiles('android/**/*.gradle', 'android/gradle/wrapper/gradle-wrapper.properties', 'package-lock.json') }}
+          restore-keys: gradle-
+      - uses: https://data.forgejo.org/actions/cache@v4
+        with:
+          path: /opt/android-sdk
+          key: android-sdk-${{ env.ANDROID_CMDLINE_TOOLS }}-35
+      - run: ci/install-android-sdk.sh
+      # xterm dosyaları ../node_modules'tan kopyalanır
+      - run: npm ci --no-audit --no-fund --ignore-scripts
+      - name: SSH çekirdeği testleri (JVM, geçici sshd)
+        run: |
+          command -v sshd > /dev/null || { apt-get update -qq && apt-get install -y -qq openssh-server > /dev/null; }
+          mkdir -p /run/sshd
+          bash android/coretest/run.sh
+      - name: İmzalı release APK
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          if [ -z "$ANDROID_KEYSTORE_BASE64" ]; then
+            echo "::error::ANDROID_KEYSTORE_BASE64 secret'ı yok. Telefondaki uygulamanın üzerine kurulabilmesi için APK aynı anahtarla imzalanmalı: bkz. docs/ci.md (ci/set-android-secrets.sh)"
+            exit 1
+          fi
+          export ANDROID_KEYSTORE_FILE="$RUNNER_TEMP/release.jks"
+          echo "$ANDROID_KEYSTORE_BASE64" | base64 -d > "$ANDROID_KEYSTORE_FILE"
+          (cd android && ./gradlew assembleRelease lintRelease)
+          rm -f "$ANDROID_KEYSTORE_FILE"
+          mkdir -p dist
+          for f in android/app/build/outputs/apk/release/SSHDeck-*-release.apk; do
+            "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --print-certs "$f" | grep -i 'SHA-256'
+            cp "$f" "dist/$(basename "$f" -release.apk).apk"
+          done
+      - if: always()
+        uses: https://data.forgejo.org/actions/upload-artifact@v4
+        with:
+          name: android-lint
+          retention-days: 7
+          if-no-files-found: ignore
+          path: android/app/build/reports/lint-results-*.html
+      - uses: https://data.forgejo.org/actions/upload-artifact@v4
+        with:
+          name: sshdeck-android
+          retention-days: 14
+          path: dist/*.apk
+
+  yayinla:
+    needs: [linux, windows, android]
+    if: startsWith(github.ref, 'refs/tags/v') || github.event.inputs.yayinla == 'true'
+    runs-on: docker
+    container: node:22-bookworm
+    steps:
+      - uses: https://data.forgejo.org/actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: https://data.forgejo.org/actions/download-artifact@v4
+        with:
+          pattern: sshdeck-*
+          path: dist
+          merge-multiple: true
+      - name: Forgejo sürümü
+        env:
+          FORGEJO_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION=$(node -p 'require("./package.json").version')
+          cd dist && sha256sum * > SHA256SUMS.txt && cat SHA256SUMS.txt && cd ..
+          if [ "${GITHUB_REF#refs/tags/}" != "$GITHUB_REF" ]; then
+            TAG=$GITHUB_REF_NAME
+            [ "$TAG" = "v$VERSION" ] || { echo "::error::Etiket ($TAG) package.json sürümüyle (v$VERSION) aynı değil"; exit 1; }
+            PREV=$(git describe --tags --abbrev=0 --match 'v*' "$TAG^" 2>/dev/null || true)
+            { echo "## Değişiklikler"; echo; git log --format='- %s' ${PREV:+$PREV..}"$TAG"; } > notes.md
+            ci/forgejo-release.sh "$TAG" "SSHDeck $TAG" notes.md false dist/*
+          else
+            {
+              echo "\`${GITHUB_REF_NAME}\` dalının ${GITHUB_SHA::7} commit'inden elle başlatılan derleme (çalıştırma #${GITHUB_RUN_NUMBER})."
+              echo "Her yeni elle derlemede bu ön sürüm silinip yeniden oluşturulur."
+              echo
+              git log -1 --format='%s%n%n%b'
+            } > notes.md
+            ROLLING=1 ci/forgejo-release.sh gelistirme "SSHDeck $VERSION (geliştirme, ${GITHUB_SHA::7})" notes.md true dist/*
+          fi

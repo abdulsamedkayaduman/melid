@@ -2,9 +2,23 @@ plugins {
     id 'com.android.application'
 }
 
+// İmza: CI'da ortam değişkenleri (ANDROID_KEYSTORE_FILE, ..._PASSWORD, ANDROID_KEY_ALIAS, ANDROID_KEY_PASSWORD),
+// yerelde keystore.properties. İkisi de yoksa release debug anahtarıyla imzalanır.
 def ksProps = new Properties()
 def ksFile = rootProject.file('keystore.properties')
 if (ksFile.exists()) ksFile.withInputStream { ksProps.load(it) }
+def envKs = System.getenv('ANDROID_KEYSTORE_FILE')
+if (envKs) {
+    ksProps['storeFile'] = envKs
+    ksProps['storePassword'] = System.getenv('ANDROID_KEYSTORE_PASSWORD')
+    ksProps['keyAlias'] = System.getenv('ANDROID_KEY_ALIAS')
+    ksProps['keyPassword'] = System.getenv('ANDROID_KEY_PASSWORD')
+}
+def hasKs = ksProps['storeFile'] != null
+
+// Sürüm kök package.json'dan: versionCode = MAJOR*10000 + MINOR*100 + PATCH
+def appVersion = new groovy.json.JsonSlurper().parse(rootProject.file('../package.json')).version
+def (vMaj, vMin, vPat) = appVersion.tokenize('.-')[0..2].collect { it as int }
 
 android {
     namespace 'dev.sshdeck.app'
@@ -14,13 +28,13 @@ android {
         applicationId 'dev.sshdeck.app'
         minSdk 29
         targetSdk 35
-        versionCode 1
-        versionName '1.0.0'
+        versionCode vMaj * 10000 + vMin * 100 + vPat
+        versionName appVersion
     }
 
     signingConfigs {
         release {
-            if (ksFile.exists()) {
+            if (hasKs) {
                 storeFile file(ksProps['storeFile'])
                 storePassword ksProps['storePassword']
                 keyAlias ksProps['keyAlias']
@@ -33,7 +47,7 @@ android {
         release {
             // JSch algoritma sınıflarını adlarıyla (reflection) yükler; küçültme kapalı
             minifyEnabled false
-            signingConfig ksFile.exists() ? signingConfigs.release : signingConfigs.debug
+            signingConfig hasKs ? signingConfigs.release : signingConfigs.debug
         }
     }
 

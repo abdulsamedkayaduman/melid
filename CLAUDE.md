@@ -19,6 +19,9 @@ Bekleyen işler için `YAPILACAKLAR.md` (otomatik güncelleme, AUR paketi, elect
   Linux'ta NSIS kurulumu için `wine` gerekir; wine'sız yalnız `npx electron-builder --win portable zip` çalışır.
   İmzasız: SmartScreen ilk açılışta uyarır ("Ek bilgi" -> "Yine de çalıştır")
 
+CI: `.forgejo/workflows/derle.yml` (Forgejo Actions; elle başlatma veya `vX.Y.Z` etiketi) testler + Linux + Windows +
+imzalı APK üretir, Forgejo sürümüne yükler. Ayrıntılar ve gereken secret'lar: `docs/ci.md`. Sürüm tek yerde: `package.json`.
+
 Değişiklikten sonra en az `npm test` çalıştır. Arayüz değişikliklerini uygulamayı açıp elle kontrol et.
 
 ## Mimari
