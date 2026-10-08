@@ -62,8 +62,8 @@ keyPassword=...
 ```
 
 **`sshdeck-release.jks` ve `keystore.properties` dosyalarını yedekleyin.** Kaybolursa yeni sürümler telefondaki
-uygulamanın üzerine kurulamaz (önce kaldırmak, yani verileri silmek gerekir). Yeni sürümde
-`app/build.gradle` içindeki `versionCode`'u artırın.
+uygulamanın üzerine kurulamaz (önce kaldırmak, yani verileri silmek gerekir). Sürüm (`versionName`/`versionCode`)
+kök `package.json`'dan gelir. CI'da imza ortam değişkenlerinden okunur (`ANDROID_KEYSTORE_FILE` vb., bkz. `docs/ci.md`).
 
 ### Mimari
 
