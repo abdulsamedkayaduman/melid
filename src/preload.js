@@ -25,6 +25,16 @@ contextBridge.exposeInMainWorld('api', {
     lock: inv('master:lock'),
     set: inv('master:set'),
   },
+  account: {
+    status: inv('account:status'),
+    register: inv('account:register'),
+    login: inv('account:login'),
+    logout: inv('account:logout'),
+    syncNow: inv('account:syncNow'),
+    changePassword: inv('account:changePassword'),
+    onStatus: on('account:status'),
+    onChanged: on('account:changed'),
+  },
   backup: {
     export: inv('backup:export'),
     import: inv('backup:import'),

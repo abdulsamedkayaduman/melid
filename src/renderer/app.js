@@ -4,6 +4,7 @@ import { SessionTab } from './tab.js';
 import { cleanErr } from './filepane.js';
 import { snippetPalette, snippetsEditor, keysDialog, installKeyDialog } from './tools.js';
 import { updateDialog } from './update.js';
+import { accountDialog, STATE_TEXT, syncTimeText } from './account.js';
 
 const api = window.api;
 
@@ -26,12 +27,13 @@ class App {
     this.logDefaultDir = d.logDefaultDir;
     this.secrets = d.secrets;
     this.version = d.version;
+    this.account = await api.account.status();
     applyUiTheme(this.settings.uiTheme);
     this.applyTabActivity();
     this.build();
     this.renderSidebar();
     this.renderTabs();
-    this.updateStatus();
+    this.setAccount(this.account);
     this.bindIpc();
     this.bindKeys();
     if (this.settings.masterEnabled && !this.settings.masterUnlocked) this.promptUnlock();
@@ -86,6 +88,7 @@ class App {
       this.btnSidebar, this.btnSftp, this.btnSplit, this.btnTunnels, this.btnSnippets, this.btnBroadcast, this.btnFocus,
       h('span.tool-sep'),
       tbtn('import', 'İçe aktar (SSH config, WindTerm, Xshell)', (e) => { const r = e.currentTarget.getBoundingClientRect(); this.importMenu(r.left, r.bottom + 4); }),
+      (this.btnAccount = tbtn('cloud', 'Hesap ve eşitleme', () => accountDialog(this))),
       tbtn('gear', 'Ayarlar', () => this.openSettings()));
 
     // Arama: yazdıkça ilk eşleşme seçilir; ↑/↓ (Home/End) ile gezilir, Enter bağlanır, Esc temizler
@@ -588,11 +591,30 @@ class App {
       if (!r) return;
       if (!r.ok) { toast(r.error || 'İçe aktarılamadı', 'err'); return; }
       this.sessions = r.sessions;
-      if (r.settings) { const keepMaster = { masterEnabled: this.settings.masterEnabled, masterUnlocked: this.settings.masterUnlocked }; this.settings = { ...r.settings, ...keepMaster }; applyUiTheme(this.settings.uiTheme); this.applyTabActivity(); for (const t of this.tabs) t.applySettings(); }
+      if (r.settings) this.applyNewSettings(r.settings);
       this.renderSidebar();
       const pw = r.withPassword ? `, ${r.withPassword} parola çözüldü` : '';
       toast(`${r.added} yeni, ${r.updated} güncellenen oturum${pw}.`, 'ok', 6000);
     } catch (e) { toast(cleanErr(e), 'err', 6000); }
+  }
+
+  // Dışarıdan gelen ayarlar (yedek, hesap eşitlemesi): ana parola durumu bu cihazınki kalır
+  applyNewSettings(settings) {
+    const keepMaster = { masterEnabled: this.settings.masterEnabled, masterUnlocked: this.settings.masterUnlocked };
+    this.settings = { ...settings, ...keepMaster };
+    applyUiTheme(this.settings.uiTheme);
+    this.applyTabActivity();
+    for (const t of this.tabs) t.applySettings();
+    this.applyFocusClasses();
+    this.updateStatus();
+    this.fitAll();
+  }
+
+  setAccount(st) {
+    this.account = st;
+    this.btnAccount.classList.toggle('on', !!st.loggedIn);
+    this.btnAccount.title = st.loggedIn ? `Hesap: ${st.user} (${STATE_TEXT[st.state] || st.state})` : 'Hesap ve eşitleme';
+    this.updateStatus();
   }
 
   async saveSettings(patch) {
@@ -894,7 +916,14 @@ class App {
     const upd = this.update && this.update.newer && !this.update.skipped
       ? h('button.sb-upd', { title: 'Yeni sürümü gör ve kur', onclick: () => updateDialog(this) }, icon('upgrade', 12), ` v${this.update.version} hazır`)
       : null;
-    this.sbRight.replaceChildren(...[upd, this.settings.logEnabled ? h('span.sb-rec', { title: 'Oturum kaydı açık' }, icon('record', 12), ' Kayıt') : null, secBadge, `  v${this.version}`].filter(Boolean));
+    const a = this.account;
+    const acc = a && a.loggedIn
+      ? h('button.sb-acc' + (['error', 'auth', 'locked'].includes(a.state) ? '.warn' : ''), {
+        title: `Hesap: ${a.user} @ ${a.server}\nSon eşitleme: ${syncTimeText(a.lastSync)}${a.error ? `\n${a.error}` : ''}`,
+        onclick: () => accountDialog(this),
+      }, icon('cloud', 12), ' ', a.state === 'ok' ? `Eşitlendi ${syncTimeText(a.lastSync)}` : STATE_TEXT[a.state] || a.state)
+      : null;
+    this.sbRight.replaceChildren(...[upd, acc, this.settings.logEnabled ? h('span.sb-rec', { title: 'Oturum kaydı açık' }, icon('record', 12), ' Kayıt') : null, secBadge, `  v${this.version}`].filter(Boolean));
     this.updateStats();
   }
 
@@ -959,6 +988,12 @@ class App {
       this.sessions = sessions;
       this.renderSidebar();
       if (err) toast(err, 'err', 6000); else toast('Giriş bilgileri oturuma kaydedildi', 'ok');
+    });
+    api.account.onStatus((st) => this.setAccount(st));
+    api.account.onChanged(({ sessions, settings }) => {
+      this.sessions = sessions;
+      this.renderSidebar();
+      this.applyNewSettings(settings);
     });
     api.onToast((msg, kind) => { toast(msg, kind, 6000); this.settings.logEnabled = false; this.updateStatus(); });
     api.ssh.onForward((connId, fid, state, msg) => this.tabByConn(connId)?.onForward(fid, state, msg));

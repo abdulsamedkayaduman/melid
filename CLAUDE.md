@@ -12,7 +12,8 @@ Bekleyen işler için `YAPILACAKLAR.md` (otomatik güncelleme, AUR paketi, elect
 - `npm test` — `test/run.sh`: Docker/Podman'da geçici sshd açar, `test/core.test.js` çekirdek testlerini çalıştırır
   (shell, bölünmüş kabuklar, exec/kaynak bilgisi, SFTP, aktarım/iptal/sürdürme, uzak ağaç tarama, anahtar üretip yükleme,
   -L/-R/-D tüneller, jump host, parolalı anahtar, parola tekrar deneme, hata mesajları)
-  + sunucusuz: `test/importers.test.js` (WindTerm/Xshell), `test/store.test.js`, `test/termlog.test.js` (ANSI temizleme)
+  + sunucusuz: `test/importers.test.js` (WindTerm/Xshell), `test/store.test.js`, `test/termlog.test.js` (ANSI temizleme),
+  `test/sync.test.js` (hesap eşitlemesi: gerçek eşitleme sunucusu + iki cihaz)
 - `npm run dist` — `dist/` içine `.pacman` ve `.AppImage` (pacman için `bsdtar` gerekir: `sudo pacman -S libarchive`).
   `npmRebuild:false` — ssh2'nin opsiyonel native `cpu-features` modülü derlenmez (ssh2 onsuz saf-JS çalışır)
 - `npm run dist:win` — Windows 10/11 x64: `SSHDeck-<sürüm>-kurulum.exe` (NSIS) + `SSHDeck-<sürüm>-tasinabilir.exe`.
@@ -41,6 +42,9 @@ src/main/ssh-manager.js  Electron'dan bağımsız (düz Node ile test edilir). B
 src/main/updater.js      Güncelleme: imzalı latest.json (Forgejo generic paket deposu, Ed25519 açık anahtar gömülü),
                          check()/download() (sha256). Kurulum türü + kurulum main.js installUpdate(): NSIS sessiz,
                          taşınabilir exe (cmd betiği), AppImage (yerine yaz), pacman (pkexec). Yayın: ci/publish-update.sh
+src/main/sync.js         Hesap eşitlemesi (AccountSync): giriş/kayıt/çıkış/parola değişimi, uçtan uca şifreli kasa,
+                         syncNow() (al -> mergeVaults -> uygula -> 409'da yeniden dene). store.onChange ile tetiklenir.
+                         Sunucu: server/sync-server.js (bağımsız, bağımlılıksız). Ayrıntı ve güvenlik modeli: docs/senkron.md
 src/main/termlog.js      Oturum kaydı: TermLogger (oturum adına göre klasör, dosya başına kabuk) + parçalı ANSI temizleyici
 src/main/keys.js         ~/.ssh anahtarlarını listeleme, ssh2 utils ile anahtar üretme (OpenSSH biçimi)
 src/main/socks.js        -D için minimal SOCKS5 (CONNECT, kimlik doğrulamasız)
@@ -65,6 +69,7 @@ src/renderer/tools.js    Hazır komutlar (Ctrl+Shift+K seçici + düzenleyici), 
 src/renderer/filepane.js FilePane: tek bir dosya paneli (adapter ile yerel/uzak), sürükle-bırak, klavye, bağlam menüsü,
                          süzgeç (Ctrl+F), önizleme (Boşluk), sütun boyutlandırma
 src/renderer/dialogs.js  modal(), prompt, host key, oturum düzenleyici, ayarlar, context menu, toast, terminal temaları
+src/renderer/account.js  Hesap penceresi (giriş / hesap oluştur / durum, parola değişimi, çıkış)
 src/renderer/util.js     h() DOM yardımcısı, biçimlendirme, SVG ikon seti
 ```
 
@@ -101,4 +106,6 @@ derlemede `../node_modules`'tan kopyalanır); SSH Java'da: JSch (mwiede) + Bounc
 - `SessionTab.panes` terminal bölmeleridir; dosya panellerinin kapsayıcısı `paneBox`.
 - `app.active` odaktaki sekmedir; bölünmüşken iki grubun görünen sekmesi `tabGroups[i].active`. Boyut değişiminde `app.fitAll()`.
 - Sekme düğmeleri bir kez oluşturulup yerinde güncellenir (`tabButton`); tıklarken yeniden yaratmak çift tık/sürüklemeyi bozar.
+- Eşitlenen veriyi değiştiren store metotları `mtime` koymalı ve `_changed()` çağırmalı (`_touchSessions`, `saveSettings`);
+  silme `_removeSessions` ile (silme kaydı tutar). Cihaza özgü yeni ayar -> `LOCAL_SETTINGS`.
 - Hata mesajları kullanıcıya Türkçe ve anlaşılır gitmeli (`friendlyError`, `cleanErr`).

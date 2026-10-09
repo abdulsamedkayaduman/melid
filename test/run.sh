@@ -6,6 +6,7 @@ cd "$(dirname "$0")"
 node importers.test.js
 node store.test.js
 node termlog.test.js
+node sync.test.js
 node updater.test.js
 DOCKER=${DOCKER:-$(command -v docker || command -v podman)}
 mkdir -p .work

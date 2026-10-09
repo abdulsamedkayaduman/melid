@@ -65,6 +65,13 @@ const DEFAULT_SETTINGS = {
   focusHide: { toolbar: true, sidebar: true, tabs: true, status: true, sftp: false },
 };
 
+// Hesap eşitlemesine girmeyen, cihaza özgü ayarlar
+const LOCAL_SETTINGS = new Set(['master', 'logDir', 'logEnabled', 'colWidths', 'paneSplit', 'sftpHeight', 'xferHeight', 'updateSkip', 'updateLastCheck']);
+// Oturumda cihaza özgü alanlar (yerel klasör yolu başka cihazda/işletim sisteminde geçersiz)
+const LOCAL_SESSION_FIELDS = ['localDir'];
+const TOMBSTONE_TTL = 180 * 24 * 3600 * 1000;
+const sortedJson = (v) => JSON.stringify(v, (_k, x) => (x && typeof x === 'object' && !Array.isArray(x) ? Object.fromEntries(Object.keys(x).sort().map((k) => [k, x[k]])) : x));
+
 class Store {
   constructor(dir, crypt) {
     this.dir = dir;
@@ -73,7 +80,14 @@ class Store {
     this.sessions = this._load('sessions.json', []);
     this.settings = { ...DEFAULT_SETTINGS, ...this._load('settings.json', {}) };
     this.knownHosts = this._load('known_hosts.json', {});
+    // Eşitleme durumu: silinen oturumlar (id -> zaman), ayarların değişme zamanı, hesap bilgisi
+    this.sync = { deleted: {}, settingsMtime: 0, account: null, ...this._load('sync.json', {}) };
+    this.onChange = null; // eşitlenen bir veri değişince çağrılır
   }
+
+  _saveSync() { this._save('sync.json', this.sync); }
+  _changed() { if (this.onChange) { try { this.onChange(); } catch {} } }
+  _touchSessions() { this._save('sessions.json', this.sessions); this._changed(); }
 
   _file(n) { return path.join(this.dir, n); }
 
@@ -169,8 +183,7 @@ class Store {
     }
     if (withSettings && obj.settings) {
       const { master, masterEnabled, masterUnlocked, ...safe } = obj.settings;
-      this.settings = { ...this.settings, ...safe };
-      this._save('settings.json', this.settings);
+      this.saveSettings(safe);
     }
     return { added, updated, withPassword, found: obj.sessions.length };
   }
@@ -209,6 +222,8 @@ class Store {
       for (const f of SECRET_FIELDS) { const v = this._dec(s[f]); if (v) c[f] = v; }
       clear.set(s.id, c);
     }
+    const acc = this.sync.account;
+    const accClear = acc && { token: this._dec(acc.token), vk: this._dec(acc.vk) };
     // 2. switch scheme
     if (newPassphrase) {
       const salt = crypto.randomBytes(16);
@@ -224,6 +239,7 @@ class Store {
       const c = clear.get(s.id) || {};
       for (const f of SECRET_FIELDS) s[f] = c[f] ? this._enc(c[f]) : undefined;
     }
+    if (acc) { acc.token = this._enc(accClear.token); acc.vk = this._enc(accClear.vk); this._saveSync(); }
     this._save('sessions.json', this.sessions);
     this._save('settings.json', this.settings);
   }
@@ -257,40 +273,89 @@ class Store {
       if (input[f] === undefined) next[f] = prev[f];
       else next[f] = input[f] === '' ? undefined : this._enc(input[f]);
     }
+    next.mtime = Date.now();
     if (idx >= 0) this.sessions[idx] = next; else this.sessions.push(next);
-    this._save('sessions.json', this.sessions);
+    this._touchSessions();
     return id;
   }
 
   deleteSession(id) {
-    this.sessions = this.sessions.filter((s) => s.id !== id);
-    for (const s of this.sessions) if (s.jumpHostId === id) delete s.jumpHostId;
-    this._save('sessions.json', this.sessions);
+    this._removeSessions(new Set([id]));
+  }
+
+  _removeSessions(ids) {
+    const now = Date.now();
+    this.sessions = this.sessions.filter((s) => !ids.has(s.id));
+    for (const s of this.sessions) if (s.jumpHostId && ids.has(s.jumpHostId)) { delete s.jumpHostId; s.mtime = now; }
+    for (const id of ids) this.sync.deleted[id] = now;
+    this._saveSync();
+    this._touchSessions();
   }
 
   renameGroup(from, to) {
     for (const s of this.sessions) {
       const g = s.group || '';
-      if (g === from || g.startsWith(from + '/')) s.group = to + g.slice(from.length);
+      if (g === from || g.startsWith(from + '/')) { s.group = to + g.slice(from.length); s.mtime = Date.now(); }
     }
-    this._save('sessions.json', this.sessions);
+    this._touchSessions();
   }
 
   // Removes every session in a group (and its subgroups); returns how many were deleted.
   deleteGroup(group) {
     const inGroup = (s) => { const g = s.group || ''; return g === group || g.startsWith(group + '/'); };
     const ids = new Set(this.sessions.filter(inGroup).map((s) => s.id));
-    this.sessions = this.sessions.filter((s) => !ids.has(s.id));
-    for (const s of this.sessions) if (s.jumpHostId && ids.has(s.jumpHostId)) delete s.jumpHostId;
-    this._save('sessions.json', this.sessions);
+    if (ids.size) this._removeSessions(ids);
     return ids.size;
   }
 
   saveSettings(patch) {
+    const synced = Object.keys(patch).some((k) => !LOCAL_SETTINGS.has(k) && sortedJson(patch[k]) !== sortedJson(this.settings[k]));
     this.settings = { ...this.settings, ...patch };
     this._save('settings.json', this.settings);
+    if (synced) { this.sync.settingsMtime = Date.now(); this._saveSync(); this._changed(); }
     return this.settings;
   }
+
+  // ---- hesap eşitlemesi (sync.js) ----
+  /** Eşitlenecek veri, sırlar açık hâlde (yalnız ana süreçte; şifrelenip sunucuya gider). Kilitliyse hata. */
+  syncSnapshot() {
+    if (!this.isUnlocked()) throw new Error('MASTER_LOCKED');
+    const sessions = {};
+    for (const s of this.sessions) {
+      const o = {};
+      for (const [k, v] of Object.entries(s)) if (!SECRET_FIELDS.includes(k) && !LOCAL_SESSION_FIELDS.includes(k) && v !== undefined) o[k] = v;
+      for (const f of SECRET_FIELDS) { const v = this._dec(s[f]); if (v) o[f] = v; }
+      o.mtime = s.mtime || 0;
+      sessions[s.id] = o;
+    }
+    const settings = {};
+    for (const [k, v] of Object.entries(this.settings)) if (!LOCAL_SETTINGS.has(k)) settings[k] = v;
+    return { sessions, deleted: { ...this.sync.deleted }, settings: { data: settings, mtime: this.sync.settingsMtime || 0 } };
+  }
+
+  /** Birleştirilmiş kasayı yerele uygular. onChange tetiklenmez (eşitlemenin kendi yazması). */
+  applySync(v) {
+    if (!this.isUnlocked()) throw new Error('MASTER_LOCKED');
+    const prev = new Map(this.sessions.map((s) => [s.id, s]));
+    this.sessions = Object.values(v.sessions).map((r) => {
+      const o = { ...r };
+      for (const f of SECRET_FIELDS) o[f] = r[f] ? this._enc(r[f]) : undefined;
+      const old = prev.get(r.id);
+      if (old) for (const f of LOCAL_SESSION_FIELDS) if (old[f] !== undefined) o[f] = old[f];
+      return o;
+    });
+    this._save('sessions.json', this.sessions);
+    if (v.settings && v.settings.mtime > (this.sync.settingsMtime || 0)) {
+      const local = Object.fromEntries(Object.entries(this.settings).filter(([k]) => LOCAL_SETTINGS.has(k)));
+      this.settings = { ...DEFAULT_SETTINGS, ...v.settings.data, ...local };
+      this._save('settings.json', this.settings);
+      this.sync.settingsMtime = v.settings.mtime;
+    }
+    this.sync.deleted = { ...v.deleted };
+    this._saveSync();
+  }
+
+  setAccount(a) { this.sync.account = a; this._saveSync(); }
 
   hostKey(host, port) { return this.knownHosts[`${host}:${port}`]; }
 
@@ -300,4 +365,29 @@ class Store {
   }
 }
 
-module.exports = { Store, DEFAULT_SETTINGS };
+/**
+ * İki kasayı birleştirir (değişme zamanı yeni olan kazanır). Aynı girdilerle her cihazda aynı sonucu verir.
+ * Silme kaydı, kendinden sonra değişmemiş oturumu siler; daha yeni düzenleme silmeyi geçersiz kılar.
+ */
+function mergeVaults(a, b, now = Date.now()) {
+  const empty = { sessions: {}, deleted: {}, settings: { data: {}, mtime: 0 } };
+  a = a || empty; b = b || empty;
+  const sessions = {};
+  for (const id of new Set([...Object.keys(a.sessions || {}), ...Object.keys(b.sessions || {})])) {
+    const x = a.sessions[id]; const y = b.sessions[id];
+    if (!x || !y) { sessions[id] = x || y; continue; }
+    const tx = x.mtime || 0; const ty = y.mtime || 0;
+    sessions[id] = tx !== ty ? (tx > ty ? x : y) : (sortedJson(x) >= sortedJson(y) ? x : y);
+  }
+  const deleted = {};
+  for (const src of [a.deleted || {}, b.deleted || {}]) for (const [id, t] of Object.entries(src)) if (!(deleted[id] >= t)) deleted[id] = t;
+  for (const [id, t] of Object.entries(deleted)) {
+    if (sessions[id] && (sessions[id].mtime || 0) <= t) delete sessions[id];
+    else if (sessions[id] || now - t > TOMBSTONE_TTL) delete deleted[id];
+  }
+  const sa = a.settings || empty.settings; const sb = b.settings || empty.settings;
+  const settings = sa.mtime !== sb.mtime ? (sa.mtime > sb.mtime ? sa : sb) : (sortedJson(sa) >= sortedJson(sb) ? sa : sb);
+  return { sessions, deleted, settings };
+}
+
+module.exports = { Store, DEFAULT_SETTINGS, mergeVaults, sortedJson, encWithKey, decWithKey };

@@ -39,6 +39,12 @@ sudo pacman -U dist/sshdeck-*.pacman   # yeniden kur
   - Her sürümde GitHub'a release + `latest-linux.yml` yayınla (electron-builder üretir).
 - Not: Yalnızca AppImage için çalışır; pacman tarafı için (2) gerekir.
 
+## Hesap eşitlemesi
+- Android'de henüz yok: `Store.java` + yeni `Sync.java` (aynı KDF/kasa biçimi: docs/senkron.md; PBKDF2-SHA512 + HKDF-SHA256
+  + AES-256-GCM, iv|tag|veri base64) ve WebView'da hesap penceresi.
+- Kurtarma anahtarı yok: hesap parolası unutulursa kasa gider (yerel veriler kalır, yeni hesapla yüklenebilir).
+- Anlık bildirim yok: diğer cihaz değişikliği en geç 5 dk'da / pencereye dönünce görür.
+
 ## Diğer küçük işler
 - pacman paketinde `pkgdesc` boş görünüyor (`pacman -Qi sshdeck`). Kozmetik; electron-builder
   üst düzey `description`'ı pacman'e geçirmiyor. Gerekirse fpm/`linux` ayarıyla çözülebilir.

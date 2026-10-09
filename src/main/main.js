@@ -12,12 +12,14 @@ const importers = require('./importers');
 const { TermLogger } = require('./termlog');
 const keys = require('./keys');
 const updater = require('./updater');
+const { AccountSync } = require('./sync');
 const { spawn } = require('child_process');
 
 app.setName('SSHDeck');
 let win = null;
 let store = null;
 let manager = null;
+let account = null; // hesap eşitlemesi (sync.js)
 
 // ---------- main -> renderer request/response (prompts, host keys) ----------
 let reqSeq = 0;
@@ -464,11 +466,33 @@ function registerIpc() {
 
   // master password
   h('master:status', () => ({ enabled: store.masterEnabled(), unlocked: store.isUnlocked() }));
-  h('master:unlock', (pw) => store.unlock(pw));
+  h('master:unlock', (pw) => { const ok = store.unlock(pw); if (ok) account.syncNow().catch(() => {}); return ok; });
   h('master:lock', () => { store.lock(); return true; });
   h('master:set', (oldPw, newPw) => {
     store.setMasterPassword(oldPw, newPw);
     return { settings: store.publicSettings(), secrets: store.secretsBackend() };
+  });
+
+  // hesap eşitlemesi: parola renderer'dan bir kez gelir, yalnız anahtar türetmek için kullanılır, saklanmaz
+  const accountCall = async (fn) => {
+    if (!(await ensureUnlocked())) throw new Error('Ana parola girilmedi');
+    await fn();
+    account.start();
+    return account.status();
+  };
+  h('account:status', () => account.status());
+  h('account:register', (o) => accountCall(() => account.register(o)));
+  h('account:login', (o) => accountCall(() => account.login(o)));
+  h('account:logout', async () => { await account.logout(); return account.status(); });
+  h('account:syncNow', async () => {
+    if (!(await ensureUnlocked())) throw new Error('Ana parola girilmedi');
+    await account.syncNow();
+    return account.status();
+  });
+  h('account:changePassword', async (oldPw, newPw) => {
+    if (!(await ensureUnlocked())) throw new Error('Ana parola girilmedi');
+    await account.changePassword(oldPw, newPw);
+    return account.status();
   });
 
   // backup export / import
@@ -700,13 +724,19 @@ app.whenReady().then(() => {
       send('sessions:updated', store.publicSessions(), err);
     },
   });
+  account = new AccountSync(store);
+  account.on('status', (st) => send('account:status', st));
+  account.on('changed', () => { applyNativeTheme(); send('account:changed', { sessions: store.publicSessions(), settings: store.publicSettings() }); });
   registerIpc();
   applyNativeTheme();
   createWindow();
+  win.webContents.once('did-finish-load', () => account.start());
+  // Pencereye dönünce (başka cihazda değişmiş olabilir) en fazla 30 sn'de bir eşitle
+  win.on('focus', () => { const a = account.status(); if (a.loggedIn && Date.now() - a.lastSync > 30000) account.syncNow().catch(() => {}); });
   scheduleUpdateChecks();
   // Uykudan uyanınca: renderer kopmuş bağlantıları hemen yeniden denesin
-  powerMonitor.on('resume', () => send('app:resume'));
+  powerMonitor.on('resume', () => { send('app:resume'); setTimeout(() => account.syncNow().catch(() => {}), 5000); });
 });
 
-app.on('window-all-closed', () => { if (manager) manager.closeAll(); logger.closeAll(); app.quit(); });
+app.on('window-all-closed', () => { if (account) account.stop(); if (manager) manager.closeAll(); logger.closeAll(); app.quit(); });
 app.on('will-quit', () => { try { fs.rmSync(DRAG_ROOT, { recursive: true, force: true }); } catch {} });
