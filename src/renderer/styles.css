@@ -151,7 +151,9 @@ kbd { font-family: var(--mono); font-size: 11px; padding: 2px 6px; border-radius
 .g-item, .s-item { display: flex; align-items: center; gap: 7px; height: 30px; padding-right: 8px; border-radius: 5px; cursor: pointer; color: var(--text2); white-space: nowrap; }
 .g-item:hover, .s-item:hover { background: var(--hover); color: var(--text); }
 .g-item.drop { background: var(--sel); color: #fff; }
-.tree:focus .g-item.sel, .tree:focus .s-item.sel { background: var(--sel); color: #fff; box-shadow: inset 2px 0 0 var(--accent); }
+.tree:focus .g-item.sel, .tree:focus .s-item.sel,
+.side-filter:focus-within + .tree .s-item.sel { background: var(--sel); color: #fff; box-shadow: inset 2px 0 0 var(--accent); }
+.tree:focus .s-item.sel .s-name, .side-filter:focus-within + .tree .s-item.sel .s-name { color: #fff; }
 .g-item.sel, .s-item.sel { background: var(--sel-soft); color: var(--text); }
 .g-item .chev { display: flex; transition: transform .12s; transform: rotate(90deg); color: var(--muted); }
 .g-item.collapsed .chev { transform: none; }

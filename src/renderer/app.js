@@ -88,9 +88,19 @@ class App {
       tbtn('import', 'İçe aktar (SSH config, WindTerm, Xshell)', (e) => { const r = e.currentTarget.getBoundingClientRect(); this.importMenu(r.left, r.bottom + 4); }),
       tbtn('gear', 'Ayarlar', () => this.openSettings()));
 
-    this.filter = h('input.input.sm.filter', { placeholder: 'Oturum ara…', spellcheck: false, oninput: debounce(() => this.renderSidebar(), 80), onkeydown: (e) => { if (e.key === 'Escape') { this.filter.value = ''; this.renderSidebar(); } if (e.key === 'Enter') { const first = this.tree.querySelector('.s-item'); if (first) this.openSession(first.dataset.id); } } });
+    // Arama: yazdıkça ilk eşleşme seçilir; ↑/↓ (Home/End) ile gezilir, Enter bağlanır, Esc temizler
+    this.filter = h('input.input.sm.filter', {
+      placeholder: 'Oturum ara… (↑↓, Enter)', spellcheck: false,
+      oninput: debounce(() => {
+        if (this.selectedSidebar?.type === 'session') this.selectedSidebar = null;
+        this.renderSidebar();
+        if (this.filter.value.trim()) this.moveSidebarSel(1);
+      }, 80),
+      onkeydown: (e) => this.sidebarNavKey(e, true),
+    });
     this.tree = h('div.tree', { tabindex: 0 });
     this.tree.addEventListener('keydown', (e) => {
+      if (this.sidebarNavKey(e, false)) return;
       if ((e.key === 'Delete' || e.key === 'Backspace') && this.selectedSidebar) {
         e.preventDefault();
         if (this.selectedSidebar.type === 'group') this.deleteGroup(this.selectedSidebar.path);
@@ -318,6 +328,43 @@ class App {
     };
     const rows = renderNode(root, 0);
     this.tree.replaceChildren(...(rows.length ? rows : [h('div.tree-empty', null, q ? 'Eşleşen oturum yok' : h('span', null, 'Henüz oturum yok.', h('br'), h('a', { href: '#', onclick: (e) => { e.preventDefault(); this.newSession(); } }, 'Yeni oturum ekleyin')))]));
+  }
+
+  /** Görünen oturum satırları arasında seçimi d kadar kaydırır (seçim yoksa ilk/son). Grup satırları atlanır. */
+  moveSidebarSel(d, edge) {
+    const items = [...this.tree.querySelectorAll('.s-item')];
+    if (!items.length) return null;
+    let i = items.findIndex((r) => r.classList.contains('sel'));
+    if (edge) i = d > 0 ? items.length - 1 : 0;
+    else i = i < 0 ? (d > 0 ? 0 : items.length - 1) : Math.max(0, Math.min(items.length - 1, i + d));
+    const row = items[i];
+    this.selectedSidebar = { type: 'session', id: row.dataset.id };
+    for (const r of this.tree.querySelectorAll('.sel')) r.classList.remove('sel');
+    row.classList.add('sel');
+    row.scrollIntoView({ block: 'nearest' });
+    return row;
+  }
+
+  /** Arama kutusu ve liste için ortak tuşlar; işlendiyse true. */
+  sidebarNavKey(e, inFilter) {
+    const page = Math.max(1, Math.floor(this.tree.clientHeight / 38) - 1);
+    const moves = { ArrowDown: 1, ArrowUp: -1, PageDown: page, PageUp: -page };
+    if (moves[e.key] && !e.altKey && !e.ctrlKey && !e.metaKey) { e.preventDefault(); this.moveSidebarSel(moves[e.key]); return true; }
+    // arama kutusunda Home/End imleci taşır; yalnız listede başa/sona gider
+    if (!inFilter && (e.key === 'Home' || e.key === 'End')) { e.preventDefault(); this.moveSidebarSel(e.key === 'End' ? 1 : -1, true); return true; }
+    if (e.key === 'Enter' && !e.altKey && !e.ctrlKey && !e.metaKey && !e.isComposing) {
+      const sel = this.tree.querySelector('.s-item.sel') || (inFilter ? this.tree.querySelector('.s-item') : null);
+      if (!sel) return false;
+      e.preventDefault();
+      this.openSession(sel.dataset.id, e.shiftKey ? { group: this.sideGroup() } : undefined);
+      return true;
+    }
+    if (e.key === 'Escape' && inFilter) {
+      e.preventDefault();
+      if (this.filter.value) { this.filter.value = ''; this.renderSidebar(); } else this.active?.focus();
+      return true;
+    }
+    return false;
   }
 
   dropTarget(el, group) {
