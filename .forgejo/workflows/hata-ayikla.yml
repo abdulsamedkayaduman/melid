@@ -1,0 +1,24 @@
+# GEÇİCİ: test job'unun çıktısını "ci-gunluk" ön sürümüne dosya olarak koyar (API log vermiyor). Sorun çözülünce silinecek.
+on: workflow_dispatch
+jobs:
+  test:
+    runs-on: docker
+    container: node:22-bookworm
+    env:
+      ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
+    steps:
+      - uses: https://data.forgejo.org/actions/checkout@v4
+      - run: |
+          set +e
+          {
+            npm ci --no-audit --no-fund
+            node test/importers.test.js; echo "importers=$?"
+            node test/store.test.js; echo "store=$?"
+            node test/termlog.test.js; echo "termlog=$?"
+            bash -x ci/test-sshd.sh; echo "sshd=$?"
+            env -u SSH_AUTH_SOCK timeout 300 node test/core.test.js; echo "core=$?"
+            echo "--- sshd log"; cat /tmp/sshd_test.log
+            echo "--- env"; id; uname -a; cat /etc/os-release | head -2; ls -la /dev/pts | head -3
+          } > ci-gunluk.txt 2>&1
+          echo ok > notes.md
+          FORGEJO_TOKEN=${{ secrets.GITHUB_TOKEN }} ROLLING=1 ci/forgejo-release.sh ci-gunluk "CI günlüğü (geçici)" notes.md true ci-gunluk.txt
