@@ -1,0 +1,13 @@
+# GEÇİCİ: Actions token'ı generic paket deposuna yazabiliyor mu? Sorun çözülünce silinecek.
+on: workflow_dispatch
+jobs:
+  paket:
+    runs-on: docker
+    container: node:22-bookworm
+    steps:
+      - run: |
+          echo deneme > a.txt
+          U="$GITHUB_SERVER_URL/api/packages/${GITHUB_REPOSITORY%%/*}/generic/sshdeck-ci-deneme/1/a.txt"
+          curl -sS --fail-with-body -X PUT -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" --upload-file a.txt "$U"
+          curl -sS --fail-with-body "$U"
+          curl -sS --fail-with-body -X DELETE -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" "$U"
