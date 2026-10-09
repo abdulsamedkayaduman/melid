@@ -2,9 +2,11 @@ import { h, icon, uid } from './util.js';
 
 // ---------------------------------------------------------------- modal core
 // bind(close): pencereyi dışarıdan kapatmak için (ör. listeden seçim yapılınca)
-export function modal({ title, body, buttons = [{ label: 'Tamam', value: true, primary: true }], width = 440, onButton, cls, bind }) {
+// canClose: false dönerse dışarı tıklama, Esc ve X pencereyi kapatmaz (ör. indirme sürerken)
+export function modal({ title, body, buttons = [{ label: 'Tamam', value: true, primary: true }], width = 440, onButton, cls, bind, canClose }) {
   return new Promise((resolve) => {
     const prevFocus = document.activeElement;
+    const dismiss = () => { if (!canClose || canClose() !== false) close(null); };
     const close = (v) => { overlay.remove(); document.removeEventListener('keydown', onKey, true); if (prevFocus && prevFocus.focus) prevFocus.focus(); resolve(v); };
     const btns = buttons.map((b) => h('button.btn' + (b.primary ? '.primary' : '') + (b.danger ? '.danger' : ''), {
       type: 'button',
@@ -14,15 +16,15 @@ export function modal({ title, body, buttons = [{ label: 'Tamam', value: true, p
       },
     }, b.label));
     const box = h('div.modal' + (cls ? '.' + cls : ''), { style: { width: typeof width === 'number' ? width + 'px' : width }, role: 'dialog' },
-      h('div.modal-head', null, h('span', null, title), h('button.icon-btn', { title: 'Kapat', onclick: () => close(null) }, icon('x'))),
+      h('div.modal-head', null, h('span', null, title), h('button.icon-btn', { title: 'Kapat', onclick: dismiss }, icon('x'))),
       h('div.modal-body', null, body),
       buttons.length ? h('div.modal-foot', null, btns) : null);
-    const overlay = h('div.overlay', { onmousedown: (e) => { if (e.target === overlay) close(null); } }, box);
+    const overlay = h('div.overlay', { onmousedown: (e) => { if (e.target === overlay) dismiss(); } }, box);
     const onKey = (e) => {
       if (!document.body.contains(overlay)) return;
       const all = document.querySelectorAll('.overlay'); // only the topmost modal reacts
       if (all[all.length - 1] !== overlay) return;
-      if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); close(null); }
+      if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); dismiss(); }
       else if (e.key === 'Enter' && !(e.target && (e.target.tagName === 'TEXTAREA' || e.target.closest('[data-noenter]')))) {
         const i = buttons.findIndex((b) => b.primary);
         if (i >= 0) { e.preventDefault(); e.stopPropagation(); btns[i].click(); }

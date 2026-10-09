@@ -198,7 +198,9 @@ jobs:
             { echo "## Değişiklikler"; echo; git log --format='- %s' ${PREV:+$PREV..}"$TAG"; } > notes.md
             ci/forgejo-release.sh "$TAG" "SSHDeck $TAG" notes.md false dist/*
             # uygulamalardaki güncelleme bildirimi bu dosyaya bakar (yalnız etiketli sürümler)
-            git log --format='- %s' ${PREV:+$PREV..}"$TAG" > update-notes.md
+            # kullanıcıya görünen notlar: sürüm ve CI commit'leri hariç
+            git log --format='- %s' ${PREV:+$PREV..}"$TAG" | grep -Ev '^- (Sürüm [0-9]|CI:)' > update-notes.md || true
+            [ -s update-notes.md ] || echo "- Küçük düzeltmeler" > update-notes.md
             if [ -n "$PACKAGE_TOKEN" ]; then
               ci/publish-update.sh "$VERSION" update-notes.md
             else

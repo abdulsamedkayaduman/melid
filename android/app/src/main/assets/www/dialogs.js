@@ -53,7 +53,7 @@ export function sheet(opts) {
         },
       }, b.label))));
     }
-    ov.addEventListener('click', (e) => { if (e.target === ov && opts.dismiss !== false) m.close(null); });
+    ov.addEventListener('click', (e) => { if (e.target === ov && m.dismiss !== false) m.close(null); });
     // Enter -> birincil düğme (tek satırlık girişlerde)
     box.addEventListener('keydown', (e) => {
       if (e.key === 'Enter' && e.target.tagName === 'INPUT') {

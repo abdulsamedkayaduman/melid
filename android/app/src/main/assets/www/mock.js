@@ -20,6 +20,7 @@ db = db || {
 const save = () => { try { localStorage.setItem(LS, JSON.stringify(db)); } catch { /* yok */ } };
 const pub = (s) => { const o = { ...s, has_password: !!s.password, has_passphrase: !!s.passphrase }; delete o.password; delete o.passphrase; return o; };
 
+let mockCancel = false;
 const asks = new Map();
 let askSeq = 0;
 const ask = (kind, p) => new Promise((res) => { const id = 'a' + (++askSeq); asks.set(id, res); emit('ask', { ...p, kind, askId: id }); });
@@ -127,11 +128,15 @@ async function handle(id, m, a) {
         notes: '## Değişiklikler\n\n- Güncelleme bildirimi ve uygulama içinden kurulum\n- Durum çubuğunda açık oturum sayısı' };
     }
     case 'updateInstall': {
-      for (let d = 0; d <= 6.5e6; d += 1.3e6) { emit('updateProgress', { done: d, total: 6.5e6 }); await new Promise((r) => setTimeout(r, 250)); }
+      mockCancel = false;
+      for (let d = 0; d <= 6.5e6; d += 0.65e6) {
+        if (mockCancel) throw new Error('İptal edildi');
+        emit('updateProgress', { done: d, total: 6.5e6 }); await new Promise((r) => setTimeout(r, 300));
+      }
       emit('updateProgress', { done: 6.5e6, total: 6.5e6, installing: true });
       return null;
     }
-    case 'updateCancel': return null;
+    case 'updateCancel': mockCancel = true; return null;
     case 'appInfo': return { version: '1.0.0 (tarayıcı)', android: '-', conns: conns.size };
     default: return null;
   }

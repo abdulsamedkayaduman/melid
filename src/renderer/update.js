@@ -30,11 +30,25 @@ export async function updateDialog(app, { check = false } = {}) {
     prog, err);
 
   let busy = false;
-  const setButtons = (on) => { for (const b of body.closest('.modal')?.querySelectorAll('.modal-foot button') || []) b.disabled = !on; };
-  const r = await modal({
+  let box = null;
+  // İndirme sürerken: normal düğmeler gizlenir, yerine "İptal"; dışarı tıklama / Esc / X kapatmaz
+  const cancelBtn = h('button.btn', { type: 'button', onclick: () => {
+    cancelBtn.disabled = true; cancelBtn.textContent = 'İptal ediliyor…';
+    api.update.cancel();
+  } }, 'İptal');
+  const setBusy = (on) => {
+    busy = on;
+    const foot = box.querySelector('.modal-foot');
+    for (const b of foot.querySelectorAll('button')) if (b !== cancelBtn) b.style.display = on ? 'none' : '';
+    box.querySelector('.modal-head .icon-btn').style.display = on ? 'none' : '';
+    if (on) { cancelBtn.disabled = false; cancelBtn.textContent = 'İptal'; foot.append(cancelBtn); } else cancelBtn.remove();
+  };
+  await modal({
     title: 'Yeni sürüm var',
     width: 500,
     body,
+    canClose: () => !busy,
+    bind: () => { box = body.closest('.modal'); },
     buttons: [
       { label: 'Bu sürümü atla', value: 'skip' },
       { label: 'Sonra', value: null },
@@ -43,21 +57,23 @@ export async function updateDialog(app, { check = false } = {}) {
     onButton: async (v) => {
       if (v === 'skip') { app.setUpdate(await api.update.skip(st.version)); toast(`v${st.version} atlandı; sonraki sürümde yine haber verilir`); return; }
       if (v !== 'install') return;
-      busy = true; setButtons(false); prog.hidden = false; err.textContent = '';
+      if (busy) return false;
+      setBusy(true); prog.hidden = false; err.textContent = ''; bar.style.width = '0%'; stat.textContent = 'İndirme başlıyor…';
       const off = api.update.onProgress(({ done, total, installing }) => {
         const pct = total ? Math.min(100, (100 * done) / total) : 0;
         bar.style.width = pct + '%';
-        stat.textContent = installing ? 'Kuruluyor… SSHDeck birazdan yeniden açılacak' : `${formatSize(done)} / ${formatSize(total)} (%${Math.round(pct)})`;
+        if (installing) { cancelBtn.disabled = true; stat.textContent = 'Kuruluyor… SSHDeck birazdan yeniden açılacak'; } else stat.textContent = `${formatSize(done)} / ${formatSize(total)} (%${Math.round(pct)})`;
       });
       try {
         await api.update.install();
-        return false; // uygulama kapanıyor; pencere açık kalsın
+        return false; // uygulama kapanıp yeniden açılıyor; pencere açık kalsın
       } catch (e) {
-        err.textContent = e.message.replace(/^Error invoking remote method '[^']+': (Error: )?/, '');
-        busy = false; setButtons(true); prog.hidden = true;
+        const msg = e.message.replace(/^Error invoking remote method '[^']+': (Error: )?/, '');
+        err.textContent = msg === 'İptal edildi' ? 'İndirme iptal edildi.' : msg;
+        prog.hidden = true;
+        setBusy(false);
         return false;
       } finally { off(); }
     },
   });
-  if (busy && r == null) api.update.cancel(); // indirme sürerken pencere kapatıldı
 }
