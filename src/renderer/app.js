@@ -3,6 +3,7 @@ import { modal, promptText, confirmBox, hostKeyDialog, kbdDialog, contextMenu, t
 import { SessionTab } from './tab.js';
 import { cleanErr } from './filepane.js';
 import { snippetPalette, snippetsEditor, keysDialog, installKeyDialog } from './tools.js';
+import { updateDialog } from './update.js';
 
 const api = window.api;
 
@@ -445,6 +446,8 @@ class App {
     } catch (e) { toast(cleanErr(e), 'err', 6000); }
   }
 
+  setUpdate(st) { this.update = st; this.updateStatus(); }
+
   async openSettings() {
     const r = await settingsDialog(this.settings, {
       logDefaultDir: this.logDefaultDir,
@@ -455,9 +458,13 @@ class App {
       onManageMaster: () => this.manageMaster(),
       onExport: () => this.exportBackup(),
       onImport: () => this.importBackup(),
+      onCheckUpdate: () => updateDialog(this, { check: true }),
+      version: this.version,
     });
     if (!r) return;
+    const updChanged = r.autoUpdate !== (this.settings.autoUpdate !== false);
     await this.saveSettings(r);
+    if (updChanged) api.update.schedule();
     this.applyTabActivity();
     for (const t of this.tabs) t.applySettings();
     this.applyFocusClasses();
@@ -837,7 +844,10 @@ class App {
       : this.secrets === 'plain'
         ? h('span.warn', { title: 'KWallet / GNOME Keyring bulunamadı. Parolalar şifrelenmeden saklanıyor.' }, 'Anahtarlık yok')
         : h('span', { title: 'Parolalar sistem anahtarlığında şifreli' }, icon('key', 12), ' Anahtarlık');
-    this.sbRight.replaceChildren(...[this.settings.logEnabled ? h('span.sb-rec', { title: 'Oturum kaydı açık' }, icon('record', 12), ' Kayıt') : null, secBadge, `  v${this.version}`].filter(Boolean));
+    const upd = this.update && this.update.newer && !this.update.skipped
+      ? h('button.sb-upd', { title: 'Yeni sürümü gör ve kur', onclick: () => updateDialog(this) }, icon('upgrade', 12), ` v${this.update.version} hazır`)
+      : null;
+    this.sbRight.replaceChildren(...[upd, this.settings.logEnabled ? h('span.sb-rec', { title: 'Oturum kaydı açık' }, icon('record', 12), ' Kayıt') : null, secBadge, `  v${this.version}`].filter(Boolean));
     this.updateStats();
   }
 
@@ -896,6 +906,8 @@ class App {
     });
     api.ssh.onExit((connId, sid) => this.tabByConn(connId)?.onShellExit(sid));
     api.onResume(() => { for (const t of this.tabs) t.onResume(); });
+    api.update.onAvailable((st) => { this.setUpdate(st); toast(`SSHDeck v${st.version} çıktı — durum çubuğundan güncelleyebilirsiniz`, 'info', 8000); });
+    api.update.onShow(() => updateDialog(this));
     api.onSessionsUpdated((sessions, err) => {
       this.sessions = sessions;
       this.renderSidebar();

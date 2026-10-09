@@ -45,6 +45,7 @@ public class App extends Application implements Host {
         sftp = new Sftp(core);
         fwd = new Forwards(core);
         watchNetwork();
+        try { Updater.schedule(this); } catch (Exception ignored) { }
     }
 
     /** Varsayılan ağ değişince açık bağlantıları yokla (ölü TCP'yi keepalive'ı beklemeden yakala). */

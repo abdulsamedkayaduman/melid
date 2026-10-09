@@ -121,6 +121,17 @@ async function handle(id, m, a) {
     case 'exportBackup': return 'İndirilenler/SSHDeck/sshdeck-yedek.json';
     case 'clipboardSet': try { await navigator.clipboard.writeText(a.text); } catch { /* yok */ } return null;
     case 'clipboardGet': try { return await navigator.clipboard.readText(); } catch { return 'echo pano'; }
+    case 'updateState': case 'updateCheck': case 'updateSkip': {
+      if (m === 'updateSkip') { db.settings.updateSkip = a.version; save(); }
+      return { current: '1.0.0', newer: true, version: '1.1.0', date: '2026-10-09T10:00:00Z', canInstall: true, size: 6500000, skipped: db.settings.updateSkip === '1.1.0', show: false,
+        notes: '## Değişiklikler\n\n- Güncelleme bildirimi ve uygulama içinden kurulum\n- Durum çubuğunda açık oturum sayısı' };
+    }
+    case 'updateInstall': {
+      for (let d = 0; d <= 6.5e6; d += 1.3e6) { emit('updateProgress', { done: d, total: 6.5e6 }); await new Promise((r) => setTimeout(r, 250)); }
+      emit('updateProgress', { done: 6.5e6, total: 6.5e6, installing: true });
+      return null;
+    }
+    case 'updateCancel': return null;
     case 'appInfo': return { version: '1.0.0 (tarayıcı)', android: '-', conns: conns.size };
     default: return null;
   }

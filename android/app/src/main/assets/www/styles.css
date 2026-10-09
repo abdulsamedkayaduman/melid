@@ -305,3 +305,20 @@ select.input { appearance: none; background-image: linear-gradient(45deg, transp
 
 .sheet.tall { height: 92%; }
 .sheet.tall .body { display: flex; flex-direction: column; padding-left: 0; padding-right: 0; }
+
+/* ---- güncelleme */
+.upd-banner { display: flex; align-items: center; gap: 14px; margin: 12px 12px 4px; padding: 12px 14px; border-radius: 14px; background: var(--accent); color: #fff; }
+.upd-banner .txt { flex: 1; min-width: 0; }
+.upd-banner b { display: block; font-weight: 600; }
+.upd-banner small { opacity: .85; }
+.upd-ver { display: flex; align-items: center; gap: 8px; font-size: 17px; margin-bottom: 12px; }
+.upd-ver small { color: var(--muted); font-size: 12px; margin-left: 4px; }
+.upd-notes { max-height: 34vh; overflow: auto; white-space: pre-wrap; margin: 0 0 12px; padding: 10px 12px; border-radius: 10px; background: var(--panel); font: 12.5px/1.5 var(--mono, monospace); }
+.upd .hint { color: var(--muted); display: block; }
+.upd-prog { margin-top: 14px; }
+.upd-prog.hidden { display: none; }
+.upd-prog .bar { height: 6px; border-radius: 3px; background: var(--panel); overflow: hidden; }
+.upd-prog .bar i { display: block; height: 100%; width: 0; background: var(--accent); transition: width .2s; }
+.upd-stat { display: block; margin-top: 6px; color: var(--muted); }
+.upd-err { color: var(--err); font-size: 13px; margin-top: 10px; }
+.upd-err:empty { display: none; }

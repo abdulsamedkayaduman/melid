@@ -4,6 +4,7 @@ import * as N from './native.js';
 import { sheet, actionSheet, promptText, confirm, toast, handleAsk, closeTop, modalOpen, UI_THEMES } from './dialogs.js';
 import { SessionTab } from './tab.js';
 import { sessionEditor, settingsView, editorView, importBackup, snippetsView } from './screens.js';
+import { updateSheet } from './update.js';
 
 class App {
   constructor() {
@@ -55,7 +56,12 @@ class App {
     };
     window.__npause = () => { this.pausedAt = Date.now(); };
     N.call('appInfo').then((i) => { this.info = i; }).catch(() => {});
+    N.on('update', (st) => { this.setUpdate(st); if (st.newer && !st.skipped) toast(`SSHDeck ${st.version} çıktı`); });
+    N.on('updateShow', () => updateSheet(this));
+    N.call('updateState').then((st) => { if (st.version) this.setUpdate(st); if (st.show) updateSheet(this); }).catch(() => {});
   }
+
+  setUpdate(st) { this.update = st; this.renderHome(); }
 
   tabFor(c) { return c ? this.tabs.find((t) => t.connId === c) : null; }
 
@@ -173,6 +179,11 @@ class App {
     this.openBadge.textContent = this.tabs.length;
     this.openBadge.classList.toggle('hidden', !this.tabs.length);
     const out = [];
+    const u = this.update;
+    if (u && u.newer && !u.skipped) {
+      out.push(h('div.upd-banner', { onclick: () => updateSheet(this) }, icon('upload', 20),
+        h('div.txt', null, h('b', null, `SSHDeck ${u.version} çıktı`), h('small', null, 'Yenilikleri görmek ve kurmak için dokunun')), icon('chevron', 18)));
+    }
     if (this.tabs.length) {
       out.push(h('div.sec-title', null, 'Açık bağlantılar'));
       out.push(h('div', null, this.tabs.map((t) => h('div.row', { onclick: () => this.activate(t) },

@@ -118,6 +118,7 @@ public class Bridge {
             case "saveSettings":
                 app.store.saveSettings(a.getJSONObject("patch"));
                 if (a.getJSONObject("patch").has("wakeLock")) app.updateService();
+                if (a.getJSONObject("patch").has("autoUpdate")) Updater.schedule(app);
                 return null;
             case "removeKnownHost": app.store.removeKnownHost(a.getString("key")); return null;
 
@@ -211,6 +212,24 @@ public class Bridge {
             case "notifyPermission": app.main.post(act::askNotificationPermission); return null;
             case "appInfo": return obj("version", act.getPackageManager().getPackageInfo(act.getPackageName(), 0).versionName, "android", android.os.Build.VERSION.RELEASE,
                     "conns", app.core.count());
+            // ---- güncelleme (Updater.java)
+            case "updateState": {
+                JSONObject st = Updater.state(act);
+                st.put("show", act.showUpdate);
+                act.showUpdate = false;
+                return st;
+            }
+            case "updateCheck": Updater.lastCheck = System.currentTimeMillis(); return Updater.check(act);
+            case "updateSkip": app.store.saveSettings(obj("updateSkip", a.optString("version"))); return Updater.state(act);
+            case "updateCancel": Updater.cancel = true; return null;
+            case "updateInstall": {
+                java.io.File apk = Updater.download(act, (done, total) -> emit("updateProgress", obj("done", done, "total", total)));
+                emit("updateProgress", obj("done", apk.length(), "total", apk.length(), "installing", true));
+                if (!Updater.ensureInstallPermission(act))
+                    throw new Exception("SSHDeck'in uygulama yükleme izni yok. Açılan ekranda izni verin, sonra tekrar \"Kur\"a dokunun.");
+                Updater.install(act, apk);
+                return null;
+            }
             case "moveToBack": app.main.post(() -> act.moveTaskToBack(true)); return null;
             case "exitApp": app.core.disconnectAll(); app.updateService(); app.main.post(act::finishAndRemoveTask); return null;
             default: throw new Exception("Bilinmeyen çağrı: " + m);

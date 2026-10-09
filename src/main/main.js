@@ -1,5 +1,5 @@
 'use strict';
-const { app, BrowserWindow, ipcMain, dialog, shell, clipboard, safeStorage, nativeTheme, nativeImage, powerMonitor } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, shell, clipboard, safeStorage, nativeTheme, nativeImage, powerMonitor, Notification } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const fsp = require('fs/promises');
@@ -11,6 +11,8 @@ const { readSshConfig } = require('./sshconfig');
 const importers = require('./importers');
 const { TermLogger } = require('./termlog');
 const keys = require('./keys');
+const updater = require('./updater');
+const { spawn } = require('child_process');
 
 app.setName('SSHDeck');
 let win = null;
@@ -221,6 +223,134 @@ function xshellDefaultDir() {
     for (const v of vers) { const d = path.join(base, v, 'Xshell', 'Sessions'); if (fs.existsSync(d)) return d; }
   } catch {}
   return os.homedir();
+}
+
+// ---------- güncellemeler (updater.js) ----------
+// Bu kurulum hangi paket türüyle güncellenir? null = kendiliğinden kurulamaz (geliştirme, deb vb.)
+function installKind() {
+  if (!app.isPackaged) return null;
+  if (process.platform === 'win32') return process.env.PORTABLE_EXECUTABLE_FILE ? 'win-portable' : 'win-setup';
+  if (process.platform === 'linux') {
+    if (process.env.APPIMAGE) return 'linux-appimage';
+    if (fs.existsSync('/usr/bin/pacman') && process.execPath.startsWith('/opt/')) return 'linux-pacman';
+  }
+  return null;
+}
+
+const upd = { info: null, newer: false, checking: null, abort: null, timer: null };
+async function checkUpdates(manual) {
+  if (upd.checking) return upd.checking;
+  upd.checking = (async () => {
+    try {
+      const r = await updater.check(app.getVersion());
+      upd.info = r.info; upd.newer = r.newer;
+      store.saveSettings({ updateLastCheck: Date.now() });
+      if (r.newer && !manual && store.settings.updateSkip !== r.info.version) announceUpdate(r.info);
+      return updateState();
+    } finally { upd.checking = null; }
+  })();
+  return upd.checking;
+}
+function updateState() {
+  const kind = installKind();
+  const info = upd.info;
+  return {
+    current: app.getVersion(),
+    newer: upd.newer,
+    version: info?.version || null,
+    notes: info?.notes || '',
+    date: info?.date || null,
+    kind,
+    kindLabel: kind ? updater.KIND_LABELS[kind] : null,
+    canInstall: !!(upd.newer && kind && info.files[kind]),
+    size: kind && info?.files[kind] ? info.files[kind].size : 0,
+    skipped: info && store.settings.updateSkip === info.version,
+  };
+}
+function announceUpdate(info) {
+  send('update:available', updateState());
+  if (!Notification.isSupported()) return;
+  const n = new Notification({ title: `SSHDeck ${info.version} çıktı`, body: 'Yeni sürümü görmek ve kurmak için tıklayın.', icon: path.join(__dirname, '..', '..', 'build', 'icon.png') });
+  n.on('click', () => { if (win) { if (win.isMinimized()) win.restore(); win.focus(); send('update:show'); } });
+  n.show();
+}
+function scheduleUpdateChecks() {
+  clearInterval(upd.timer);
+  if (store.settings.autoUpdate === false) return;
+  const due = () => Date.now() - (store.settings.updateLastCheck || 0) > 6 * 3600e3;
+  setTimeout(() => { if (store.settings.autoUpdate !== false) checkUpdates(false).catch(() => {}); }, 15000);
+  upd.timer = setInterval(() => { if (store.settings.autoUpdate !== false && due()) checkUpdates(false).catch(() => {}); }, 30 * 60e3);
+}
+
+function quitForUpdate() {
+  try { manager.closeAll(); logger.closeAll(); } catch {}
+  setTimeout(() => app.exit(0), 300);
+}
+
+async function installUpdate() {
+  const st = updateState();
+  if (!st.canInstall) throw new Error('Bu kurulum otomatik güncellenemiyor; yeni sürümü elle indirin');
+  const file = upd.info.files[st.kind];
+  const dir = path.join(app.getPath('userData'), 'guncelleme');
+  await fsp.rm(dir, { recursive: true, force: true });
+  await fsp.mkdir(dir, { recursive: true });
+  const ac = new AbortController(); upd.abort = ac;
+  let dest;
+  try {
+    dest = await updater.download(file, path.join(dir, file.name), {
+      signal: ac.signal, onProgress: (done, total) => send('update:progress', { done, total }),
+    });
+  } finally { upd.abort = null; }
+  send('update:progress', { done: file.size, total: file.size, installing: true });
+
+  if (st.kind === 'win-setup') {
+    // NSIS: sessiz kurulum aynı klasöre, bitince uygulamayı yeniden açar
+    spawn(dest, ['/S', '--updated', '--force-run'], { detached: true, stdio: 'ignore' }).unref();
+    quitForUpdate();
+  } else if (st.kind === 'win-portable') {
+    // çalışan exe kilitli: uygulama kapandıktan sonra yerine taşıyıp yeniden başlatan geçici betik
+    const target = process.env.PORTABLE_EXECUTABLE_FILE;
+    const cmd = path.join(dir, 'guncelle.cmd');
+    await fsp.writeFile(cmd, [
+      '@echo off', 'set n=0', ':dene', 'timeout /t 1 /nobreak >nul', 'set /a n+=1',
+      `move /y "${dest}" "${target}" >nul 2>&1 || (if %n% lss 60 goto dene)`,
+      `start "" "${target}"`, '(goto) 2>nul & del "%~f0"', '',
+    ].join('\r\n'));
+    spawn('cmd.exe', ['/c', cmd], { detached: true, stdio: 'ignore', windowsHide: true }).unref();
+    quitForUpdate();
+  } else if (st.kind === 'linux-appimage') {
+    const target = process.env.APPIMAGE;
+    const tmp = target + '.yeni';
+    try {
+      await fsp.copyFile(dest, tmp);
+      await fsp.chmod(tmp, 0o755);
+      await fsp.rename(tmp, target);
+    } catch (e) {
+      await fsp.rm(tmp, { force: true });
+      throw new Error(`AppImage değiştirilemedi (${path.dirname(target)} klasörüne yazma izni yok mu?): ${e.message}`);
+    }
+    const env = { ...process.env };
+    for (const k of ['APPIMAGE', 'APPDIR', 'ARGV0', 'OWD']) delete env[k];
+    spawn(target, [], { detached: true, stdio: 'ignore', env }).unref();
+    quitForUpdate();
+  } else if (st.kind === 'linux-pacman') {
+    // pkexec yönetici parolasını grafik olarak sorar
+    const pkexec = ['/usr/bin/pkexec', '/bin/pkexec'].find((p) => fs.existsSync(p));
+    if (!pkexec) {
+      shell.showItemInFolder(dest);
+      throw new Error(`pkexec bulunamadı. Paketi terminalden kurun: sudo pacman -U "${dest}"`);
+    }
+    const code = await new Promise((resolve) => {
+      const p = spawn(pkexec, ['/usr/bin/pacman', '-U', '--noconfirm', dest], { stdio: 'ignore' });
+      p.on('error', () => resolve(-1));
+      p.on('exit', resolve);
+    });
+    if (code === 126 || code === 127) throw new Error('Yönetici izni verilmedi');
+    if (code !== 0) throw new Error(`pacman kurulumu başarısız oldu (çıkış kodu ${code}). Elle: sudo pacman -U "${dest}"`);
+    app.relaunch();
+    quitForUpdate();
+  }
+  return true;
 }
 
 function registerIpc() {
@@ -471,6 +601,12 @@ function registerIpc() {
     const r = await dialog.showOpenDialog(win, { properties: ['openFile', 'showHiddenFiles'], defaultPath: expandHome(opts && opts.defaultPath) || path.join(os.homedir(), '.ssh') });
     return r.canceled ? null : r.filePaths[0];
   });
+  h('update:state', () => updateState());
+  h('update:check', () => checkUpdates(true));
+  h('update:install', () => installUpdate());
+  h('update:cancel', () => { upd.abort?.abort(); });
+  h('update:skip', (version) => { store.saveSettings({ updateSkip: version || null }); return updateState(); });
+  h('update:schedule', () => scheduleUpdateChecks());
   h('shell:openExternal', (url) => { if (/^https?:\/\//.test(url)) shell.openExternal(url); });
 
   manager.on('status', (id, state, msg) => {
@@ -567,6 +703,7 @@ app.whenReady().then(() => {
   registerIpc();
   applyNativeTheme();
   createWindow();
+  scheduleUpdateChecks();
   // Uykudan uyanınca: renderer kopmuş bağlantıları hemen yeniden denesin
   powerMonitor.on('resume', () => send('app:resume'));
 });

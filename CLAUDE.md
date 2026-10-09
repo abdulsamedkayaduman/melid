@@ -38,6 +38,9 @@ src/main/ssh-manager.js  Electron'dan bağımsız (düz Node ile test edilir). B
                          transfer() (her aktarım kendi SFTP kanalında; iptal = kanalı kapatmak; resume: aynı dosyayı atla,
                          yarımı akışla sürdür; mkdirs: üst klasörleri oluştur), startForward/stopForward (L: net.Server, D: socks.js, R: forwardIn)
                          shellCwd(): terminal dizini (/proc + $SSH_CONNECTION; aynı bağlantıdaki diğer kabukların pid'leri hariç)
+src/main/updater.js      Güncelleme: imzalı latest.json (Forgejo generic paket deposu, Ed25519 açık anahtar gömülü),
+                         check()/download() (sha256). Kurulum türü + kurulum main.js installUpdate(): NSIS sessiz,
+                         taşınabilir exe (cmd betiği), AppImage (yerine yaz), pacman (pkexec). Yayın: ci/publish-update.sh
 src/main/termlog.js      Oturum kaydı: TermLogger (oturum adına göre klasör, dosya başına kabuk) + parçalı ANSI temizleyici
 src/main/keys.js         ~/.ssh anahtarlarını listeleme, ssh2 utils ile anahtar üretme (OpenSSH biçimi)
 src/main/socks.js        -D için minimal SOCKS5 (CONNECT, kimlik doğrulamasız)
@@ -84,6 +87,7 @@ derlemede `../node_modules`'tan kopyalanır); SSH Java'da: JSch (mwiede) + Bounc
   `bash android/coretest/run.sh` ile JVM'de geçici sshd + ssh2 sunucusuna karşı test edilir.
 - Köprü: JS `SSHDeckNative.call(id, metot, json)` -> `window.__nreply`; olaylar `window.__nevent` (Bridge.java).
   Yeni çağrı: `Bridge.dispatch` içine `case` + JS'te `N.call('metot', {...})`.
+- Güncelleme: `Updater.java` (masaüstüyle aynı imzalı latest.json; JobScheduler + bildirim, PackageInstaller).
 - Sırlar Android Keystore ile şifreli (`Store.java`), WebView'a gitmez. Yedek biçimi masaüstüyle aynı (`Backup.java`).
 - Derleme: `cd android && ./gradlew assembleRelease` (JDK 17 + SDK; `local.properties`, imza için
   `keystore.properties` + `sshdeck-release.jks` — git dışı, kaybolmamalı). Değişiklikten sonra `./gradlew lintDebug`.

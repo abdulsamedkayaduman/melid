@@ -2,7 +2,10 @@
 
 İleride ele alınacak işler. Aciliyet sırasına göre değil, konu bazlı.
 
-## Güncellemeler (otomatik güncelleme yok — şu an her şey elle)
+## Güncellemeler
+
+Uygulama içi güncelleme var (bkz. `docs/ci.md` > Güncelleme kaynağı): `npm version patch && git push --follow-tags`.
+Aşağıdakiler hâlâ geçerli ek seçenekler.
 
 Durum: `build.publish = null`, `electron-updater` kurulu değil. Paketlenen kütüphaneler
 (ssh2, electron, xterm, @noble/hashes) build anında dondurulur; kurulu uygulamada

@@ -19,11 +19,43 @@ Forgejo: `http://192.168.1.50:3001/abdulsamed.kayaduman/ssh-deck`. İş akışı
 - **Elle:** Depo > **Actions** > `derle.yml` > **Run workflow** (dal seçilebilir). Çıktılar çalıştırma sayfasında
   *Artifacts* altında (14 gün). `yayinla` işaretliyse (varsayılan) **Sürümler** sayfasındaki `gelistirme`
   ön sürümü silinip bu derlemeyle yeniden oluşturulur — telefondan/Windows'tan indirmek için en kolay yer.
-- **Kalıcı sürüm:** `package.json`'daki `version`'ı artırın, commit'leyin, `git tag v1.0.1 && git push origin v1.0.1`.
-  Etiket sürümle aynı değilse `yayinla` hata verir. Notlar önceki `v*` etiketinden bu yana commit başlıklarıdır.
+- **Kalıcı sürüm (cihazlara güncelleme olarak gider):**
+
+  ```
+  npm version patch      # 1.1.0 -> 1.1.1 (ya da minor / major); package.json + commit + v1.1.1 etiketi
+  git push --follow-tags
+  ```
+
+  Etiket push'u pipeline'ı başlatır: `vX.Y.Z` sürümü + **güncelleme kaynağı** (aşağıda). Etiket `package.json`
+  sürümüyle aynı değilse `yayinla` hata verir. Notlar önceki `v*` etiketinden bu yana commit başlıklarıdır.
+  Elle başlatılan derlemeler (`gelistirme`) cihazlara güncelleme olarak **gitmez**.
 
 Android `versionName`/`versionCode` da `package.json`'dan gelir (`versionCode = MAJOR*10000 + MINOR*100 + PATCH`),
 yani tek yerden sürüm artırmak yeterli.
+
+## Güncelleme kaynağı (uygulama içi güncelleme)
+
+Depo özel olduğu için sürüm dosyaları anonim indirilemez; bu yüzden etiketli her sürümde `ci/publish-update.sh`
+dosyaları Forgejo **generic paket deposuna** koyar (kullanıcı herkese açık olduğu için paketler anonim okunur):
+
+```
+http://192.168.1.50:3001/api/packages/abdulsamed.kayaduman/generic/sshdeck/<sürüm>/<dosya>
+http://192.168.1.50:3001/api/packages/abdulsamed.kayaduman/generic/sshdeck/latest/latest.json
+```
+
+`latest.json` = `{ payload: base64(JSON), sig: Ed25519 imzası }`; JSON'da sürüm, notlar ve her paket türü için
+`url`, `sha256`, `size` var (`ci/update-feed.js`). Uygulamalar imzayı gömülü açık anahtarla
+(`src/main/updater.js`, `Updater.java`), dosyayı sha256 ile doğrular; ayrıca Android APK imzasını kendisi denetler.
+
+- Masaüstü: açılıştan 15 sn sonra ve 6 saatte bir denetler; yeni sürümde sistem bildirimi + durum çubuğunda rozet.
+  "İndir ve kur": Windows kurulumu sessiz kurulup yeniden açılır; taşınabilir exe ve AppImage dosyanın yerine
+  yazılır; pacman `pkexec pacman -U` ile (yönetici parolası sorulur). Geliştirme/tanınmayan kurulumda yalnız bildirim.
+- Android: açılışta/geri dönüşte (6 saatte bir) ve arka planda 12 saatte bir (JobScheduler) denetler; bildirim +
+  ana ekranda şerit. Kurulum PackageInstaller ile; ilk seferde "bilinmeyen uygulamaları yükle" izni istenir.
+- Ayarlardan "Şimdi denetle" ve otomatik denetimi kapatma. "Bu sürümü atla" yalnız o sürümü susturur.
+- Sunucu ev ağında (`192.168.1.50`); dışarıdayken denetim sessizce başarısız olur (WireGuard ile çalışır).
+- Deneme için masaüstünde `SSHDECK_UPDATE_URL`, Android'de `updateUrl` ayarı başka kaynak gösterebilir
+  (imza yine aynı anahtarla doğrulanır).
 
 ## Bir kez yapılacak kurulum
 
@@ -39,7 +71,13 @@ yani tek yerden sürüm artırmak yeterli.
 
    (`android/keystore.properties` + `sshdeck-release.jks`'i okur, değerleri ekrana yazmaz.) Secret yoksa `android`
    job'u bilerek hata verir: farklı anahtarla imzalı APK telefondaki uygulamanın üzerine kurulamaz.
-4. `v*` etiketlerini koruyun (Ayarlar > Etiketler): secret'lar push edilen her iş akışına açıktır.
+4. **Güncelleme secret'ları:**
+   - `UPDATE_SIGNING_KEY` — `latest.json` imza anahtarı (Ed25519, PEM). Yerel kopyası `update-signing-key.pem`
+     (git dışı): **yedekleyin**. Kaybolursa yeni anahtarla imzalanan güncellemeleri eski uygulamalar reddeder;
+     herkesin yeni açık anahtarlı sürümü bir kez elle kurması gerekir.
+   - `PACKAGE_TOKEN` — paket deposuna yazmak için Forgejo token'ı (izin: **package** okuma+yazma). Actions'ın
+     otomatik token'ı paket deposuna yazamıyor.
+5. `v*` etiketlerini koruyun (Ayarlar > Etiketler): secret'lar push edilen her iş akışına açıktır.
 
 ## Yerel karşılıkları
 

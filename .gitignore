@@ -1,3 +1,4 @@
 node_modules/
 dist/
 test/.work/
+update-signing-key.pem

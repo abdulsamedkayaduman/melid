@@ -53,6 +53,9 @@ const DEFAULT_SETTINGS = {
   logStrip: true, // kayıtta ANSI renk/kontrol kodlarını temizle
   maxTransfers: 3, // aynı anda en fazla kaç aktarım (sekme başına)
   showStats: true, // durum çubuğunda sunucu kaynakları
+  autoUpdate: true, // güncellemeleri kendiliğinden denetle (açılışta + 6 saatte bir)
+  updateSkip: null, // "bu sürümü atla" denen sürüm
+  updateLastCheck: 0,
   snippets: [], // hazır komutlar: [{ id, name, command, run }]
   localPane: true,
   followTerminal: true,
@@ -129,7 +132,7 @@ class Store {
       }
       return o;
     });
-    const { master, ...settings } = this.settings;
+    const { master, updateSkip, updateLastCheck, ...settings } = this.settings;
     return {
       app: 'SSHDeck', format: 1, exportedAt: new Date().toISOString(),
       encrypted: !!key, secretsSalt: salt ? salt.toString('base64') : undefined,

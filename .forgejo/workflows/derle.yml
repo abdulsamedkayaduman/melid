@@ -38,11 +38,12 @@ jobs:
           key: npm-${{ hashFiles('package-lock.json') }}
           restore-keys: npm-
       - run: npm ci --no-audit --no-fund
-      - name: Birim testleri (içe aktarma, store, oturum kaydı)
+      - name: Birim testleri (içe aktarma, store, oturum kaydı, güncelleme)
         run: |
           node test/importers.test.js
           node test/store.test.js
           node test/termlog.test.js
+          node test/updater.test.js
       - name: Çekirdek testleri (geçici sshd)
         run: |
           ci/test-sshd.sh
@@ -180,6 +181,8 @@ jobs:
       - name: Forgejo sürümü
         env:
           FORGEJO_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PACKAGE_TOKEN: ${{ secrets.PACKAGE_TOKEN }}
+          UPDATE_SIGNING_KEY: ${{ secrets.UPDATE_SIGNING_KEY }}
         run: |
           VERSION=$(node -p 'require("./package.json").version')
           cd dist && sha256sum * > SHA256SUMS.txt && cat SHA256SUMS.txt && cd ..
@@ -189,6 +192,9 @@ jobs:
             PREV=$(git describe --tags --abbrev=0 --match 'v*' "$TAG^" 2>/dev/null || true)
             { echo "## Değişiklikler"; echo; git log --format='- %s' ${PREV:+$PREV..}"$TAG"; } > notes.md
             ci/forgejo-release.sh "$TAG" "SSHDeck $TAG" notes.md false dist/*
+            # uygulamalardaki güncelleme bildirimi bu dosyaya bakar (yalnız etiketli sürümler)
+            git log --format='- %s' ${PREV:+$PREV..}"$TAG" > update-notes.md
+            ci/publish-update.sh "$VERSION" update-notes.md
           else
             {
               echo "\`${GITHUB_REF_NAME}\` dalının ${GITHUB_SHA::7} commit'inden elle başlatılan derleme (çalıştırma #${GITHUB_RUN_NUMBER})."

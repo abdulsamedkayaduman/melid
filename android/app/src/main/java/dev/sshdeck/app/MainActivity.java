@@ -71,6 +71,7 @@ public class MainActivity extends Activity {
     @SuppressLint({"SetJavaScriptEnabled", "AddJavascriptInterface"})
     @Override protected void onCreate(Bundle saved) {
         super.onCreate(saved);
+        showUpdate = Updater.ACTION_SHOW.equals(getIntent().getAction());
         getWindow().setStatusBarColor(Color.TRANSPARENT);
         getWindow().setNavigationBarColor(Color.TRANSPARENT);
         if (Build.VERSION.SDK_INT >= 30) getWindow().setDecorFitsSystemWindows(false);
@@ -290,6 +291,17 @@ public class MainActivity extends Activity {
     @Override protected void onResume() {
         super.onResume();
         js("window.__nresume&&window.__nresume()");
+        Updater.checkIfDue(this, () -> {
+            try { App.I.emit("update", Updater.state(this)); } catch (Exception ignored) { }
+        });
+    }
+
+    /** Bildirimden "yeni sürüm" ile açıldıysa arayüz güncelleme penceresini göstersin. */
+    volatile boolean showUpdate;
+
+    @Override protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        if (Updater.ACTION_SHOW.equals(intent.getAction())) App.I.emit("updateShow", new org.json.JSONObject());
     }
 
     @Override protected void onDestroy() {

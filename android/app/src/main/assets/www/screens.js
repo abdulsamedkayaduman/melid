@@ -2,6 +2,7 @@
 import { h, icon, uid, formatDate } from './util.js';
 import * as N from './native.js';
 import { sheet, actionSheet, promptText, confirm, toast, THEMES, UI_THEMES } from './dialogs.js';
+import { updateSheet } from './update.js';
 
 const field = (label, control, hint) => h('label.field', null, h('span', null, label), control, hint ? h('small.hint', { style: { margin: 0 } }, hint) : null);
 const sw = (checked) => { const i = h('input', { type: 'checkbox', checked: !!checked }); return { input: i, el: h('label.switch', null, i, h('i')) }; };
@@ -205,7 +206,10 @@ export function settingsView(app) {
         row('import', 'Masaüstü yedeğini içe aktar', 'SSHDeck (Linux) > Ayarlar > Yedekle ile alınan .json', null, () => importBackup(app)),
         row('upload', 'Yedek dışa aktar', 'Masaüstü SSHDeck ile uyumlu; İndirilenler/SSHDeck', null, () => exportBackup(app))),
       h('div.sec-title', null, 'Hakkında'),
-      h('div.set-card', null, row('info', 'SSHDeck Android', app.info ? `Sürüm ${app.info.version} · Android ${app.info.android}` : '', null, null)),
+      h('div.set-card', null,
+        row('info', 'SSHDeck Android', app.info ? `Sürüm ${app.info.version} · Android ${app.info.android}` : '', null, null),
+        row('upload', 'Güncellemeleri denetle', app.update?.newer ? `${app.update.version} kurulabilir` : 'Yeni sürüm çıkınca bildirim gelir', icon('chevron', 18), () => updateSheet(app, { check: true })),
+        toggle('refresh', 'autoUpdate', 'Arka planda denetle', 'Açılışta ve 12 saatte bir; ev ağındaki sunucuya bakar', true)),
       h('div', { style: { height: '40px' } }));
   };
   render();
