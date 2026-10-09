@@ -26,6 +26,7 @@ env:
 
 jobs:
   test:
+    timeout-minutes: 15
     runs-on: docker
     container: node:22-bookworm
     env:
@@ -47,10 +48,11 @@ jobs:
       - name: Çekirdek testleri (geçici sshd)
         run: |
           ci/test-sshd.sh
-          env -u SSH_AUTH_SOCK node test/core.test.js
+          env -u SSH_AUTH_SOCK timeout 600 node test/core.test.js
 
   linux:
     needs: test
+    timeout-minutes: 30
     runs-on: docker
     container: node:22-bookworm
     steps:
@@ -77,6 +79,7 @@ jobs:
 
   windows:
     needs: test
+    timeout-minutes: 45
     runs-on: docker
     # NSIS kaldırıcıyı üretmek için wine gerekir; electron-builder'ın resmi imajı (Node 22 + wine)
     container: electronuserland/builder:22-wine-05.26
@@ -100,6 +103,7 @@ jobs:
 
   android:
     needs: test
+    timeout-minutes: 40
     runs-on: docker
     container: node:22-bookworm
     env:
@@ -167,6 +171,7 @@ jobs:
   yayinla:
     needs: [linux, windows, android]
     if: startsWith(github.ref, 'refs/tags/v') || github.event.inputs.yayinla == 'true'
+    timeout-minutes: 20
     runs-on: docker
     container: node:22-bookworm
     steps:

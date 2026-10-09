@@ -9,7 +9,7 @@ cd "$(dirname "$0")/.."
 if ! command -v sshd > /dev/null; then
     # paket kurulumu sistemin sshd'sini 22'de başlatmasın (policy-rc.d), yoksa bizimki portu alamaz
     printf '#!/bin/sh\nexit 101\n' > /usr/sbin/policy-rc.d && chmod +x /usr/sbin/policy-rc.d
-    apt-get update -qq && apt-get install -y -qq openssh-server > /dev/null
+    apt-get -o Acquire::http::Timeout=30 -o Acquire::Retries=3 update -qq && apt-get -o Acquire::http::Timeout=30 -o Acquire::Retries=3 install -y -qq openssh-server > /dev/null
     rm -f /usr/sbin/policy-rc.d
 fi
 # yine de çalışan bir sshd varsa (önceden kurulu imaj) durdur
