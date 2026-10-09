@@ -1,30 +1,25 @@
-# GEÇİCİ: bir job'un çıktısını "ci-gunluk" ön sürümüne dosya olarak koyar (API log vermiyor). Sorun çözülünce silinecek.
-on:
-  workflow_dispatch:
-    inputs:
-      is:
-        description: 'test | linux'
-        default: linux
+# GEÇİCİ: artifact action'larının Forgejo'da hangisinin çalıştığını dener. Sorun çözülünce silinecek.
+on: workflow_dispatch
 jobs:
-  gunluk:
+  gh-v4:
     runs-on: docker
     container: node:22-bookworm
     steps:
-      - uses: https://data.forgejo.org/actions/checkout@v4
-      - run: |
-          set +e
-          {
-            id; umask; df -h / /tmp | tail -2
-            if [ "${{ github.event.inputs.is }}" = linux ]; then
-              apt-get update -qq && apt-get install -y -qq libarchive-tools > /dev/null; echo "apt=$?"
-              npm ci --no-audit --no-fund; echo "npm=$?"
-              npx electron-builder --linux AppImage pacman --publish never; echo "builder=$?"
-              ls -la dist
-            else
-              ELECTRON_SKIP_BINARY_DOWNLOAD=1 npm ci --no-audit --no-fund
-              bash -x ci/test-sshd.sh; echo "sshd=$?"
-              env -u SSH_AUTH_SOCK timeout 300 node test/core.test.js; echo "core=$?"
-            fi
-          } > ci-gunluk.txt 2>&1
-          echo ok > notes.md
-          FORGEJO_TOKEN=${{ secrets.GITHUB_TOKEN }} ROLLING=1 ci/forgejo-release.sh ci-gunluk "CI günlüğü (geçici)" notes.md true ci-gunluk.txt
+      - run: mkdir d && echo a > d/a.txt
+      - uses: https://data.forgejo.org/actions/upload-artifact@v4
+        with: { name: deneme-gh, path: d/a.txt, retention-days: 1 }
+  fj-v4:
+    runs-on: docker
+    container: node:22-bookworm
+    steps:
+      - run: mkdir d && echo b > d/b.txt
+      - uses: https://data.forgejo.org/forgejo/upload-artifact@v4
+        with: { name: deneme-fj, path: d/b.txt, retention-days: 1 }
+  fj-indir:
+    needs: fj-v4
+    runs-on: docker
+    container: node:22-bookworm
+    steps:
+      - uses: https://data.forgejo.org/forgejo/download-artifact@v4
+        with: { pattern: deneme-*, path: out, merge-multiple: true }
+      - run: ls -R out && test -f out/b.txt
