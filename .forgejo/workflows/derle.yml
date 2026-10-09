@@ -194,7 +194,11 @@ jobs:
             ci/forgejo-release.sh "$TAG" "SSHDeck $TAG" notes.md false dist/*
             # uygulamalardaki güncelleme bildirimi bu dosyaya bakar (yalnız etiketli sürümler)
             git log --format='- %s' ${PREV:+$PREV..}"$TAG" > update-notes.md
-            ci/publish-update.sh "$VERSION" update-notes.md
+            if [ -n "$PACKAGE_TOKEN" ]; then
+              ci/publish-update.sh "$VERSION" update-notes.md
+            else
+              echo "::warning::PACKAGE_TOKEN secret'ı yok: sürüm yayınlandı ama cihazlara güncelleme bildirimi gitmeyecek (docs/ci.md)"
+            fi
           else
             {
               echo "\`${GITHUB_REF_NAME}\` dalının ${GITHUB_SHA::7} commit'inden elle başlatılan derleme (çalıştırma #${GITHUB_RUN_NUMBER})."
