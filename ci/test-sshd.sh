@@ -3,6 +3,8 @@
 # deck/deckpass kullanıcısı, 22 + 2222 portları, parola + anahtar, tünellere izinli.
 # Sonra `node test/core.test.js` bu sunucuya bağlanır (Docker gerekmez).
 set -euo pipefail
+# runner container'ı umask 000 ile başlayabiliyor; sshd geniş izinli dizin/dosyaları reddeder
+umask 022
 cd "$(dirname "$0")/.."
 if ! command -v sshd > /dev/null; then
     # paket kurulumu sistemin sshd'sini 22'de başlatmasın (policy-rc.d), yoksa bizimki portu alamaz
@@ -12,7 +14,8 @@ if ! command -v sshd > /dev/null; then
 fi
 # yine de çalışan bir sshd varsa (önceden kurulu imaj) durdur
 pkill -x sshd 2> /dev/null || true
-mkdir -p test/.work /run/sshd
+mkdir -p test/.work
+install -d -m 755 -o root -g root /run/sshd
 [ -f test/.work/userkey ] || ssh-keygen -q -t ed25519 -N kpass -f test/.work/userkey
 id deck > /dev/null 2>&1 || useradd -m -s /bin/bash deck
 echo 'deck:deckpass' | chpasswd

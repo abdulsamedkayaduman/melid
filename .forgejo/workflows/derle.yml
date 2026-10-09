@@ -126,7 +126,8 @@ jobs:
       - name: SSH çekirdeği testleri (JVM, geçici sshd)
         run: |
           command -v sshd > /dev/null || { apt-get update -qq && apt-get install -y -qq openssh-server > /dev/null; }
-          mkdir -p /run/sshd
+          umask 022
+          install -d -m 755 -o root -g root /run/sshd
           bash android/coretest/run.sh
       - name: İmzalı release APK
         env:
