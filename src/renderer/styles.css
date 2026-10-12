@@ -197,6 +197,9 @@ kbd { font-family: var(--mono); font-size: 11px; padding: 2px 6px; border-radius
 @keyframes blink-activity { 50% { opacity: .2; } }
 /* Renkli mod: nokta büyür, yanıp sönmeden renkler arasında akarak parlar */
 .tab .dot { transition: transform .2s ease; }
+/* sürükle-bırak ile sıralama: bırakılacak yer */
+.tab.drop-l { box-shadow: inset 2px 0 0 var(--accent); }
+.tab.drop-r { box-shadow: inset -2px 0 0 var(--accent); }
 [data-tab-activity="rainbow"] .tab.activity .dot.ok { transform: scale(1.5); animation: rainbow-activity 1.4s linear infinite; }
 @keyframes rainbow-activity {
   0%, 100% { background: #ff4d6d; box-shadow: 0 0 7px 1px #ff4d6d; }

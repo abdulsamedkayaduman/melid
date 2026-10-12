@@ -199,7 +199,7 @@ class App {
           card('import', 'İçe aktar', 'SSH config, WindTerm veya Xshell oturumları', (e) => this.importMenu(e.clientX, e.clientY))),
         h('div.w-keys', null,
           ...[['Ctrl+Shift+N', 'Yeni oturum'], ['Ctrl+Shift+T', 'Sekmeyi çoğalt'], ['Ctrl+Shift+W', 'Bölmeyi / sekmeyi kapat'], ['Ctrl+Tab', 'Sonraki sekme'],
-            ['Ctrl+Shift+D / S', 'Sağa / aşağı böl'], ['Ctrl+Shift+M', 'Sekmeyi yana ayır'], ['Alt+Shift+Oklar', 'Bölmeler arası geç'], ['Ctrl+Shift+K', 'Hazır komutlar'],
+            ['Ctrl+Shift+D / S', 'Sağa / aşağı böl'], ['Ctrl+Shift+M', 'Sekmeyi yana ayır'], ['Ctrl+Shift+PgUp / PgDn', 'Sekmeyi sola / sağa al'], ['Alt+Shift+Oklar', 'Bölmeler arası geç'], ['Ctrl+Shift+K', 'Hazır komutlar'],
             ['Ctrl+Shift+E', 'SFTP paneli'], ['Ctrl+Shift+F', 'Terminalde ara'], ['Ctrl+Shift+C / V', 'Kopyala / yapıştır'], ['Ctrl + / −', 'Yazı boyutu'], ['Alt+Enter', 'Odak modu']]
             .map(([k, v]) => h('div.w-key', null, h('kbd', null, k), h('span', null, v))))));
   }
@@ -655,6 +655,7 @@ class App {
       if (g.active) this.activate(g.active);
       this.newSession();
     });
+    this.bindTabReorder(g);
     g.views = h('div.views');
     g.el = h('div.tgroup' + (i ? '.g1' : ''), null, g.tabbar, g.views);
     // Gruptaki terminale / dosya paneline tıklanınca o grup etkin olur
@@ -690,20 +691,65 @@ class App {
     g1.active = null;
   }
 
-  moveTab(tab, gi) {
-    if (!tab || tab.group === gi) return;
+  // Sekmeyi gi grubuna taşır. before: o sekmenin önüne, null: grubun sonuna; verilmezse aynı grupta bir şey yapmaz
+  moveTab(tab, gi, before) {
+    if (!tab || before === tab) return;
+    const same = tab.group === gi;
+    if (same && before === undefined) return;
     const from = this.tabGroups[tab.group];
-    tab.group = gi;
     this.tabs.splice(this.tabs.indexOf(tab), 1);
-    this.tabs.push(tab);
-    this.tabGroups[gi].views.append(tab.el);
-    if (from.active === tab) {
-      const rest = this.tabsOf(from.i);
-      from.active = rest[rest.length - 1] || null;
-      for (const t of rest) t.el.classList.toggle('on', t === from.active);
+    const at = before ? this.tabs.indexOf(before) : -1;
+    if (at >= 0) this.tabs.splice(at, 0, tab); else this.tabs.push(tab);
+    if (!same) {
+      tab.group = gi;
+      this.tabGroups[gi].views.append(tab.el);
+      if (from.active === tab) {
+        const rest = this.tabsOf(from.i);
+        from.active = rest[rest.length - 1] || null;
+        for (const t of rest) t.el.classList.toggle('on', t === from.active);
+      }
+      this.normalizeGroups();
     }
-    this.normalizeGroups();
     this.activate(tab);
+  }
+
+  // Ctrl+Shift+PgUp/PgDn: sekmeyi kendi grubunda bir sola / sağa al
+  shiftTab(tab, dir) {
+    if (!tab) return;
+    const list = this.tabsOf(tab.group);
+    const j = list.indexOf(tab) + dir;
+    if (j < 0 || j >= list.length) return;
+    this.moveTab(tab, tab.group, dir < 0 ? list[j] : (list[j + 1] || null));
+  }
+
+  // Sekme çubuğunda sürükle-bırak ile sıralama: bırakılacak yer sekmenin solunda/sağında çizgiyle gösterilir
+  bindTabReorder(g) {
+    const clear = () => { for (const b of g.tabbar.querySelectorAll('.drop-l, .drop-r')) b.classList.remove('drop-l', 'drop-r'); };
+    // İmlecin konumuna göre önüne bırakılacak sekme (null = sona)
+    const slot = (e) => {
+      const btns = [...g.tabbar.querySelectorAll('.tab')];
+      for (const b of btns) { const r = b.getBoundingClientRect(); if (e.clientX < r.left + r.width / 2) return { btn: b, before: this.tabs.find((t) => t.id === b.dataset.id) }; }
+      return { btn: btns[btns.length - 1] || null, before: null };
+    };
+    g.tabbar.addEventListener('dragover', (e) => {
+      if (![...e.dataTransfer.types].includes('x-tab')) return;
+      e.preventDefault(); e.stopPropagation();
+      e.dataTransfer.dropEffect = 'move';
+      this.dropHint.style.display = 'none';
+      clear();
+      const { btn, before } = slot(e);
+      if (btn) btn.classList.add(before ? 'drop-l' : 'drop-r');
+    });
+    g.tabbar.addEventListener('dragleave', (e) => { if (!g.tabbar.contains(e.relatedTarget)) clear(); });
+    g.tabbar.addEventListener('drop', (e) => {
+      if (![...e.dataTransfer.types].includes('x-tab')) return;
+      e.preventDefault(); e.stopPropagation();
+      const { before } = slot(e);
+      clear();
+      const tab = this.tabs.find((t) => t.id === e.dataTransfer.getData('x-tab'));
+      if (tab) this.moveTab(tab, g.i, before || null);
+    });
+    document.addEventListener('dragend', clear);
   }
 
   // Sekme veya kenar çubuğundaki oturum gruplara sürüklenebilir; bölünmemişken sağ yarıya bırakmak ekranı böler
@@ -857,6 +903,8 @@ class App {
         this.isSplit()
           ? { label: t.group === 0 ? 'Sağ tarafa taşı' : 'Sol tarafa taşı', icon: 'splitH', hint: 'Ctrl+Shift+M', action: () => this.moveTab(t, 1 - t.group) }
           : { label: 'Yana ayır (ekranı böl)', icon: 'splitH', hint: 'Ctrl+Shift+M', disabled: this.tabs.length < 2, action: () => this.moveTab(t, 1) },
+        { label: 'Sola al', icon: 'arrowLeft', hint: 'Ctrl+Shift+PgUp', disabled: this.tabsOf(t.group)[0] === t, action: () => this.shiftTab(t, -1) },
+        { label: 'Sağa al', icon: 'arrowRight', hint: 'Ctrl+Shift+PgDn', disabled: this.tabsOf(t.group).at(-1) === t, action: () => this.shiftTab(t, 1) },
         t.state === 'connected' ? { label: 'Bağlantıyı kes', icon: 'stop', action: () => t.disconnect() } : { label: 'Yeniden bağlan', icon: 'play', action: () => t.connect() },
         t.sessionId ? { label: 'Oturumu düzenle…', icon: 'edit', action: () => { const s = this.sessions.find((x) => x.id === t.sessionId); if (s) this.editSession(s); } } : null,
         !t.sessionId ? { label: 'Oturum olarak kaydet…', icon: 'server', action: () => this.newSession({ ...t.quick, authType: 'auto' }) } : null,
@@ -1035,6 +1083,7 @@ class App {
         else if (k === 'l') this.quickInput.focus();
         else if (k === 'm') this.moveActiveSide();
         else if (k === 'tab' && list.length) this.activate(list[(i - 1 + list.length) % list.length]);
+        else if (k === 'pageup' || k === 'pagedown') this.shiftTab(this.active, k === 'pageup' ? -1 : 1);
         return;
       }
       if (e.altKey && e.shiftKey && k.startsWith('arrow')) {
