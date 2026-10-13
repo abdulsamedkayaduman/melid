@@ -1,0 +1,25 @@
+# SSHDeck eşitleme sunucusu — Dokploy (Docker Compose) veya düz `docker compose up -d`
+#
+# Dokploy: Compose Path = ./server/docker-compose.yml
+#   Environment sekmesi: SSHDECK_SYNC_INVITE=<uzun rastgele kod>
+#   Domains sekmesi: servis "sync", port 3150, HTTPS açık (Let's Encrypt)
+# Ayrıntı: docs/senkron.md
+services:
+  sync:
+    build: .
+    restart: unless-stopped
+    environment:
+      # Hesap açmak için davet kodu. Boşsa yeni hesap açılamaz (mevcut hesaplar çalışır).
+      SSHDECK_SYNC_INVITE: ${SSHDECK_SYNC_INVITE:-}
+      # Traefik (Dokploy) arkasında istemci IP'si X-Forwarded-For'dan alınır (deneme sınırı için)
+      TRUST_PROXY: ${TRUST_PROXY:-1}
+    expose:
+      - "3150"
+    # Ters vekil olmadan doğrudan erişmek için (Dokploy'da gerekmez):
+    # ports:
+    #   - "3150:3150"
+    volumes:
+      - sshdeck-sync-data:/data
+
+volumes:
+  sshdeck-sync-data:

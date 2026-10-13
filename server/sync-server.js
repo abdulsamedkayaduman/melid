@@ -9,6 +9,7 @@
 //   PORT (3150), HOST (0.0.0.0), DATA_DIR (./data)
 //   SSHDECK_SYNC_INVITE  hesap açmak için davet kodu (boşsa yeni hesap açılamaz)
 //   TLS_CERT / TLS_KEY   verilirse HTTPS (yoksa HTTP; internete açarken önüne TLS'li ters vekil koyun)
+//   TRUST_PROXY=1        ters vekil (Traefik/Dokploy, nginx) arkasında: istemci IP'si X-Forwarded-For'dan alınır
 const http = require('http');
 const https = require('https');
 const fs = require('fs');
@@ -20,7 +21,13 @@ const TOKEN_TTL = 365 * 24 * 3600 * 1000; // kullanıldıkça uzar
 const USER_RE = /^[a-z0-9._-]{2,40}$/;
 const B64 = (s, min, max) => typeof s === 'string' && /^[A-Za-z0-9+/=]+$/.test(s) && s.length >= min && s.length <= max;
 
-function createSyncServer({ dataDir, invite = '' }) {
+function createSyncServer({ dataDir, invite = '', trustProxy = false }) {
+  // Deneme sınırı IP başına: vekil arkasında herkes vekilin IP'siyle gelir. Vekilin eklediği en sağdaki
+  // X-Forwarded-For girdisi kullanılır (soldakileri istemci kendisi yazabilir).
+  const clientIp = (req) => {
+    const xff = trustProxy && req.headers['x-forwarded-for'];
+    return 'ip:' + (xff ? String(xff).split(',').pop().trim() : req.socket.remoteAddress);
+  };
   fs.mkdirSync(path.join(dataDir, 'vaults'), { recursive: true, mode: 0o700 });
   const file = (n) => path.join(dataDir, n);
   const load = (n, def) => { try { return JSON.parse(fs.readFileSync(file(n), 'utf8')); } catch { return def; } };
@@ -73,7 +80,7 @@ function createSyncServer({ dataDir, invite = '' }) {
 
     'POST /api/register': (req, b) => {
       if (!invite) throw new HttpError(403, 'Bu sunucuda yeni hesap açılamıyor');
-      const ip = 'ip:' + req.socket.remoteAddress;
+      const ip = clientIp(req);
       if (limited(ip)) throw new HttpError(429, 'Çok fazla deneme, biraz sonra tekrar deneyin');
       const ok = typeof b.invite === 'string' && b.invite.length === invite.length
         && crypto.timingSafeEqual(Buffer.from(b.invite), Buffer.from(invite));
@@ -91,7 +98,7 @@ function createSyncServer({ dataDir, invite = '' }) {
 
     'POST /api/login': (req, b) => {
       const u = String(b.user || '').toLowerCase();
-      const ip = 'ip:' + req.socket.remoteAddress;
+      const ip = clientIp(req);
       if (limited(ip, 'u:' + u)) throw new HttpError(429, 'Çok fazla hatalı deneme, 15 dakika sonra tekrar deneyin');
       const rec = users[u];
       const good = rec && B64(b.authKey, 40, 64)
@@ -172,7 +179,7 @@ if (require.main === module) {
   const port = Number(process.env.PORT) || 3150;
   const host = process.env.HOST || '0.0.0.0';
   const dataDir = path.resolve(process.env.DATA_DIR || path.join(__dirname, 'data'));
-  const handler = createSyncServer({ dataDir, invite: process.env.SSHDECK_SYNC_INVITE || '' });
+  const handler = createSyncServer({ dataDir, invite: process.env.SSHDECK_SYNC_INVITE || '', trustProxy: /^(1|true|yes)$/i.test(process.env.TRUST_PROXY || '') });
   const tls = process.env.TLS_CERT && process.env.TLS_KEY;
   const srv = tls
     ? https.createServer({ cert: fs.readFileSync(process.env.TLS_CERT), key: fs.readFileSync(process.env.TLS_KEY) }, handler)

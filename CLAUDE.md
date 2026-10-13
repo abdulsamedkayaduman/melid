@@ -44,7 +44,7 @@ src/main/updater.js      Güncelleme: imzalı latest.json (Forgejo generic paket
                          taşınabilir exe (cmd betiği), AppImage (yerine yaz), pacman (pkexec). Yayın: ci/publish-update.sh
 src/main/sync.js         Hesap eşitlemesi (AccountSync): giriş/kayıt/çıkış/parola değişimi, uçtan uca şifreli kasa,
                          syncNow() (al -> mergeVaults -> uygula -> 409'da yeniden dene). store.onChange ile tetiklenir.
-                         Sunucu: server/sync-server.js (bağımsız, bağımlılıksız). Ayrıntı ve güvenlik modeli: docs/senkron.md
+                         Sunucu: server/sync-server.js (bağımsız, bağımlılıksız; server/Dockerfile + docker-compose.yml, Dokploy). Ayrıntı ve güvenlik modeli: docs/senkron.md
 src/main/termlog.js      Oturum kaydı: TermLogger (oturum adına göre klasör, dosya başına kabuk) + parçalı ANSI temizleyici
 src/main/keys.js         ~/.ssh anahtarlarını listeleme, ssh2 utils ile anahtar üretme (OpenSSH biçimi)
 src/main/socks.js        -D için minimal SOCKS5 (CONNECT, kimlik doğrulamasız)

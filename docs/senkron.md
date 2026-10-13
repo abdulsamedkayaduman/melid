@@ -13,11 +13,34 @@ PORT=3150 HOST=0.0.0.0 DATA_DIR=/var/lib/sshdeck-sync SSHDECK_SYNC_INVITE='uzun-
 
 - `SSHDECK_SYNC_INVITE`: hesap açmak için gereken davet kodu. Boşsa yeni hesap açılamaz (mevcutlar çalışır).
   Herkese açık sunucuda hesaplarınızı açtıktan sonra boşaltmak iyi bir fikir.
+- `TRUST_PROXY=1`: ters vekil arkasında istemci IP'si `X-Forwarded-For`'un en sağındaki girdiden alınır.
 - `TLS_CERT` / `TLS_KEY`: verilirse HTTPS dinler. Alternatif: Caddy/nginx ters vekil ya da Tailscale.
 - Sürekli çalışması için örnek systemd birimi: `server/sshdeck-sync.service`.
 - Yedek: `DATA_DIR` klasörünü yedeklemek yeter (`users.json`, `tokens.json`, `vaults/`, `secret.json`).
 
 Uygulamada: araç çubuğundaki bulut düğmesi → **Hesap oluştur** (ilk cihaz, davet kodu ile) → diğer cihazlarda **Giriş yap**.
+
+## Docker / Dokploy
+
+`server/` içinde `Dockerfile` (node:22-alpine, root olmayan kullanıcı, sağlık kontrolü) ve `docker-compose.yml` var.
+Veriler `sshdeck-sync-data` adlı birimde (`/data`) durur; yeniden dağıtımda kaybolmaz.
+
+**Dokploy:**
+1. Create Service > **Compose** (Docker Compose). Kaynak: bu Forgejo deposu (Git sağlayıcısı veya SSH anahtarıyla Git),
+   dal `main`, **Compose Path** `./server/docker-compose.yml`.
+2. **Environment**: `SSHDECK_SYNC_INVITE=<uzun rastgele kod>` (ör. `openssl rand -base64 24`).
+3. **Domains**: alan adı, servis `sync`, container port `3150`, HTTPS açık (Let's Encrypt).
+4. **Deploy**. Kontrol: `https://<alan-adı>/api/info` -> `{"app":"SSHDeck","api":1,"register":true}`.
+5. Uygulamada sunucu olarak `https://<alan-adı>` girilir.
+
+`TRUST_PROXY=1` compose'ta varsayılan: Traefik arkasında deneme sınırı gerçek istemci IP'siyle çalışır.
+Ters vekil olmadan doğrudan açacaksanız `TRUST_PROXY=0` yapın (yoksa istemci başlığı taklit ederek sınırı aşabilir)
+ve compose'taki `ports` satırını açın.
+
+Düz Docker: `cd server && SSHDECK_SYNC_INVITE=... docker compose up -d --build`.
+
+Yedek: `docker run --rm -v <proje>_sshdeck-sync-data:/d -v $PWD:/b alpine tar czf /b/sshdeck-sync.tgz -C /d .`
+(birim adı `docker volume ls` ile görülür; Dokploy proje adını önek yapar).
 
 ## Güvenlik modeli
 
