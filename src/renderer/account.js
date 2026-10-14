@@ -35,7 +35,7 @@ async function loginDialog(app, { reauth } = {}) {
   try { lastServer = localStorage.getItem('syncServer') || ''; lastUser = localStorage.getItem('syncUser') || ''; } catch {}
   if (reauth) { lastServer = reauth.server; lastUser = reauth.user; }
   const f = {
-    server: h('input.input', { type: 'text', value: lastServer, placeholder: 'örn. 192.168.1.50:3150 veya https://senkron.ornek.com', spellcheck: false }),
+    server: h('input.input', { type: 'text', value: lastServer, placeholder: 'örn. 192.168.1.50 veya https://senkron.ornek.com', spellcheck: false }),
     user: h('input.input', { type: 'text', value: lastUser, spellcheck: false, autocapitalize: 'off' }),
     password: h('input.input', { type: 'password' }),
     password2: h('input.input', { type: 'password' }),
@@ -45,6 +45,24 @@ async function loginDialog(app, { reauth } = {}) {
   const field = (label, control, cls) => h('label.field' + (cls || ''), null, h('span', null, label), control);
   const warn = h('div.hint.warn', { hidden: true }, 'Bu adres internette ve şifresiz (http). Kasa uçtan uca şifreli olsa da giriş bilgisi ağda açık gider; https kullanın.');
   const err = h('div.upd-err');
+  // Yerel ağ taraması: alt ağdaki adreslerde 3150 portu açık SSHDeck sunucusu aranır
+  const found = h('div.scan-list', { hidden: true });
+  const scanBtn = h('button.btn', { type: 'button', title: 'Yerel ağdaki adreslerde 3150 portunu tarar', onclick: () => scan() }, icon('search', 14), 'Yerel ağda ara');
+  const scan = async () => {
+    scanBtn.disabled = true;
+    found.hidden = false;
+    found.replaceChildren(h('div.hint', null, 'Yerel ağ taranıyor (port 3150)…'));
+    try {
+      const list = await api.account.scan();
+      found.replaceChildren(...(list.length ? list.map((x) => h('button.scan-item', {
+        type: 'button',
+        onclick: () => { f.server.value = x.server; checkWarn(); found.hidden = true; (f.user.value ? f.password : f.user).focus(); },
+      }, h('b', null, x.server.replace(/^http:\/\//, '')), h('span.hint', null, x.host === '127.0.0.1' ? 'bu bilgisayar' : x.register ? 'hesap açılabilir' : 'yalnız giriş')))
+        : [h('div.hint', null, 'Yerel ağda eşitleme sunucusu bulunamadı. Sunucu başka bir portta ya da internetteyse adresi elle yazın.')]));
+    } catch (e) {
+      found.replaceChildren(h('div.upd-err', null, cleanErr(e)));
+    } finally { scanBtn.disabled = false; }
+  };
   const regOnly = [field('Parola (tekrar)', f.password2, '.reg-only'), field('Davet kodu', f.invite, '.reg-only')];
   const modeBtns = {
     login: h('button.seg', { type: 'button', onclick: () => setMode('login') }, 'Giriş yap'),
@@ -54,7 +72,7 @@ async function loginDialog(app, { reauth } = {}) {
   const body = h('div.account', null,
     reauth ? null : h('div.segs', null, modeBtns.login, modeBtns.register),
     intro,
-    field('Sunucu', f.server), warn,
+    h('label.field', null, h('span', null, 'Sunucu'), h('div.row', null, f.server, scanBtn)), found, warn,
     field('Kullanıcı adı', f.user),
     field('Hesap parolası', f.password),
     ...regOnly,

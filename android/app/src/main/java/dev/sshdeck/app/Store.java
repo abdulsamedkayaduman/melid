@@ -25,21 +25,33 @@ import javax.crypto.SecretKey;
 import javax.crypto.spec.GCMParameterSpec;
 
 import dev.sshdeck.core.Backup;
+import dev.sshdeck.core.SyncCore;
 
 /**
  * Kalıcı veri: sessions.json / settings.json / known_hosts.json / keys.json (uygulamanın özel klasöründe).
  * Sırlar (parola, anahtar parolası, özel anahtar) Android Keystore'daki AES anahtarıyla şifrelenir;
  * arayüze (WebView) asla gönderilmez, yalnızca has_password gibi bayraklar gider.
  */
-public class Store {
+public class Store implements SyncCore.Local {
     static final String[] SECRET_FIELDS = {"password", "passphrase"};
     static final String KS_ALIAS = "sshdeck-secrets";
+    /** Hesapla eşitlenen ayarlar (masaüstüyle ortak anlamı olanlar). Gerisi (arayüz teması, yazı boyutu…) cihaza özgü. */
+    static final String[] SYNC_SETTINGS = {"snippets", "theme", "savePrompted", "confirmClose", "autoReconnect", "cursorBlink"};
+    /** Oturumda cihaza özgü alanlar: keyId bu cihazın keys.json'una işaret eder; localDir masaüstünün yerel klasörü */
+    static final String[] LOCAL_SESSION_FIELDS = {"keyId", "localDir"};
 
     final File dir;
     JSONArray sessions;
     JSONObject settings;
     JSONObject known;
     JSONArray keys;
+    /**
+     * Eşitleme durumu (sync.json): deleted (id -> silme zamanı), settings (hesaptaki ayar bloğu: {data, mtime};
+     * masaüstünün ayarları da içinde, burada yalnız SYNC_SETTINGS değişir), account (jeton ve VK Keystore ile şifreli).
+     */
+    JSONObject sync;
+    /** Eşitlenen bir veri değişince (AccountSync.schedule) */
+    volatile Runnable onChange;
 
     public Store(Context ctx) {
         dir = ctx.getFilesDir();
@@ -47,6 +59,15 @@ public class Store {
         settings = loadObj("settings.json");
         known = loadObj("known_hosts.json");
         keys = loadArr("keys.json");
+        sync = loadObj("sync.json");
+        try {
+            if (!sync.has("deleted")) sync.put("deleted", new JSONObject());
+        } catch (JSONException ignored) { }
+    }
+
+    void changed() {
+        Runnable r = onChange;
+        if (r != null) try { r.run(); } catch (Exception ignored) { }
     }
 
     // ------------------------------------------------------------------ files
@@ -175,19 +196,27 @@ public class Store {
             String v = input.isNull(f) ? "" : input.optString(f);
             if (v.isEmpty()) next.remove(f); else next.put(f, enc(v));
         }
+        next.put("mtime", System.currentTimeMillis());
         if (idx >= 0) sessions.put(idx, next); else sessions.put(next);
         save("sessions.json", sessions);
+        if (!next.optBoolean("temporary")) changed();
         return id;
     }
 
     public synchronized void deleteSession(String id) throws JSONException {
         int idx = indexOf(sessions, id);
+        long now = System.currentTimeMillis();
+        boolean temp = idx >= 0 && sessions.getJSONObject(idx).optBoolean("temporary");
         if (idx >= 0) sessions.remove(idx);
         for (int i = 0; i < sessions.length(); i++) {
             JSONObject s = sessions.getJSONObject(i);
-            if (id.equals(s.optString("jumpHostId"))) s.remove("jumpHostId");
+            if (id.equals(s.optString("jumpHostId"))) { s.remove("jumpHostId"); s.put("mtime", now); }
         }
         save("sessions.json", sessions);
+        if (idx < 0 || temp) return; // geçici (hızlı bağlan) oturumlar eşitlenmez
+        sync.getJSONObject("deleted").put(id, now);
+        save("sync.json", sync);
+        changed();
     }
 
     /** Sırları çözülmüş oturum (yalnızca native tarafta kullanılır). */
@@ -218,11 +247,138 @@ public class Store {
 
     // ------------------------------------------------------------------ settings
     public synchronized void saveSettings(JSONObject patch) throws JSONException {
+        boolean synced = false;
+        JSONObject blob = settingsBlob();
         for (Iterator<String> it = patch.keys(); it.hasNext(); ) {
             String k = it.next();
-            settings.put(k, patch.get(k));
+            Object v = patch.get(k);
+            if (isSyncSetting(k) && !SyncCore.canon(v).equals(SyncCore.canon(settings.opt(k)))) {
+                blob.getJSONObject("data").put(k, v);
+                synced = true;
+            }
+            settings.put(k, v);
         }
         save("settings.json", settings);
+        if (synced) {
+            blob.put("mtime", System.currentTimeMillis());
+            sync.put("settings", blob);
+            save("sync.json", sync);
+            changed();
+        }
+    }
+
+    static boolean isSyncSetting(String k) {
+        for (String f : SYNC_SETTINGS) if (f.equals(k)) return true;
+        return false;
+    }
+
+    /** Hesaptaki ayar bloğu; henüz yoksa bu cihazın eşitlenen ayarlarından (mtime 0: hesaptaki her ayar kazanır) */
+    JSONObject settingsBlob() throws JSONException {
+        JSONObject b = sync.optJSONObject("settings");
+        if (b != null && b.optJSONObject("data") != null) return new JSONObject(b.toString());
+        JSONObject data = new JSONObject();
+        for (String k : SYNC_SETTINGS) if (settings.has(k)) data.put(k, settings.get(k));
+        return new JSONObject().put("data", data).put("mtime", 0);
+    }
+
+    // ------------------------------------------------------------------ hesap eşitlemesi (SyncCore.Local)
+    @Override public synchronized JSONObject account() {
+        JSONObject a = sync.optJSONObject("account");
+        if (a == null) return null;
+        try {
+            return new JSONObject().put("server", a.optString("server")).put("user", a.optString("user"))
+                    .put("version", a.optLong("version")).put("lastSync", a.optLong("lastSync"));
+        } catch (JSONException e) {
+            return null;
+        }
+    }
+
+    @Override public synchronized String token() {
+        JSONObject a = sync.optJSONObject("account");
+        return a == null ? null : dec(a.opt("token"));
+    }
+
+    @Override public synchronized byte[] vk() {
+        JSONObject a = sync.optJSONObject("account");
+        String v = a == null ? null : dec(a.opt("vk"));
+        return v == null ? null : Base64.decode(v, Base64.NO_WRAP);
+    }
+
+    @Override public synchronized void setAccount(JSONObject acc, String token, byte[] vk) {
+        try {
+            if (acc == null) sync.remove("account");
+            else sync.put("account", new JSONObject(acc.toString()).put("token", enc(token)).put("vk", enc(Base64.encodeToString(vk, Base64.NO_WRAP))));
+        } catch (JSONException ignored) { }
+        save("sync.json", sync);
+    }
+
+    @Override public synchronized void setVersion(long version, long lastSync) {
+        JSONObject a = sync.optJSONObject("account");
+        if (a == null) return;
+        try { a.put("version", version).put("lastSync", lastSync); } catch (JSONException ignored) { }
+        save("sync.json", sync);
+    }
+
+    @Override public synchronized void firstDevice() {
+        try {
+            JSONObject b = settingsBlob();
+            if (b.optLong("mtime") == 0) { b.put("mtime", System.currentTimeMillis()); sync.put("settings", b); save("sync.json", sync); }
+        } catch (JSONException ignored) { }
+    }
+
+    @Override public synchronized JSONObject snapshot() throws Exception {
+        JSONObject ss = new JSONObject();
+        for (int i = 0; i < sessions.length(); i++) {
+            JSONObject s = sessions.getJSONObject(i);
+            if (s.optBoolean("temporary")) continue;
+            JSONObject o = new JSONObject(s.toString());
+            for (String f : LOCAL_SESSION_FIELDS) o.remove(f);
+            for (String f : SECRET_FIELDS) {
+                o.remove(f);
+                String v = dec(s.opt(f));
+                if (v != null && !v.isEmpty()) o.put(f, v);
+            }
+            o.put("mtime", s.optLong("mtime"));
+            ss.put(s.getString("id"), o);
+        }
+        return new JSONObject().put("sessions", ss).put("deleted", new JSONObject(sync.getJSONObject("deleted").toString())).put("settings", settingsBlob());
+    }
+
+    /** Birleştirilmiş kasayı uygular; onChange tetiklenmez (eşitlemenin kendi yazması). */
+    @Override public synchronized void apply(JSONObject v) throws Exception {
+        JSONArray next = new JSONArray();
+        JSONObject vs = v.getJSONObject("sessions");
+        for (Iterator<String> it = vs.keys(); it.hasNext(); ) {
+            String id = it.next();
+            JSONObject o = new JSONObject(vs.getJSONObject(id).toString());
+            o.put("id", id);
+            for (String f : SECRET_FIELDS) {
+                String sec = o.has(f) && !o.isNull(f) ? o.optString(f) : "";
+                o.remove(f);
+                if (!sec.isEmpty()) o.put(f, enc(sec));
+            }
+            int old = indexOf(sessions, id);
+            if (old >= 0) for (String f : LOCAL_SESSION_FIELDS) {
+                JSONObject prev = sessions.getJSONObject(old);
+                if (prev.has(f)) o.put(f, prev.get(f));
+            }
+            next.put(o);
+        }
+        // hızlı bağlan oturumları kasada yok; bu cihazda kalır
+        for (int i = 0; i < sessions.length(); i++) if (sessions.getJSONObject(i).optBoolean("temporary")) next.put(sessions.getJSONObject(i));
+        sessions = next;
+        save("sessions.json", sessions);
+        JSONObject rs = v.optJSONObject("settings");
+        JSONObject mine = settingsBlob();
+        // birleştirmenin seçtiği blok bu cihazınkinden farklıysa (daha yeni ya da eşit zamanda seçilen) benimsenir
+        if (rs != null && rs.optJSONObject("data") != null && !SyncCore.canon(rs).equals(SyncCore.canon(mine))) {
+            JSONObject data = rs.getJSONObject("data");
+            for (String k : SYNC_SETTINGS) if (data.has(k)) settings.put(k, data.get(k));
+            save("settings.json", settings);
+            sync.put("settings", new JSONObject(rs.toString()));
+        }
+        sync.put("deleted", new JSONObject(v.getJSONObject("deleted").toString()));
+        save("sync.json", sync);
     }
 
     // ------------------------------------------------------------------ known hosts

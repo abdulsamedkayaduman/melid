@@ -30,6 +30,7 @@ public class App extends Application implements Host {
     SshCore core;
     Sftp sftp;
     Forwards fwd;
+    AccountSync sync;
     volatile Bridge bridge;
     final Handler main = new Handler(Looper.getMainLooper());
 
@@ -44,6 +45,10 @@ public class App extends Application implements Host {
         core = new SshCore(this);
         sftp = new Sftp(core);
         fwd = new Forwards(core);
+        String ver = "?";
+        try { ver = getPackageManager().getPackageInfo(getPackageName(), 0).versionName; } catch (Exception ignored) { }
+        sync = new AccountSync(this, ver);
+        sync.start();
         watchNetwork();
         try { Updater.schedule(this); } catch (Exception ignored) { }
     }
@@ -58,6 +63,7 @@ public class App extends Application implements Host {
                 @Override public void onAvailable(android.net.Network n) {
                     if (last != null && !n.equals(last)) core.probeAll(8000);
                     last = n;
+                    main.postDelayed(sync::maybeSync, 3000);
                 }
             });
         } catch (Exception ignored) { }

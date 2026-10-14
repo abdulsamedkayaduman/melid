@@ -31,6 +31,8 @@ Android 10 (API 29) ve üzeri desteklenir.
 - Sunucu durumu (CPU, bellek, disk, ağ, yük)
 - Hazır komutlar, SSH anahtarı üretme/içe aktarma, açık anahtarı sunucuya yükleme (ssh-copy-id)
 - Masaüstü yedeği (Ayarlar > Yedekle) içe aktarma ve masaüstüyle uyumlu yedek dışa aktarma
+- Hesap ve eşitleme (Ayarlar > Hesap ve eşitleme): masaüstüyle aynı uçtan uca şifreli hesap; oturumlar, parolalar,
+  hazır komutlar iki yönlü eşitlenir. **Yerel ağda ara** Wi-Fi'deki 3150 portlu sunucuları bulur (`docs/senkron.md`)
 - 8 arayüz teması + 5 terminal teması (masaüstüyle aynı)
 
 Sırlar (parolalar, anahtar parolaları, özel anahtarlar) Android Keystore'daki AES anahtarıyla şifrelenir
@@ -74,19 +76,22 @@ app/src/main/java/dev/sshdeck/core/   Android'den bağımsız SSH çekirdeği (J
   Forwards.java   -L / -R / -D (SOCKS5)
   Keys.java       anahtar üretme (Ed25519: BouncyCastle, OpenSSH biçimi) ve içe aktarılan anahtarı doğrulama
   Backup.java     masaüstü yedeği şifrelemesi (PBKDF2-SHA512 + AES-256-GCM, store.js ile aynı)
+  SyncCore.java   hesap eşitlemesi istemcisi (sync.js + mergeVaults ile aynı protokol), yerel ağ taraması
   Host.java       platform kancaları (olay, soru, oturum, bilinen sunucular, anahtarlar)
 app/src/main/java/dev/sshdeck/app/
   App.java        süreç ömürlü nesneler, Host uygulaması, ağ değişimi izleme
   MainActivity    WebView (https://appassets.androidplatform.net/ -> assets/www), kenar boşlukları/klavye,
                   terminal odaktayken klavyeyi "görünür parola" kipine alma (öneri/otomatik düzeltme yok)
   Bridge.java     JS köprüsü: SSHDeckNative.call(id, metot, json) -> window.__nreply; olaylar window.__nevent
-  Store.java      sessions/settings/known_hosts/keys .json; sırlar Android Keystore ile şifreli
+  Store.java      sessions/settings/known_hosts/keys/sync .json; sırlar Android Keystore ile şifreli; SyncCore.Local
+  AccountSync     eşitleme zamanlaması (değişiklikten 2 sn sonra, 5 dk'da bir, uygulamaya dönünce, ağ değişince)
   SshService      ön plan servisi (açık bağlantı varken)
 app/src/main/assets/www/   arayüz (bundler yok, ES modülleri)
   app.js      ana ekran, sekmeler, gezinme, olay yönlendirme      tab.js     SessionTab (bağlantı yaşam döngüsü)
   term.js     dokunmatik terminal (giriş, ek tuşlar, hareketler)  files.js   SFTP
   screens.js  oturum düzenleyici, ayarlar, anahtarlar, …          dialogs.js alt sayfalar, sorular, temalar
   native.js   köprü sarmalayıcısı                                 mock.js    tarayıcıda geliştirme için sahte köprü
+  account.js  hesap: giriş / hesap oluştur / yerel ağda ara / durum
 ```
 
 Arayüzü tarayıcıda denemek: `assets/www` klasörünü herhangi bir statik sunucuyla açın

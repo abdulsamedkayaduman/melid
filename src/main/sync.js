@@ -6,6 +6,8 @@
 // Kasa anahtarı (VK) rastgele 32 bayt; sunucuda wrapKey ile şifreli (wrappedKey) durur.
 // Kasa = { sessions, deleted, settings } JSON'u, VK ile AES-256-GCM. Parola değişince yalnız VK yeniden sarılır.
 const crypto = require('crypto');
+const net = require('net');
+const os = require('os');
 const { EventEmitter } = require('events');
 const { mergeVaults, sortedJson, encWithKey, decWithKey } = require('./store');
 
@@ -18,17 +20,72 @@ async function deriveKeys(password, saltB64, iter = KDF_ITER) {
   return { authKey: sub('sshdeck-auth').toString('base64'), wrapKey: sub('sshdeck-wrap') };
 }
 
+const DEFAULT_PORT = 3150;
+
 const normServer = (s) => {
   let u = String(s || '').trim();
   if (!u) throw new Error('Sunucu adresi gerekli');
-  if (!/^https?:\/\//i.test(u)) u = 'http://' + u;
+  // Şemasız ve portsuz adres (ör. 192.168.1.50): varsayılan sunucu portu
+  if (!/^https?:\/\//i.test(u)) u = 'http://' + u.replace(/^(\[[^\]]+\]|[^:/[]+)(?=\/|$)/, '$1:' + DEFAULT_PORT);
   try { u = new URL(u).origin; } catch { throw new Error('Sunucu adresi geçersiz'); }
   return u;
 };
 
+// 192.168.x.y gibi yerel IPv4 ağları; Docker köprüleri dahil (aynı makinedeki konteyner sunucusu bulunur)
+const PRIVATE_V4 = /^(10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/;
+
+/** Taranacak adresler: her yerel ağ arabiriminin alt ağı (en fazla /24; büyük ağlarda kendi /24'ü) + bu makine. */
+function lanTargets(ifaces = os.networkInterfaces()) {
+  const out = new Set(['127.0.0.1']);
+  const toInt = (ip) => ip.split('.').reduce((a, x) => (a << 8 >>> 0) + Number(x), 0) >>> 0;
+  const toIp = (n) => [n >>> 24, (n >>> 16) & 255, (n >>> 8) & 255, n & 255].join('.');
+  for (const list of Object.values(ifaces)) {
+    for (const a of list || []) {
+      if (a.family !== 'IPv4' && a.family !== 4) continue;
+      if (a.internal || !PRIVATE_V4.test(a.address)) continue;
+      const prefix = Math.max(24, Number(String(a.cidr || '').split('/')[1]) || 24);
+      const mask = prefix === 32 ? 0xffffffff : (0xffffffff << (32 - prefix)) >>> 0;
+      const base = (toInt(a.address) & mask) >>> 0;
+      const size = 2 ** (32 - prefix);
+      for (let i = 1; i < size - 1; i++) out.add(toIp(base + i));
+    }
+  }
+  return [...out];
+}
+
+/**
+ * Yerel ağda eşitleme sunucusu arar: portu açık adreslere /api/info sorulur.
+ * Sonuç: [{ server: 'http://192.168.1.50:3150', host, register }] (adrese göre sıralı)
+ */
+async function scanLan({ port = DEFAULT_PORT, targets = lanTargets(), timeout = 900, concurrency = 96, fetchImpl = globalThis.fetch } = {}) {
+  const open = (host) => new Promise((res) => {
+    const s = net.connect({ host, port });
+    const done = (ok) => { s.destroy(); res(ok); };
+    s.setTimeout(timeout, () => done(false));
+    s.once('connect', () => done(true));
+    s.once('error', () => done(false));
+  });
+  const found = [];
+  const queue = [...targets];
+  const worker = async () => {
+    for (let host; (host = queue.shift()) !== undefined;) {
+      if (!(await open(host))) continue;
+      try {
+        const r = await fetchImpl(`http://${host}:${port}/api/info`, { signal: AbortSignal.timeout(3000) });
+        const info = await r.json();
+        if (info && info.app === 'SSHDeck') found.push({ server: `http://${host}:${port}`, host, register: !!info.register });
+      } catch {}
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(concurrency, queue.length) }, worker));
+  const key = (h) => h.split('.').map((x) => x.padStart(3, '0')).join('.');
+  return found.sort((a, b) => key(a.host).localeCompare(key(b.host)));
+}
+
 class AccountSync extends EventEmitter {
-  constructor(store, { fetchImpl = globalThis.fetch, interval = 5 * 60000, debounce = 2000 } = {}) {
+  constructor(store, { fetchImpl = globalThis.fetch, interval = 5 * 60000, debounce = 2000, client = '' } = {}) {
     super();
+    this.client = client; // sunucu istatistiklerinde görünen istemci adı (ör. "SSHDeck 1.5.0 linux")
     this.store = store;
     this.fetch = fetchImpl;
     this.interval = interval;
@@ -57,7 +114,7 @@ class AccountSync extends EventEmitter {
     try {
       res = await this.fetch(server + path, {
         method,
-        headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: 'Bearer ' + token } : {}) },
+        headers: { 'Content-Type': 'application/json', ...(this.client ? { 'X-SSHDeck-Client': this.client } : {}), ...(token ? { Authorization: 'Bearer ' + token } : {}) },
         body: body ? JSON.stringify(body) : undefined,
         signal: AbortSignal.timeout(20000),
       });
@@ -211,4 +268,4 @@ class AccountSync extends EventEmitter {
   }
 }
 
-module.exports = { AccountSync, deriveKeys, normServer, KDF_ITER };
+module.exports = { AccountSync, deriveKeys, normServer, scanLan, lanTargets, KDF_ITER };

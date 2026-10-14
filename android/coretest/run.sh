@@ -39,11 +39,16 @@ CFG
 /usr/sbin/sshd -f $W/sshd_config -E $ABS/sshd.log
 node pwserver.js > $W/pwserver.log 2>&1 &
 PW=$!
-trap 'kill $(cat $W/sshd.pid) 2>/dev/null; kill $PW 2>/dev/null' EXIT
+# hesap eşitlemesi: gerçek sunucu (SyncTest + sync-desktop.js)
+SYNC_PORT=3157
+rm -rf $W/syncdata
+PORT=$SYNC_PORT HOST=127.0.0.1 DATA_DIR=$W/syncdata SSHDECK_SYNC_INVITE=davet node ../../server/sync-server.js > $W/sync.log 2>&1 &
+SY=$!
+trap 'kill $(cat $W/sshd.pid) 2>/dev/null; kill $PW $SY 2>/dev/null' EXIT
 sleep 0.5
 
 rm -rf $W/classes && mkdir -p $W/classes
-javac -nowarn -encoding UTF-8 -d $W/classes -cp "$CP" ../app/src/main/java/dev/sshdeck/core/*.java CoreTest.java
+javac -nowarn -encoding UTF-8 -d $W/classes -cp "$CP" ../app/src/main/java/dev/sshdeck/core/*.java CoreTest.java SyncTest.java
 # masaüstü store.js ile şifreli yedek üret -> Java çözer; Java'nın şifrelediğini Node çözer
 node -e '
 const fs=require("fs"),os=require("os"),path=require("path");
@@ -63,3 +68,9 @@ const out=Buffer.concat([d.update(buf.subarray(28)),d.final()]).toString();
 if(out!=="geri-dönüş") { console.error("Node, Java şifrelemesini çözemedi"); process.exit(1); }
 console.log("  ✓ Java yedek şifrelemesi masaüstünde çözülüyor");
 ' "$W"
+
+# hesap eşitlemesi: masaüstü hesap açar -> Android (Java) girer, değiştirir, kendi hesabını açar -> masaüstü doğrular
+S=http://127.0.0.1:$SYNC_PORT
+node sync-desktop.js pre "$ABS" $S
+java -cp "$W/classes:$CP" SyncTest "$ABS" $S $SYNC_PORT
+node sync-desktop.js post "$ABS" $S

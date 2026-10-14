@@ -1,9 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Varsayılan: şifresiz HTTP kapalı. İstisna: güncelleme sunucusu (ev ağındaki Forgejo, yalnız HTTP).
-     İçerik Ed25519 imzalı (Updater.java), APK ayrıca Android'in imza kontrolünden geçer. -->
-<network-security-config>
-    <base-config cleartextTrafficPermitted="false" />
-    <domain-config cleartextTrafficPermitted="true">
-        <domain includeSubdomains="false">192.168.1.50</domain>
-    </domain-config>
+<!-- Şifresiz HTTP'ye ağ katmanında izin verilir; uygulama kendisi sınırlar:
+     - güncelleme: ev ağındaki Forgejo (yalnız HTTP). İçerik Ed25519 imzalı (Updater.java), APK ayrıca imza kontrolünden geçer.
+     - hesap eşitlemesi: yerel ağdaki sunucular (tarama ile bulunur, IP'ler önceden bilinemez). SyncCore, http'yi yalnız
+       yerel ağ / Tailscale adreslerine izin verir; internetteki sunucu için https şarttır. Kasa ayrıca uçtan uca şifreli.
+     WebView yalnız uygulama içi dosyaları yükler; SSH bağlantıları bu ayardan etkilenmez. -->
+<network-security-config xmlns:tools="http://schemas.android.com/tools">
+    <base-config cleartextTrafficPermitted="true" tools:ignore="InsecureBaseConfiguration" />
 </network-security-config>

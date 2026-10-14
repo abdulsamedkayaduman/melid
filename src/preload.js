@@ -27,6 +27,7 @@ contextBridge.exposeInMainWorld('api', {
   },
   account: {
     status: inv('account:status'),
+    scan: inv('account:scan'),
     register: inv('account:register'),
     login: inv('account:login'),
     logout: inv('account:logout'),

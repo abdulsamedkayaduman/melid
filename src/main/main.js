@@ -12,7 +12,7 @@ const importers = require('./importers');
 const { TermLogger } = require('./termlog');
 const keys = require('./keys');
 const updater = require('./updater');
-const { AccountSync } = require('./sync');
+const { AccountSync, scanLan } = require('./sync');
 const { spawn } = require('child_process');
 
 app.setName('SSHDeck');
@@ -480,6 +480,7 @@ function registerIpc() {
     return account.status();
   };
   h('account:status', () => account.status());
+  h('account:scan', () => scanLan());
   h('account:register', (o) => accountCall(() => account.register(o)));
   h('account:login', (o) => accountCall(() => account.login(o)));
   h('account:logout', async () => { await account.logout(); return account.status(); });
@@ -724,7 +725,7 @@ app.whenReady().then(() => {
       send('sessions:updated', store.publicSessions(), err);
     },
   });
-  account = new AccountSync(store);
+  account = new AccountSync(store, { client: `SSHDeck ${app.getVersion()} ${process.platform === 'win32' ? 'Windows' : 'Linux'}` });
   account.on('status', (st) => send('account:status', st));
   account.on('changed', () => { applyNativeTheme(); send('account:changed', { sessions: store.publicSessions(), settings: store.publicSettings() }); });
   registerIpc();

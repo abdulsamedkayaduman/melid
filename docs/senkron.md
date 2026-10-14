@@ -12,6 +12,7 @@ PORT=3150 HOST=0.0.0.0 DATA_DIR=/var/lib/sshdeck-sync SSHDECK_SYNC_INVITE='uzun-
 ```
 
 - `SSHDECK_SYNC_INVITE`: hesap açmak için gereken davet kodu. Boşsa yeni hesap açılamaz (mevcutlar çalışır).
+  Ana sayfadaki istatistiklere de bu kodla girilir; boşsa istatistik sayfası da kapanır.
   Herkese açık sunucuda hesaplarınızı açtıktan sonra boşaltmak iyi bir fikir.
 - `TRUST_PROXY=1`: ters vekil arkasında istemci IP'si `X-Forwarded-For`'un en sağındaki girdiden alınır.
 - `TLS_CERT` / `TLS_KEY`: verilirse HTTPS dinler. Alternatif: Caddy/nginx ters vekil ya da Tailscale.
@@ -19,6 +20,20 @@ PORT=3150 HOST=0.0.0.0 DATA_DIR=/var/lib/sshdeck-sync SSHDECK_SYNC_INVITE='uzun-
 - Yedek: `DATA_DIR` klasörünü yedeklemek yeter (`users.json`, `tokens.json`, `vaults/`, `secret.json`).
 
 Uygulamada: araç çubuğundaki bulut düğmesi → **Hesap oluştur** (ilk cihaz, davet kodu ile) → diğer cihazlarda **Giriş yap**.
+Android: Ayarlar → **Hesap ve eşitleme** (aynı hesap, aynı kasa).
+
+Sunucu adresinde port yazılmazsa 3150 kabul edilir (`192.168.1.50` → `http://192.168.1.50:3150`; `https://…` adreslerinde
+olduğu gibi kalır). **Yerel ağda ara** düğmesi, bu cihazın yerel IPv4 ağlarındaki (en fazla /24) adreslerde 3150 portunu
+tarar ve `/api/info` yanıtı SSHDeck olanları listeler (masaüstü: `scanLan()` sync.js, Android: `SyncCore.scan()`).
+
+## Ana sayfa / istatistikler
+
+Sunucunun kök adresi (`http://<sunucu>:3150/`) davet koduyla (`SSHDECK_SYNC_INVITE`) girilen bir istatistik paneli açar:
+hesap ve cihaz sayısı, son 7 günde etkin olanlar, toplam kasa boyutu, sunucu açıldığından beri eşitleme/giriş/hatalı giriş
+sayıları ve hesap başına son görülme, son değişiklik, kasa sürümü/boyutu, oturum açık cihazlar (istemci adı ve son görülme;
+istemciler kendini `X-SSHDeck-Client` başlığıyla tanıtır, ör. `SSHDeck 1.5.0 Android 14`). Kasa içerikleri şifreli
+olduğundan oturum adı, adres ya da parola burada hiçbir zaman görünmez. API: `POST /api/stats {invite}`; hatalı kod
+denemeleri giriş denemeleriyle aynı IP sınırına tabidir. Davet kodunu bilen herkes kullanıcı adlarını görebilir.
 
 ## Docker / Dokploy
 
@@ -61,6 +76,7 @@ kasa JSON'u ──AES-256-GCM(VK)──► sunucuda yalnız bu şifreli blob
 - Sunucu: başarısız giriş sınırı (kullanıcı ve IP başına 15 dakikada 10), olmayan kullanıcıya sahte tuz
   (hesap var mı sızmaz), sabit zamanlı karşılaştırmalar, 16 MB istek sınırı.
 - Yerel ağ dışında düz `http://` kullanılırsa giriş penceresi uyarır: kasa yine şifreli olsa da authKey ağda açık gider.
+  Android düz `http://`'yi yalnız yerel ağ / Tailscale adreslerine izin verir; internetteki sunucu için https şarttır.
 
 ## Birleştirme
 
@@ -71,6 +87,15 @@ Sunucu iyimser kilit kullanır (`baseVersion`); çakışırsa (409) istemci gün
 
 Eşitlenmeyenler (cihaza özgü): `logDir`, `logEnabled`, panel/sütun boyutları, güncelleme durumu, ana parola,
 oturumların `localDir` alanı. Liste: `LOCAL_SETTINGS`, `LOCAL_SESSION_FIELDS` (store.js).
+
+Android (`core/SyncCore.java` protokol, `app/Store.java` yerel veri, `app/AccountSync.java` zamanlama):
+- Ayarlardan yalnız `SYNC_SETTINGS` (hazır komutlar, terminal teması, `savePrompted`, `confirmClose`, `autoReconnect`,
+  `cursorBlink`) alınır/değiştirilir; hesaptaki ayar bloğu `sync.json`'da tutulur, masaüstünün diğer ayarları korunur.
+  Arayüz teması ve yazı boyutu telefona özgü kalır.
+- Oturumlarda `keyId` (telefondaki anahtar) cihaza özgüdür; masaüstünün `keyPath`'i telefonda düzenlenince silinmez.
+  Hızlı bağlan (geçici) oturumları eşitlenmez.
+- Jeton ve kasa anahtarı Android Keystore ile şifreli `sync.json`'da.
+- Uyumluluk testi: `bash android/coretest/run.sh` (masaüstü hesap açar → Java girer, değiştirir → masaüstü doğrular).
 
 Ne zaman eşitlenir: açılışta, yerel bir değişiklikten 2 sn sonra, 5 dakikada bir, pencereye dönünce
 (en fazla 30 sn'de bir), uykudan uyanınca, ana parola açılınca.

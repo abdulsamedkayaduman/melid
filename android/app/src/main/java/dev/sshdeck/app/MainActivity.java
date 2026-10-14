@@ -291,6 +291,7 @@ public class MainActivity extends Activity {
     @Override protected void onResume() {
         super.onResume();
         js("window.__nresume&&window.__nresume()");
+        App.I.sync.maybeSync();
         Updater.checkIfDue(this, () -> {
             try { App.I.emit("update", Updater.state(this)); } catch (Exception ignored) { }
         });

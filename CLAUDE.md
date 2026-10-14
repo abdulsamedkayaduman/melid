@@ -53,7 +53,9 @@ src/main/updater.js      Güncelleme: imzalı latest.json (Forgejo generic paket
                          taşınabilir exe (cmd betiği), AppImage (yerine yaz), pacman (pkexec). Yayın: ci/publish-update.sh
 src/main/sync.js         Hesap eşitlemesi (AccountSync): giriş/kayıt/çıkış/parola değişimi, uçtan uca şifreli kasa,
                          syncNow() (al -> mergeVaults -> uygula -> 409'da yeniden dene). store.onChange ile tetiklenir.
-                         Sunucu: server/sync-server.js (bağımsız, bağımlılıksız; server/Dockerfile + docker-compose.yml, Dokploy). Ayrıntı ve güvenlik modeli: docs/senkron.md
+                         scanLan(): yerel ağda 3150 portu açık sunucu arama. Sunucu: server/sync-server.js (bağımsız,
+                         bağımlılıksız; server/Dockerfile + docker-compose.yml, Dokploy); kök adreste davet koduyla
+                         girilen istatistik sayfası (HOME_PAGE, POST /api/stats). Ayrıntı ve güvenlik modeli: docs/senkron.md
 src/main/termlog.js      Oturum kaydı: TermLogger (oturum adına göre klasör, dosya başına kabuk) + parçalı ANSI temizleyici
 src/main/keys.js         ~/.ssh anahtarlarını listeleme, ssh2 utils ile anahtar üretme (OpenSSH biçimi)
 src/main/socks.js        -D için minimal SOCKS5 (CONNECT, kimlik doğrulamasız)
@@ -107,6 +109,9 @@ derlemede `../node_modules`'tan kopyalanır); SSH Java'da: JSch (mwiede) + Bounc
   Yeni çağrı: `Bridge.dispatch` içine `case` + JS'te `N.call('metot', {...})`.
 - Güncelleme: `Updater.java` (masaüstüyle aynı imzalı latest.json; JobScheduler + bildirim, PackageInstaller).
 - Sırlar Android Keystore ile şifreli (`Store.java`), WebView'a gitmez. Yedek biçimi masaüstüyle aynı (`Backup.java`).
+- Hesap eşitlemesi: `core/SyncCore.java` (sync.js + mergeVaults'un karşılığı, yerel ağ taraması), `app/AccountSync.java`
+  (zamanlama), `Store` `SyncCore.Local`'ı uygular; arayüz `www/account.js`. Masaüstüyle uyumu coretest'teki
+  `SyncTest.java` + `sync-desktop.js` gerçek sunucuya karşı sınar. Protokol değişirse ikisi birlikte değişmeli.
 - Derleme: `cd android && ./gradlew assembleRelease` (JDK 17 + SDK; `local.properties`, imza için
   `keystore.properties` + `sshdeck-release.jks` — git dışı, kaybolmamalı). Değişiklikten sonra `./gradlew lintDebug`.
 

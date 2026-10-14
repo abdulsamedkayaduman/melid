@@ -137,6 +137,17 @@ async function handle(id, m, a) {
       return null;
     }
     case 'updateCancel': mockCancel = true; return null;
+    case 'accountStatus': return db.account ? { loggedIn: true, state: 'ok', version: 3, lastSync: Date.now(), ...db.account } : { loggedIn: false, state: 'idle' };
+    case 'accountScan': await new Promise((r) => setTimeout(r, 1500)); return [{ server: 'http://192.168.1.50:3150', host: '192.168.1.50', register: true }];
+    case 'accountLogin': case 'accountRegister': {
+      await new Promise((r) => setTimeout(r, 1200));
+      if (a.password === 'yanlis') throw new Error('Kullanıcı adı veya parola yanlış');
+      db.account = { server: a.server.includes('://') ? a.server : 'http://' + a.server, user: a.user.toLowerCase() }; save();
+      return { loggedIn: true, state: 'ok', version: 1, lastSync: Date.now(), ...db.account };
+    }
+    case 'accountSync': return { loggedIn: true, state: 'ok', version: 3, lastSync: Date.now(), ...db.account };
+    case 'accountPassword': return null;
+    case 'accountLogout': delete db.account; save(); return { loggedIn: false, state: 'idle' };
     case 'appInfo': return { version: '1.0.0 (tarayıcı)', android: '-', conns: conns.size };
     default: return null;
   }

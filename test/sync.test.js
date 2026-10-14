@@ -6,7 +6,7 @@ const os = require('os');
 const path = require('path');
 const http = require('http');
 const { Store, mergeVaults } = require('../src/main/store');
-const { AccountSync } = require('../src/main/sync');
+const { AccountSync, scanLan, normServer } = require('../src/main/sync');
 const { createSyncServer } = require('../server/sync-server');
 
 const noKeyring = { available: () => false, encrypt: (s) => s, decrypt: (s) => s };
@@ -133,6 +133,41 @@ const names = (st) => st.sessions.map((s) => s.name).sort().join(',');
   const r = await fetch(`http://${server}/api/vault`, { headers: { Authorization: 'Bearer ' + tok } });
   assert.equal(r.status, 401);
   console.log('OK çıkış');
+
+  // --- ana sayfa + davet koduyla istatistik ---
+  const page = await fetch(`http://${server}/`);
+  assert.equal(page.status, 200);
+  assert.match(page.headers.get('content-type'), /text\/html/);
+  assert.match(page.headers.get('content-security-policy'), /default-src 'none'/);
+  assert.match(await page.text(), /Davet kodu/);
+  const stats = (invite) => fetch(`http://${server}/api/stats`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ invite }) });
+  assert.equal((await stats('yanlis')).status, 403);
+  const D = new AccountSync(new Store(tmp('sshdeck-dev-'), noKeyring), { client: 'SSHDeck test linux' });
+  await D.login({ server, user: 'samed', password: 'yeniParola' });
+  const st = await (await stats('davet-123')).json();
+  assert.equal(st.totals.users, 1);
+  const u = st.users[0];
+  assert.equal(u.user, 'samed');
+  assert(u.version >= 1 && u.size > 0 && u.updated > 0);
+  assert(u.devices.some((d) => d.client === 'SSHDeck test linux'), 'istemci adı kaydedildi');
+  assert(st.totals.syncs > 0 && st.totals.failedLogins > 0);
+  assert(!JSON.stringify(st).includes('web-prod'), 'istatistikte kasa içeriği yok');
+  // Davet kodu boş sunucuda istatistik kapalı
+  const closed = http.createServer(createSyncServer({ dataDir: tmp('sshdeck-srv-') }));
+  await new Promise((r) => closed.listen(0, '127.0.0.1', r));
+  assert.equal((await fetch(`http://127.0.0.1:${closed.address().port}/api/stats`, { method: 'POST', body: '{"invite":""}' })).status, 403);
+  console.log('OK ana sayfa ve istatistikler (davet koduyla)');
+
+  // --- yerel ağ taraması: portu açık olan SSHDeck sunucusu bulunur, başka hizmet ve kapalı adres atlanır ---
+  const port = srv.address().port;
+  const other = http.createServer((q, s2) => s2.end('{"app":"baska"}'));
+  await new Promise((r) => other.listen(port, '127.0.0.2', r)); // aynı portta SSHDeck olmayan hizmet
+  const found = await scanLan({ port, targets: ['127.0.0.3', '127.0.0.2', '127.0.0.1', '127.0.0.4'], timeout: 500 });
+  assert.deepEqual(found, [{ server: `http://127.0.0.1:${port}`, host: '127.0.0.1', register: true }]);
+  assert.equal(normServer('192.168.1.50'), 'http://192.168.1.50:3150', 'portsuz adrese varsayılan port');
+  assert.equal(normServer('https://senkron.ornek.com'), 'https://senkron.ornek.com');
+  other.close(); closed.close();
+  console.log('OK yerel ağ taraması');
 
   srv.close();
 })().catch((e) => { console.error(e); process.exit(1); });

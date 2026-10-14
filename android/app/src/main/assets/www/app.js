@@ -5,6 +5,7 @@ import { sheet, actionSheet, promptText, confirm, toast, handleAsk, closeTop, mo
 import { SessionTab } from './tab.js';
 import { sessionEditor, settingsView, editorView, importBackup, snippetsView } from './screens.js';
 import { updateSheet } from './update.js';
+import { accountSheet } from './account.js';
 
 class App {
   constructor() {
@@ -45,6 +46,8 @@ class App {
       try { v = await handleAsk(a, this.settings); } finally { N.answer(a.askId, v); }
     });
     N.on('stateChanged', () => this.reload());
+    N.on('account', (st) => this.setAccount(st));
+    N.call('accountStatus').then((st) => this.setAccount(st)).catch(() => {});
     N.on('allClosed', () => {
       for (const t of this.tabs) if (t.connId) t.onClosed({ c: t.connId, reason: 'user' });
     });
@@ -62,6 +65,13 @@ class App {
   }
 
   setUpdate(st) { this.update = st; this.renderHome(); }
+
+  setAccount(st) {
+    this.account = st;
+    for (const v of this.stack) v.refreshAccount?.();
+  }
+
+  accountSheet() { return accountSheet(this); }
 
   tabFor(c) { return c ? this.tabs.find((t) => t.connId === c) : null; }
 
@@ -199,7 +209,8 @@ class App {
         h('div.btns', null,
           h('button.btn.primary', { onclick: () => this.newSession() }, icon('plus', 18), 'Yeni oturum'),
           h('button.btn', { onclick: () => this.quickConnect() }, icon('bolt', 18), 'Hızlı bağlan'),
-          h('button.btn', { onclick: () => importBackup(this) }, icon('import', 18), 'Masaüstü yedeğini içe aktar'))));
+          h('button.btn', { onclick: () => importBackup(this) }, icon('import', 18), 'Masaüstü yedeğini içe aktar'),
+          this.account?.loggedIn ? null : h('button.btn', { onclick: () => this.accountSheet() }, icon('cloud', 18), 'Hesapla eşitle'))));
     } else {
       const groups = new Map();
       for (const s of list) {

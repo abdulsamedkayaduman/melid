@@ -3,6 +3,7 @@ import { h, icon, uid, formatDate } from './util.js';
 import * as N from './native.js';
 import { sheet, actionSheet, promptText, confirm, toast, THEMES, UI_THEMES } from './dialogs.js';
 import { updateSheet } from './update.js';
+import { accountSubtitle } from './account.js';
 
 const field = (label, control, hint) => h('label.field', null, h('span', null, label), control, hint ? h('small.hint', { style: { margin: 0 } }, hint) : null);
 const sw = (checked) => { const i = h('input', { type: 'checkbox', checked: !!checked }); return { input: i, el: h('label.switch', null, i, h('i')) }; };
@@ -168,13 +169,23 @@ export function settingsView(app) {
     s.el.onclick = (e) => e.stopPropagation();
     return row(ic, title, sub, s.el, () => { s.input.checked = !s.input.checked; s.input.onchange(); });
   };
+  const accSub = h('small');
+  const accRow = h('div.set-row', { onclick: () => app.accountSheet() }, icon('cloud', 22),
+    h('div.txt', null, h('b', null, 'Hesap ve eşitleme'), accSub), icon('chevron', 18));
+  const refreshAccount = () => {
+    accSub.textContent = accountSubtitle(app.account);
+    accSub.classList.toggle('warn', !!app.account && ['error', 'auth'].includes(app.account.state));
+  };
   const render = () => {
     const st = app.settings;
+    refreshAccount();
     const uiKey = UI_THEMES[st.uiTheme] ? st.uiTheme : 'dark';
     const fs = st.fontSize || 13;
     const fsVal = h('b', { style: { minWidth: '28px', textAlign: 'center' } }, String(fs));
     const setFs = (d) => { const n = Math.max(7, Math.min(30, (app.settings.fontSize || 13) + d)); app.saveSettings({ fontSize: n }); fsVal.textContent = n; };
     body.replaceChildren(
+      h('div.sec-title', null, 'Hesap'),
+      h('div.set-card', null, accRow),
       h('div.sec-title', null, 'Görünüm'),
       h('div.set-card', null,
         h('div', { style: { padding: '12px 16px 4px', fontWeight: 500 } }, 'Arayüz teması'),
@@ -216,6 +227,7 @@ export function settingsView(app) {
   return {
     el: h('div.view', null, topbar(app, 'Ayarlar'), body),
     refresh: render,
+    refreshAccount,
   };
 }
 
