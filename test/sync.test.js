@@ -88,9 +88,11 @@ const names = (st) => st.sessions.map((s) => s.name).sort().join(',');
 
   // onChange -> otomatik eşitleme
   A.sync.start();
+  const tSave = Date.now();
   A.st.saveSession({ name: 'oto', host: 'o' });
-  await new Promise((r) => setTimeout(r, 200));
-  if (A.sync.running) await A.sync.running;
+  // süreye değil sonuca bağlı: kayıttan sonra başlayan bir eşitleme bitene kadar (en çok 10 sn)
+  for (let i = 0; i < 500 && !(A.sync.status().lastSync > tSave && !A.sync.running && !A.sync.timer); i++) await new Promise((r) => setTimeout(r, 20));
+  assert(A.sync.status().lastSync > tSave, 'otomatik eşitleme çalışmadı');
   A.sync.stop();
   await B.sync.syncNow();
   assert(names(B.st).includes('oto'));

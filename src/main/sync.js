@@ -153,7 +153,7 @@ class AccountSync extends EventEmitter {
   schedule() {
     if (!this.account) return;
     clearTimeout(this.timer);
-    this.timer = setTimeout(() => this.syncNow().catch(() => {}), this.debounce);
+    this.timer = setTimeout(() => { this.timer = null; this.syncNow().catch(() => {}); }, this.debounce);
   }
 
   /** Aynı anda tek eşitleme; sürerken gelen istek bitince bir kez daha çalıştırır. Sonuç: { changed } */
