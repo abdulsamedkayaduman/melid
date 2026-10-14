@@ -689,7 +689,7 @@ export class SessionTab {
       running++;
       t.state = 'starting'; t.started = Date.now(); t.samples = []; t.done = 0; t.total = 0; t.error = null;
       this.renderTransfer(t);
-      this.api.sftp.transfer(this.connId, { tid: t.tid, direction: t.direction, items: t.items, resume: t.resume, mkdirs: t.mkdirs, srcConnId: t.srcTab && t.srcTab.connId })
+      this.api.sftp.transfer(this.connId, { tid: t.tid, direction: t.direction, items: t.items, resume: t.resume, mkdirs: t.mkdirs, srcConnId: t.srcTab && t.srcTab.connId, direct: this.app.settings.directTransfer !== false })
         .catch((e) => this.onTransfer({ tid: t.tid, state: 'error', error: cleanErr(e) }));
     }
   }
@@ -719,7 +719,10 @@ export class SessionTab {
       if (pane.cwd === t.dest || (t.mkdirs && pane.cwd && pane.cwd.startsWith(t.dest))) pane.refresh();
       const secs = Math.max(0.001, (now - t.started) / 1000);
       const extra = [info.skipped ? `${info.skipped} aynı dosya atlandı` : '', info.resumed ? `${info.resumed} dosya sürdürüldü` : ''].filter(Boolean).join(', ');
-      toast(`${t.label} ${{ upload: 'yüklendi', download: 'indirildi', relay: 'aktarıldı' }[t.direction]} (${formatSize(t.total)}, ${secs.toFixed(1)} sn)${extra ? ' · ' + extra : ''}`, 'ok');
+      const via = t.via ? ` · ${t.via}` : '';
+      toast(`${t.label} ${{ upload: 'yüklendi', download: 'indirildi', relay: 'aktarıldı' }[t.direction]} (${formatSize(t.total)}, ${secs.toFixed(1)} sn)${via}${extra ? ' · ' + extra : ''}`, 'ok');
+      // doğrudan denendi ama olmadıysa nedenini bir kez göster
+      if (t.fallback) toast(`Doğrudan aktarım olmadı (${t.fallback}); bu bilgisayar üzerinden gönderildi.`, 'info', 7000);
     } else if (info.state === 'error') toast(`Aktarım hatası: ${info.error}`, 'err', 6000);
     if (['done', 'error', 'cancelled'].includes(info.state)) this.pump();
   }
@@ -739,7 +742,7 @@ export class SessionTab {
       h('div.xfer-main', null,
         h('div.xfer-line', null, h('span.xfer-name', { title: t.file || t.label }, t.label), h('span.xfer-dest', { title: t.dest }, (t.direction === 'relay' ? `${t.srcTab.title} → ` : '→ ') + t.dest)),
         h('div.bar', null, h('div.bar-fill', { style: { width: pct.toFixed(1) + '%' } })),
-        h('div.xfer-info', null, stateText, t.state === 'running' && t.file ? h('span.xfer-file', null, ' · ' + t.file.split('/').pop()) : null)),
+        h('div.xfer-info', null, stateText, t.state === 'running' && t.via ? ` · ${t.via}` : null, t.state === 'running' && t.file ? h('span.xfer-file', null, ' · ' + t.file.split('/').pop()) : null)),
       canRetry ? h('button.icon-btn', { title: 'Yeniden dene (kaldığı yerden sürdürür)', onclick: () => this.retryTransfer(t) }, icon('refresh', 14)) : null,
       running ? h('button.icon-btn', { title: 'İptal', onclick: () => this.cancelTransfer(t) }, icon('x', 14))
         : h('button.icon-btn', { title: 'Listeden kaldır', onclick: () => { this.transfers.delete(t.tid); row.remove(); this.updateXferHead(); } }, icon('x', 14)));

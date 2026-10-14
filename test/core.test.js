@@ -153,8 +153,51 @@ const wait = (ms) => new Promise((r) => setTimeout(r, ms));
   await m.transfer('t9', { tid: 'v4', direction: 'relay', srcConnId: 'yok', items: [{ src: home + '/rsrc', dst: home + '/x' }] });
   assert.equal(events[events.length - 1].state, 'error');
   await m.exec('t9', `rm -rf ${home}/rsrc ${home}/rdst ${home}/rbig.bin ${home}/rbig2.bin`);
-  m.disconnect('t9');
   console.log('OK uzak -> uzak aktarım (ağaç, sürdürme, iptal)');
+
+  // 2c''. doğrudan sunucu-sunucu (kaynak hedefe kendisi gönderir): geçici anahtar, iz bırakmama, geri dönüş
+  await m.transfer('t1', { tid: 'w0', direction: 'upload', items: [{ src: L + '/r', dst: home + '/dsrc' }] });
+  const akBefore = (await m.exec('t9', 'cat ~/.ssh/authorized_keys')).stdout;
+  await m.transfer('t9', { tid: 'w1', direction: 'relay', direct: true, srcConnId: 't1', items: [{ src: home + '/dsrc', dst: home + '/ddst/dsrc' }] });
+  let ld = events[events.length - 1];
+  assert.deepEqual([ld.state, ld.via], ['done', 'doğrudan (geçici anahtar)'], JSON.stringify(ld));
+  assert.equal(await md5(home + '/ddst/dsrc/deep/big.bin'), await md5(home + '/dsrc/deep/big.bin'));
+  assert.equal((await m.exec('t9', 'cat ~/.ssh/authorized_keys')).stdout, akBefore, 'geçici anahtar silinmeli');
+  assert.equal((await m.exec('t9', 'ls -d /tmp/sshdeck.* 2>/dev/null | wc -l')).stdout.trim(), '0', 'geçici klasör silinmeli');
+  // hedefe jump host üzerinden bağlı: doğrudan denenmez, bu bilgisayar üzerinden
+  await m.connect('t8', sessions.key);
+  await m.transfer('t8', { tid: 'w2', direction: 'relay', direct: true, srcConnId: 't1', items: [{ src: home + '/dsrc', dst: home + '/ddst2' }] });
+  ld = events[events.length - 1];
+  assert.deepEqual([ld.state, ld.via, ld.fallback], ['done', 'bu bilgisayar üzerinden', 'hedefe jump host üzerinden bağlanılıyor'], JSON.stringify(ld));
+  m.disconnect('t8');
+  prompts.length = 0; // t8 anahtar parolasını sordu; sonraki testler kendi sorularını sayar
+  console.log('OK doğrudan aktarım (geçici anahtar, iz yok, jump host -> geri dönüş)');
+  // agent yönlendirme: kendi ssh-agent'ımız, parolasız bir anahtar sunucuya yüklenir
+  if (require('child_process').spawnSync('ssh-agent', ['-k']).error) console.log('ATLANDI agent yönlendirme (ssh-agent yok)');
+  else {
+    const cp = require('child_process');
+    const ad = fs.mkdtempSync(path.join(os.tmpdir(), 'sshdeck-agent-'));
+    cp.execFileSync('ssh-keygen', ['-q', '-t', 'ed25519', '-N', '', '-f', ad + '/k']);
+    const sock = ad + '/sock';
+    const agent = cp.spawn('ssh-agent', ['-D', '-a', sock], { stdio: 'ignore' });
+    process.on('exit', () => { agent.kill(); fs.rmSync(ad, { recursive: true, force: true }); }); // test yarıda kalsa da
+    for (let i = 0; i < 50 && !fs.existsSync(sock); i++) await wait(100);
+    cp.execFileSync('ssh-add', ['-q', ad + '/k'], { env: { ...process.env, SSH_AUTH_SOCK: sock } });
+    await m.installPublicKey('t9', fs.readFileSync(ad + '/k.pub', 'utf8'));
+    process.env.SSH_AUTH_SOCK = sock;
+    await m.connect('t7', sessions.pw); // agent'lı kaynak bağlantısı
+    delete process.env.SSH_AUTH_SOCK;
+    await m.transfer('t9', { tid: 'w3', direction: 'relay', direct: true, srcConnId: 't7', items: [{ src: home + '/dsrc', dst: home + '/ddst3/dsrc' }] });
+    ld = events[events.length - 1];
+    assert.deepEqual([ld.state, ld.via], ['done', 'doğrudan (agent)'], JSON.stringify(ld));
+    assert.equal(await md5(home + '/ddst3/dsrc/deep/big.bin'), await md5(home + '/dsrc/deep/big.bin'));
+    m.disconnect('t7'); agent.kill();
+    await m.exec('t9', `grep -vF "$(cut -d' ' -f2 < /dev/stdin)" ~/.ssh/authorized_keys > ~/.ssh/ak.tmp; cat ~/.ssh/ak.tmp > ~/.ssh/authorized_keys; rm ~/.ssh/ak.tmp`, { stdin: fs.readFileSync(ad + '/k.pub', 'utf8') });
+    fs.rmSync(ad, { recursive: true, force: true });
+    console.log('OK doğrudan aktarım (agent yönlendirme)');
+  }
+  await m.exec('t9', `rm -rf ${home}/dsrc ${home}/ddst ${home}/ddst2 ${home}/ddst3`);
+  m.disconnect('t9');
 
   // 2d. anahtar üret + sunucuya yükle + o anahtarla bağlan
   const KD = path.join(os.tmpdir(), 'sshdeck-test-keys'); fs.rmSync(KD, { recursive: true, force: true });

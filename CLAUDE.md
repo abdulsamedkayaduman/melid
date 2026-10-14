@@ -11,7 +11,10 @@ Bekleyen işler için `YAPILACAKLAR.md` (otomatik güncelleme, AUR paketi, elect
 - `npm run dev` — F12 ile DevTools açılabilir
 - `npm test` — `test/run.sh`: Docker/Podman'da geçici sshd açar, `test/core.test.js` çekirdek testlerini çalıştırır
   (shell, bölünmüş kabuklar, exec/kaynak bilgisi, SFTP, aktarım/iptal/sürdürme, uzak ağaç tarama, anahtar üretip yükleme,
-  -L/-R/-D tüneller, jump host, parolalı anahtar, parola tekrar deneme, hata mesajları)
+  -L/-R/-D tüneller, jump host, parolalı anahtar, parola tekrar deneme, hata mesajları, uzak->uzak ve doğrudan aktarım)
+  Docker yoksa: root'la ayrı bir sshd (örn. 127.0.0.1:3161, `deck`/`deckpass`, test/.work/userkey.pub) açıp
+  `env -u SSH_AUTH_SOCK SSHDECK_TEST_PORT=3161 node test/core.test.js`. `ci/test-sshd.sh`'yi geliştirme makinesinde
+  çalıştırmayın: çalışan tüm sshd'leri durdurur
   + sunucusuz: `test/importers.test.js` (WindTerm/Xshell), `test/store.test.js`, `test/termlog.test.js` (ANSI temizleme),
   `test/sync.test.js` (hesap eşitlemesi: gerçek eşitleme sunucusu + iki cihaz)
 - `npm run dist` — `dist/` içine `.pacman` ve `.AppImage` (pacman için `bsdtar` gerekir: `sudo pacman -S libarchive`).
@@ -38,7 +41,10 @@ src/main/ssh-manager.js  Electron'dan bağımsız (düz Node ile test edilir). B
                          installPublicKey() (ssh-copy-id), readFile() (önizleme), walkRemote() (eşitleme),
                          transfer() (her aktarım kendi SFTP kanalında; iptal = kanalı kapatmak; resume: aynı dosyayı atla,
                          yarımı akışla sürdür; mkdirs: üst klasörleri oluştur; direction 'relay' + srcConnId: uzak -> uzak,
-                         _relay() + sftpCopy() iki SFTP kanalı arasında paralel parça kopyası), startForward/stopForward (L: net.Server, D: socks.js, R: forwardIn)
+                         _relay() + sftpCopy() iki SFTP kanalı arasında paralel parça kopyası; t.direct: önce _direct():
+                         kaynak `tar | ssh hedef 'tar x'` ile kendisi gönderir — agent yönlendirme, olmazsa tek kullanımlık
+                         anahtar (hedefte restrict+expiry-time, bitince/iptalde silinir); hedef sunucu anahtarı kaynağa
+                         HostKeyAlias ile verilir; olmazsa bu bilgisayar üzerinden), startForward/stopForward (L: net.Server, D: socks.js, R: forwardIn)
                          shellCwd(): terminal dizini (/proc + $SSH_CONNECTION; aynı bağlantıdaki diğer kabukların pid'leri hariç)
 src/main/updater.js      Güncelleme: imzalı latest.json (Forgejo generic paket deposu, Ed25519 açık anahtar gömülü),
                          check()/download() (sha256). Kurulum türü + kurulum main.js installUpdate(): NSIS sessiz,

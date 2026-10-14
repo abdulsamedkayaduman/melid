@@ -205,7 +205,7 @@ class SshManager extends EventEmitter {
       conn.client.on('tcp connection', (info, accept, reject) => this._onRemoteConn(conn, info, accept, reject));
       conn.client.on('close', () => this._onClosed(conn));
       conn.client.on('error', (e) => this._status(id, 'error', e.message));
-      const target = chain[chain.length - 1];
+      const target = conn.target = chain[chain.length - 1];
       this._status(id, 'connected', `${target.username}@${target.host}:${target.port || 22}`);
       for (const fw of session.forwards || []) {
         if (fw.enabled === false) continue;
@@ -230,7 +230,9 @@ class SshManager extends EventEmitter {
       keepaliveCountMax: 4,
     };
     if (sock) cfg.sock = sock;
+    let hostKey = null; // doğrudan sunucu-sunucu aktarımında kaynağa bu anahtar "bilinen sunucu" olarak verilir
     cfg.hostVerifier = (key, cb) => {
+      hostKey = key;
       Promise.resolve(this.hooks.verifyHostKey({ host: s.host, port: cfg.port, type: keyType(key), fingerprint: fingerprint(key) }))
         .then((ok) => cb(!!ok), () => cb(false));
     };
@@ -273,6 +275,8 @@ class SshManager extends EventEmitter {
       methods.push({ type: 'publickey', username, key: buf, passphrase: pass });
     };
     const agentSock = findAgent();
+    // Agent yönlendirme yalnız istenen komutta açılır (doğrudan aktarım); bağlantıda kendiliğinden açılmaz
+    if (agentSock) { cfg.agent = agentSock; cfg.agentForward = true; }
     if (auth === 'key') {
       await loadKey(expandHome(s.keyPath || '~/.ssh/id_ed25519'), s.passphrase, true);
     } else if (auth === 'agent') {
@@ -362,6 +366,7 @@ class SshManager extends EventEmitter {
       });
       client.connect(cfg);
     });
+    client.hostKey = hostKey;
     if (canSave && Object.keys(toSave).length) {
       try { this.hooks.saveCredentials(s.id, toSave); } catch {}
     }
@@ -764,6 +769,21 @@ class SshManager extends EventEmitter {
       };
       emit({ state: 'scanning', done: 0, total: 0 });
       for (const it of t.items) await walk(it.src, it.dst);
+      // Önce doğrudan (kaynak sunucu hedefe kendisi gönderir); olmazsa bu bilgisayar üzerinden devam
+      let fallback = null;
+      if (t.direct && !t.resume) {
+        try {
+          const via = await this._direct(id, t, rec, total, (n) => { done = n; tick(); }, (v) => emit({ state: 'running', done, total, via: v }));
+          emit({ state: 'done', done: total, total, skipped: 0, resumed: 0, via });
+          return;
+        } catch (e) {
+          if (rec.cancelled) throw e;
+          fallback = e.message;
+          done = 0;
+        }
+      }
+      const via = 'bu bilgisayar üzerinden';
+      emit({ state: 'running', done: 0, total, via, fallback });
       for (const j of jobs) {
         if (rec.cancelled) throw new CancelError();
         if (j.dir) { try { await p1((cb) => dst.mkdir(j.dst, cb)); } catch { /* var */ } continue; }
@@ -780,11 +800,12 @@ class SshManager extends EventEmitter {
         try { await p1((cb) => dst.utimes(j.dst, j.atime, j.mtime, cb)); } catch {}
         done = base + j.size;
       }
-      emit({ state: 'done', done: total, total, skipped, resumed });
+      emit({ state: 'done', done: total, total, skipped, resumed, via, fallback });
     } catch (e) {
       emit({ state: rec.cancelled ? 'cancelled' : 'error', done, total, error: rec.cancelled ? 'İptal edildi' : e.message });
     } finally {
       for (const ch of [rec.sftp, rec.srcSftp]) { try { ch && ch.end(); } catch {} }
+      if (rec.abort) { try { await rec.abort(); } catch {} }
       conn.transfers.delete(t.tid);
     }
   }
@@ -795,6 +816,106 @@ class SshManager extends EventEmitter {
     if (!rec) return;
     rec.cancelled = true;
     for (const ch of [rec.sftp, rec.srcSftp]) { try { ch && ch.end(); } catch {} }
+    if (rec.abort) rec.abort().catch(() => {});
+  }
+
+  // Uzun süren komut (kanal açık kalır); agentForward: bu bilgisayarın ssh-agent'ı komuta yönlendirilir
+  _execLong(id, cmd, { agentForward = false, onChannel } = {}) {
+    const conn = this._get(id);
+    return new Promise((res, rej) => {
+      conn.client.exec(cmd, agentForward ? { agentForward: true } : {}, (err, ch) => {
+        if (err) return rej(err);
+        if (onChannel) onChannel(ch);
+        let stdout = ''; let stderr = ''; let code = null;
+        ch.on('data', (d) => { stdout += d; });
+        ch.stderr.on('data', (d) => { stderr += d; });
+        ch.on('exit', (c) => { code = c; });
+        ch.on('close', () => res({ code, stdout, stderr }));
+      });
+    });
+  }
+
+  /**
+   * Doğrudan sunucu-sunucu aktarım: kaynak (t.srcConnId) `tar | ssh hedef 'tar x'` ile hedefe (id) kendisi gönderir.
+   * Kimlik: önce bu bilgisayarın ssh-agent'ı yönlendirilir; olmazsa tek kullanımlık anahtar hedefin
+   * authorized_keys'ine (restrict + 30 dk expiry-time) eklenir, kaynağın geçici klasörüne konur, bitince ikisi de silinir.
+   * Hedefin sunucu anahtarı kaynağa bilinen sunucu olarak verilir (StrictHostKeyChecking=yes).
+   * Başarısızsa (ulaşılamıyor, araç yok, ...) hata fırlatır; çağıran bu bilgisayar üzerinden aktarıma döner.
+   */
+  async _direct(id, t, rec, total, onBytes, onVia) {
+    const A = t.srcConnId;
+    const srcConn = this._get(A); const dstConn = this._get(id);
+    const B = dstConn.target; const hk = dstConn.client.hostKey;
+    if (!B || !hk) throw new Error('hedef bilgisi yok');
+    if (dstConn.chain.length > 1) throw new Error('hedefe jump host üzerinden bağlanılıyor');
+    const srcDir = rpath.dirname(t.items[0].src); const dstDir = rpath.dirname(t.items[0].dst);
+    if (!t.items.every((it) => rpath.dirname(it.src) === srcDir && rpath.dirname(it.dst) === dstDir && rpath.basename(it.src) === rpath.basename(it.dst))) throw new Error('öğeler aynı klasörde değil ya da adı değişiyor');
+    const names = t.items.map((it) => rpath.basename(it.src));
+    const q = (x) => `'${String(x).replace(/'/g, `'\\''`)}'`;
+    const okA = await this.exec(A, 'command -v ssh >/dev/null && command -v tar >/dev/null && command -v bash >/dev/null && mktemp -d /tmp/sshdeck.XXXXXXXX');
+    const tmp = okA.stdout.trim();
+    if (okA.code !== 0 || !tmp.startsWith('/tmp/sshdeck.')) throw new Error('kaynakta ssh/tar/bash yok');
+    const okB = await this.exec(id, 'command -v tar >/dev/null && echo OK');
+    if (!okB.stdout.includes('OK')) { this.exec(A, `rm -rf ${q(tmp)}`).catch(() => {}); throw new Error('hedefte tar yok'); }
+    let marker = null; let ch = null;
+    const cleanup = async () => {
+      rec.abort = null;
+      try { ch && ch.close(); } catch {}
+      await this.exec(A, `pkill -f ${q(tmp)} ; rm -rf ${q(tmp)}`).catch(() => {});
+      if (marker) await this.exec(id, `f="$HOME/.ssh/authorized_keys"; [ -f "$f" ] && grep -vF ${q(marker)} "$f" > "$f.sshdeck" && cat "$f.sshdeck" > "$f"; rm -f "$f.sshdeck"`).catch(() => {});
+      marker = null;
+    };
+    rec.abort = cleanup;
+    try {
+      await this.exec(A, `umask 077; cat > ${q(tmp + '/kh')}`, { stdin: `sshdeck-hedef ${keyType(hk)} ${hk.toString('base64')}
+` });
+      // İlerleme: hedefteki boyut saniyede bir ölçülür (GNU du; yoksa ilerleme sonda görünür)
+      const sizeCmd = `du -sb -- ${names.map((n) => q(rpath.join(dstDir, n))).join(' ')} 2>/dev/null | awk '{s+=$1} END {print s+0}'`;
+      const poll = setInterval(async () => {
+        try { const r = await this.exec(id, sizeCmd, { timeout: 5000 }); const n = Number(r.stdout.trim()); if (n > 0) onBytes(Math.min(n, total)); } catch {}
+      }, 1000);
+      const run = (identity, agentForward) => {
+        const script = [
+          'set -o pipefail',
+          `trap 'rm -rf ${q(tmp)}' EXIT HUP INT TERM`,
+          `tar -C ${q(srcDir)} -cf - -- ${names.map(q).join(' ')} | ssh -F /dev/null -p ${Number(B.port) || 22}${identity ? ` -i ${q(tmp + '/k')} -o IdentitiesOnly=yes` : ''}`
+            + ` -o BatchMode=yes -o ConnectTimeout=10 -o ServerAliveInterval=15 -o LogLevel=ERROR -o HostKeyAlias=sshdeck-hedef`
+            + ` -o UserKnownHostsFile=${q(tmp + '/kh')} -o GlobalKnownHostsFile=/dev/null -o StrictHostKeyChecking=yes`
+            + ` -l ${q(B.username)} ${q(B.host)} ${q(`mkdir -p ${q(dstDir)} && tar -C ${q(dstDir)} -xf -`)}`,
+        ].join('\n');
+        return this._execLong(A, `bash -c ${q(script)}`, { agentForward, onChannel: (c) => { ch = c; } });
+      };
+      const denied = (r) => /Permission denied|Too many authentication failures/i.test(r.stderr);
+      const fail = (r) => new Error((r.stderr.trim().split('\n').pop() || `çıkış kodu ${r.code}`).replace(/^ssh: /, ''));
+      try {
+        // 1) agent yönlendirme
+        if (srcConn.client.config.allowAgentFwd) {
+          onVia('doğrudan (agent)');
+          // tar'ın kendi ilk denemesi başarısız olursa yarım dosyalar kalabilir; ikinci deneme üzerine yazar
+          // A'nın sunucusu agent yönlendirmeyi kapatmışsa istek reddedilir: geçici anahtara geç
+          const r = await run(false, true).catch((e) => ({ code: -1, stdout: '', stderr: `Permission denied (agent yönlendirme: ${e.message})` }));
+          if (rec.cancelled) throw new CancelError();
+          if (r.code === 0) return 'doğrudan (agent)';
+          if (!denied(r)) throw fail(r);
+          await this.exec(A, `mkdir -p ${q(tmp)} && chmod 700 ${q(tmp)}`); // trap sildi
+          await this.exec(A, `umask 077; cat > ${q(tmp + '/kh')}`, { stdin: `sshdeck-hedef ${keyType(hk)} ${hk.toString('base64')}\n` });
+        }
+        // 2) tek kullanımlık anahtar
+        const kp = utils.generateKeyPairSync('ed25519', { comment: 'sshdeck' });
+        marker = 'sshdeck-gecici-' + crypto.randomBytes(6).toString('hex');
+        const exp = (await this.exec(id, 'date -d "@$(( $(date +%s) + 1800 ))" +%Y%m%d%H%M 2>/dev/null')).stdout.trim();
+        const opts = 'restrict' + (/^\d{12}$/.test(exp) ? `,expiry-time="${exp}"` : '');
+        const line = `${opts} ${kp.public.trim().split(' ').slice(0, 2).join(' ')} ${marker}`;
+        const ins = await this.exec(id, `umask 077; mkdir -p "$HOME/.ssh" && printf '%s\\n' ${q(line)} >> "$HOME/.ssh/authorized_keys" && echo OK`);
+        if (!ins.stdout.includes('OK')) throw new Error('hedefe geçici anahtar eklenemedi');
+        await this.exec(A, `umask 077; cat > ${q(tmp + '/k')}`, { stdin: kp.private });
+        onVia('doğrudan (geçici anahtar)');
+        const r = await run(true, false);
+        if (rec.cancelled) throw new CancelError();
+        if (r.code !== 0) throw fail(r);
+        return 'doğrudan (geçici anahtar)';
+      } finally { clearInterval(poll); }
+    } finally { await cleanup(); }
   }
 
   // ---------------- port forwarding ----------------
