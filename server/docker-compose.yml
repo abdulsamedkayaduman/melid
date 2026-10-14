@@ -17,7 +17,7 @@ services:
     #  - "3150"
     # Ters vekil olmadan doğrudan erişmek için (Dokploy'da gerekmez):
     ports:
-      - "3150:3150"
+      - "3350:3150"
     volumes:
       - ../sshdeck-sync-data:/data
  
