@@ -876,6 +876,25 @@ class App {
     g.tabbar.replaceChildren(...btns, g.addBtn);
   }
 
+  // Linux'ta orta tuş bırakılınca Chromium panodaki/seçili metni odaktaki alana yapıştırır. Sekme orta tuşa
+  // basınca kapandığı için odak yandaki sekmenin terminaline geçer ve metin oraya giderdi: tuş bırakılana kadar
+  // (ve hemen ardından) yapıştırma yutulur. Tuş pencere dışında bırakılırsa 3 sn sonra kendiliğinden kalkar.
+  suppressMiddlePaste() {
+    let deadline = Infinity;
+    const onPaste = (e) => { if (Date.now() < deadline) { e.preventDefault(); e.stopImmediatePropagation(); } };
+    const done = () => { document.removeEventListener('mouseup', onUp, true); window.removeEventListener('paste', onPaste, true); };
+    const onUp = (e) => {
+      if (e.button !== 1) return;
+      e.preventDefault();
+      deadline = Date.now() + 400;
+      document.removeEventListener('mouseup', onUp, true);
+      setTimeout(done, 450);
+    };
+    window.addEventListener('paste', onPaste, true);
+    document.addEventListener('mouseup', onUp, true);
+    setTimeout(done, 3000);
+  }
+
   // Sekme düğmesi bir kez oluşturulur ve sonra yerinde güncellenir; yeniden yaratılsaydı
   // tıklama sırasında DOM değiştiği için çift tık ve sürükleme kopardı.
   tabButton(t) {
@@ -888,7 +907,7 @@ class App {
     b._title = title;
     b.onmousedown = (e) => {
       if (e.target.closest('.tab-x')) return;
-      if (e.button === 1) { e.preventDefault(); this.closeTab(t); return; }
+      if (e.button === 1) { e.preventDefault(); this.suppressMiddlePaste(); this.closeTab(t); return; }
       if (e.button !== 0) return;
       this.tabDownAt = e.timeStamp;
       if (e.detail === 2) this.duplicateTab(t);
