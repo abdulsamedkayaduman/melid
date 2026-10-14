@@ -109,4 +109,75 @@ async function download(file, dest, { onProgress, signal } = {}) {
   return dest;
 }
 
-module.exports = { FEED_URL, PUBLIC_KEY, KIND_LABELS, compareVersions, parseFeed, signFeed, check, download };
+// ---- kurulum ilerlemesi ----
+// pacman ilerleme çubuğunu yalnız terminale yazar: `script` ile sanal terminalde, LC_ALL=C ile (İngilizce, ayrıştırılabilir)
+// çalıştırılır. Satırlar: "(1/1) installing sshdeck   [####---]  45%" ve ":: Running post-transaction hooks...".
+// Genel yüzde: ön denetimler 0-10, kurulum 10-95, kancalar 95-99.
+const PACMAN_STEPS = [
+  [/checking keys/, 'Anahtarlar denetleniyor', 0, 2],
+  [/checking package integrity/, 'Paket bütünlüğü denetleniyor', 2, 5],
+  [/loading package files/, 'Paket dosyaları yükleniyor', 5, 8],
+  [/checking for file conflicts|checking available disk space/, 'Dosya çakışmaları denetleniyor', 8, 10],
+  [/(?:upgrading|installing|reinstalling|downgrading) /, 'Kuruluyor', 10, 95],
+];
+function pacmanProgressParser(onProgress) {
+  let buf = '';
+  let lastPct = -1; let lastStep = '';
+  const emit = (step, pct) => { if (pct !== lastPct || step !== lastStep) { lastPct = pct; lastStep = step; onProgress({ step, percent: pct }); } };
+  return (chunk) => {
+    buf += chunk.toString('utf8');
+    const parts = buf.split(/[\r\n]/);
+    buf = parts.pop();
+    for (const raw of parts) {
+      const line = raw.replace(/\x1b\[[0-9;?]*[A-Za-z]/g, '').trim();
+      if (!line) continue;
+      if (/^:: Running post-transaction hooks/.test(line)) { emit('Son işlemler', 97); continue; }
+      const m = /^\(\d+\/\d+\)\s+(.+?)\s+\[[#\-o c]*\]\s+(\d+)%$/.exec(line);
+      if (!m) continue;
+      const st = PACMAN_STEPS.find(([re]) => re.test(m[1]));
+      if (!st) continue;
+      const [, label, from, to] = st;
+      emit(label, Math.round(from + ((to - from) * Math.min(100, Number(m[2]))) / 100));
+    }
+  };
+}
+
+/**
+ * pacman -U ile kurar, ilerlemeyi bildirir. prefix: önüne eklenecek komut (pkexec yolu); script yoksa ilerlemesiz.
+ * -> çıkış kodu (126/127: pkexec izin vermedi). extraArgs yalnız testte (sahte kök dizin).
+ */
+function installPacman(file, { prefix = [], onProgress = () => {}, extraArgs = [], spawnImpl = require('child_process').spawn } = {}) {
+  const scriptBin = ['/usr/bin/script', '/bin/script'].find((p) => fs.existsSync(p));
+  const shq = (x) => `'${String(x).replace(/'/g, `'\\''`)}'`;
+  const pacmanCmd = ['/usr/bin/pacman', '-U', '--noconfirm', ...extraArgs, file];
+  const argv = scriptBin
+    ? [...prefix, '/usr/bin/env', 'LC_ALL=C', scriptBin, '-qfec', pacmanCmd.map(shq).join(' '), '/dev/null']
+    : [...prefix, ...pacmanCmd];
+  onProgress({ step: prefix.length ? 'Yönetici izni bekleniyor…' : 'Kuruluyor', percent: null });
+  return new Promise((resolve) => {
+    const p = spawnImpl(argv[0], argv.slice(1), { stdio: ['ignore', 'pipe', 'pipe'] });
+    if (scriptBin) {
+      const parse = pacmanProgressParser(onProgress);
+      p.stdout.on('data', parse);
+    } else p.stdout.resume();
+    p.stderr.resume();
+    p.on('error', () => resolve(-1));
+    p.on('exit', (code) => resolve(code));
+  });
+}
+
+/** Dosyayı ilerlemeyle kopyalar (AppImage yerine yazılmadan önce). onProgress(yüzde) */
+async function copyWithProgress(src, dst, onProgress) {
+  const total = (await fsp.stat(src)).size;
+  let done = 0; let last = -1;
+  await new Promise((resolve, reject) => {
+    const rs = fs.createReadStream(src, { highWaterMark: 1024 * 1024 });
+    const ws = fs.createWriteStream(dst);
+    rs.on('data', (c) => { done += c.length; const pct = total ? Math.floor((100 * done) / total) : 100; if (pct !== last) { last = pct; onProgress(pct); } });
+    rs.on('error', reject); ws.on('error', reject);
+    ws.on('finish', resolve);
+    rs.pipe(ws);
+  });
+}
+
+module.exports = { FEED_URL, PUBLIC_KEY, KIND_LABELS, compareVersions, parseFeed, signFeed, check, download, pacmanProgressParser, installPacman, copyWithProgress };

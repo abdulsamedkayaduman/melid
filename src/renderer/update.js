@@ -59,10 +59,18 @@ export async function updateDialog(app, { check = false } = {}) {
       if (v !== 'install') return;
       if (busy) return false;
       setBusy(true); prog.hidden = false; err.textContent = ''; bar.style.width = '0%'; stat.textContent = 'İndirme başlıyor…';
-      const off = api.update.onProgress(({ done, total, installing }) => {
+      const off = api.update.onProgress(({ done, total, installing, step, percent }) => {
+        if (installing) {
+          // kurulum: yüzde biliniyorsa çubuk ve sayı, bilinmiyorsa (parola penceresi, Windows kurulumu) yalnız adım
+          cancelBtn.disabled = true;
+          prog.classList.toggle('indeterminate', percent == null);
+          if (percent != null) bar.style.width = percent + '%';
+          stat.textContent = `${step || 'Kuruluyor…'}${percent != null ? ` (%${percent})` : ''} · SSHDeck bitince yeniden açılacak`;
+          return;
+        }
         const pct = total ? Math.min(100, (100 * done) / total) : 0;
         bar.style.width = pct + '%';
-        if (installing) { cancelBtn.disabled = true; stat.textContent = 'Kuruluyor… SSHDeck birazdan yeniden açılacak'; } else stat.textContent = `${formatSize(done)} / ${formatSize(total)} (%${Math.round(pct)})`;
+        stat.textContent = `İndiriliyor: ${formatSize(done)} / ${formatSize(total)} (%${Math.round(pct)})`;
       });
       try {
         await api.update.install();

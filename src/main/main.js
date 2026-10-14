@@ -303,7 +303,9 @@ async function installUpdate() {
       signal: ac.signal, onProgress: (done, total) => send('update:progress', { done, total }),
     });
   } finally { upd.abort = null; }
-  send('update:progress', { done: file.size, total: file.size, installing: true });
+  // Kurulum aşaması: { installing, step, percent (null = bilinmiyor) }
+  const installing = (step, percent = null) => send('update:progress', { installing: true, step, percent });
+  installing('Kuruluyor…');
 
   if (st.kind === 'win-setup') {
     // NSIS: sessiz kurulum aynı klasöre, bitince uygulamayı yeniden açar
@@ -324,7 +326,7 @@ async function installUpdate() {
     const target = process.env.APPIMAGE;
     const tmp = target + '.yeni';
     try {
-      await fsp.copyFile(dest, tmp);
+      await updater.copyWithProgress(dest, tmp, (pct) => installing('AppImage yerine yazılıyor', pct));
       await fsp.chmod(tmp, 0o755);
       await fsp.rename(tmp, target);
     } catch (e) {
@@ -342,11 +344,8 @@ async function installUpdate() {
       shell.showItemInFolder(dest);
       throw new Error(`pkexec bulunamadı. Paketi terminalden kurun: sudo pacman -U "${dest}"`);
     }
-    const code = await new Promise((resolve) => {
-      const p = spawn(pkexec, ['/usr/bin/pacman', '-U', '--noconfirm', dest], { stdio: 'ignore' });
-      p.on('error', () => resolve(-1));
-      p.on('exit', resolve);
-    });
+    // pacman sanal terminalde (script) çalışır; ilerleme çubuğundaki yüzde ayrıştırılıp pencereye gönderilir
+    const code = await updater.installPacman(dest, { prefix: [pkexec], onProgress: ({ step, percent }) => installing(step, percent) });
     if (code === 126 || code === 127) throw new Error('Yönetici izni verilmedi');
     if (code !== 0) throw new Error(`pacman kurulumu başarısız oldu (çıkış kodu ${code}). Elle: sudo pacman -U "${dest}"`);
     app.relaunch();

@@ -516,6 +516,8 @@ dl.kv.sync-dirs { margin: 0 0 14px; grid-template-columns: 60px 1fr; }
 .upd-prog { margin-top: 12px; }
 .upd-bar { height: 6px; border-radius: 3px; background: rgba(127,127,127,.2); overflow: hidden; }
 .upd-bar i { display: block; height: 100%; width: 0; background: var(--accent); transition: width .2s; }
+.upd-prog.indeterminate .upd-bar i { width: 35% !important; animation: upd-indet 1.3s ease-in-out infinite; }
+@keyframes upd-indet { from { transform: translateX(-100%); } to { transform: translateX(290%); } }
 .upd-stat { display: block; margin-top: 6px; font-size: 12px; color: var(--text2); }
 .upd-err { color: var(--err); font-size: 12px; margin-top: 8px; white-space: pre-wrap; }
 .upd-err:empty { display: none; }

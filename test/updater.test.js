@@ -71,4 +71,17 @@ const u = require('../src/main/updater');
   fs.rmSync(dir, { recursive: true, force: true });
   srv.close();
   console.log('OK download + sha256');
+
+  // pacman ilerleme çıktısı (gerçek `LC_ALL=C script -qfec "pacman -U ..."` çıktısı; \r ile güncellenen satırlar)
+  const raw = fs.readFileSync(path.join(__dirname, 'fixtures', 'pacman-progress.txt')).toString('utf8')
+    + ':: Running post-transaction hooks...\r\n(1/2) Arming ConditionNeedsUpdate...\r\n';
+  const seen = [];
+  const feedPacman = u.pacmanProgressParser((p) => seen.push(p));
+  for (let i = 0; i < raw.length;) { const n = 1 + Math.floor(Math.random() * 40); feedPacman(Buffer.from(raw.slice(i, i + n))); i += n; }
+  const pcts = seen.map((p) => p.percent);
+  assert.deepEqual([...new Set(seen.map((p) => p.step))], ['Anahtarlar denetleniyor', 'Paket bütünlüğü denetleniyor', 'Paket dosyaları yükleniyor', 'Dosya çakışmaları denetleniyor', 'Kuruluyor', 'Son işlemler']);
+  assert(pcts.every((x, i) => i === 0 || x >= pcts[i - 1]), 'yüzde geri gitmez: ' + pcts.join(','));
+  assert(pcts.includes(95) && pcts.at(-1) === 97, pcts.join(','));
+  assert(pcts.some((x) => x > 10 && x < 95), 'kurulum sırasında ara yüzde');
+  console.log('OK pacman ilerleme ayrıştırma');
 })().catch((e) => { console.error('FAIL', e); process.exit(1); });
