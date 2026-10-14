@@ -13,8 +13,8 @@ services:
       SSHDECK_SYNC_INVITE: ${SSHDECK_SYNC_INVITE:-}
       # Traefik (Dokploy) arkasında istemci IP'si X-Forwarded-For'dan alınır (deneme sınırı için)
       TRUST_PROXY: ${TRUST_PROXY:-1}
-    expose:
-      - "3150"
+    #expose:
+    #  - "3150"
     # Ters vekil olmadan doğrudan erişmek için (Dokploy'da gerekmez):
     ports:
       - "3150:3150"
