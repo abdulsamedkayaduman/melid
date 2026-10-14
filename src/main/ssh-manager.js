@@ -774,7 +774,7 @@ class SshManager extends EventEmitter {
       if (t.direct && !t.resume) {
         try {
           const via = await this._direct(id, t, rec, total, (n) => { done = n; tick(); }, (v) => emit({ state: 'running', done, total, via: v }));
-          emit({ state: 'done', done: total, total, skipped: 0, resumed: 0, via });
+          emit({ state: 'done', done: total, total, skipped: 0, resumed: 0, via, keys: rec.keys });
           return;
         } catch (e) {
           if (rec.cancelled) throw e;
@@ -800,9 +800,9 @@ class SshManager extends EventEmitter {
         try { await p1((cb) => dst.utimes(j.dst, j.atime, j.mtime, cb)); } catch {}
         done = base + j.size;
       }
-      emit({ state: 'done', done: total, total, skipped, resumed, via, fallback });
+      emit({ state: 'done', done: total, total, skipped, resumed, via, fallback, keys: rec.keys });
     } catch (e) {
-      emit({ state: rec.cancelled ? 'cancelled' : 'error', done, total, error: rec.cancelled ? 'İptal edildi' : e.message });
+      emit({ state: rec.cancelled ? 'cancelled' : 'error', done, total, error: rec.cancelled ? 'İptal edildi' : e.message, keys: rec.keys });
     } finally {
       for (const ch of [rec.sftp, rec.srcSftp]) { try { ch && ch.end(); } catch {} }
       if (rec.abort) { try { await rec.abort(); } catch {} }
@@ -835,40 +835,77 @@ class SshManager extends EventEmitter {
     });
   }
 
+  // Aktarım yöntemi penceresi için: bu bilgisayarın ssh-agent'ında (bu bağlantıya verilen) anahtar sayısı
+  agentKeyCount(id) {
+    const c = this.conns.get(id);
+    const ag = c && c.client && c.client.config.allowAgentFwd && c.client.config.agent;
+    if (!ag) return Promise.resolve(0);
+    return new Promise((res) => {
+      const t = setTimeout(() => res(0), 3000);
+      try { ag.getIdentities((e, keys) => { clearTimeout(t); res(e || !keys ? 0 : keys.length); }); } catch { clearTimeout(t); res(0); }
+    });
+  }
+
   /**
    * Doğrudan sunucu-sunucu aktarım: kaynak (t.srcConnId) `tar | ssh hedef 'tar x'` ile hedefe (id) kendisi gönderir.
-   * Kimlik: önce bu bilgisayarın ssh-agent'ı yönlendirilir; olmazsa tek kullanımlık anahtar hedefin
-   * authorized_keys'ine (restrict + 30 dk expiry-time) eklenir, kaynağın geçici klasörüne konur, bitince ikisi de silinir.
+   * t.direct = kullanıcının seçtiği yöntem:
+   *   'key'   tek kullanımlık anahtar. Hedefin authorized_keys'ine restrict + command (yalnız bu klasöre tar açabilir,
+   *           başka komut çalıştıramaz) + 30 dk expiry-time ile eklenir; özel anahtar kaynağın 0700 geçici klasörüne
+   *           konur. Bitince/iptalde ikisi de silinir ve silindiği denetlenir (rec.keys). Süre sınırı
+   *           hesaplanamazsa (GNU date yok) anahtar hiç eklenmez.
+   *   'agent' bu bilgisayarın ssh-agent'ı yalnız bu komut için yönlendirilir; sunuculara bir şey yazılmaz.
    * Hedefin sunucu anahtarı kaynağa bilinen sunucu olarak verilir (StrictHostKeyChecking=yes).
-   * Başarısızsa (ulaşılamıyor, araç yok, ...) hata fırlatır; çağıran bu bilgisayar üzerinden aktarıma döner.
+   * Başarısızsa hata fırlatır; çağıran bu bilgisayar üzerinden aktarıma döner.
    */
   async _direct(id, t, rec, total, onBytes, onVia) {
+    const method = t.direct;
+    if (method !== 'key' && method !== 'agent') throw new Error('bilinmeyen yöntem');
     const A = t.srcConnId;
     const srcConn = this._get(A); const dstConn = this._get(id);
     const B = dstConn.target; const hk = dstConn.client.hostKey;
     if (!B || !hk) throw new Error('hedef bilgisi yok');
     if (dstConn.chain.length > 1) throw new Error('hedefe jump host üzerinden bağlanılıyor');
+    if (method === 'agent' && !srcConn.client.config.allowAgentFwd) throw new Error('bu bilgisayarda ssh-agent yok');
     const srcDir = rpath.dirname(t.items[0].src); const dstDir = rpath.dirname(t.items[0].dst);
     if (!t.items.every((it) => rpath.dirname(it.src) === srcDir && rpath.dirname(it.dst) === dstDir && rpath.basename(it.src) === rpath.basename(it.dst))) throw new Error('öğeler aynı klasörde değil ya da adı değişiyor');
+    // Hedef yol authorized_keys'teki command="..." içine gömülür: ", \ ve satır sonu olamaz
+    if (method === 'key' && /["\\\n\r]/.test(dstDir)) throw new Error('hedef klasör adı geçici anahtar için uygun değil');
     const names = t.items.map((it) => rpath.basename(it.src));
     const q = (x) => `'${String(x).replace(/'/g, `'\\''`)}'`;
     const okA = await this.exec(A, 'command -v ssh >/dev/null && command -v tar >/dev/null && command -v bash >/dev/null && mktemp -d /tmp/sshdeck.XXXXXXXX');
     const tmp = okA.stdout.trim();
     if (okA.code !== 0 || !tmp.startsWith('/tmp/sshdeck.')) throw new Error('kaynakta ssh/tar/bash yok');
-    const okB = await this.exec(id, 'command -v tar >/dev/null && echo OK');
-    if (!okB.stdout.includes('OK')) { this.exec(A, `rm -rf ${q(tmp)}`).catch(() => {}); throw new Error('hedefte tar yok'); }
-    let marker = null; let ch = null;
-    const cleanup = async () => {
-      rec.abort = null;
+    // Geçici anahtar yalnız tar açabildiği için tar'ın korumaları önemli: GNU tar ../ ve sembolik bağlantıyla
+    // klasör dışına yazmayı engeller (BusyBox tar o kadar sıkı değil) -> anahtar yönteminde GNU tar şart
+    const okB = await this.exec(id, 'tar --version 2>/dev/null | head -1');
+    const gnuTar = /GNU tar/.test(okB.stdout);
+    if (!okB.stdout.trim() || (method === 'key' && !gnuTar)) {
+      this.exec(A, `rm -rf ${q(tmp)}`).catch(() => {});
+      throw new Error(okB.stdout.trim() ? 'hedefte GNU tar yok (geçici anahtar için gerekli)' : 'hedefte tar yok');
+    }
+    const extractCmd = `mkdir -p ${q(dstDir)} && tar -C ${q(dstDir)} -xf -`;
+    let marker = null; let ch = null; let cleaning = null;
+    // Bitişte ve iptalde çağrılır, bir kez çalışır. Anahtar eklendiyse iki tarafta da kalmadığını denetler.
+    const cleanup = () => cleaning || (cleaning = (async () => {
       try { ch && ch.close(); } catch {}
       await this.exec(A, `pkill -f ${q(tmp)} ; rm -rf ${q(tmp)}`).catch(() => {});
-      if (marker) await this.exec(id, `f="$HOME/.ssh/authorized_keys"; [ -f "$f" ] && grep -vF ${q(marker)} "$f" > "$f.sshdeck" && cat "$f.sshdeck" > "$f"; rm -f "$f.sshdeck"`).catch(() => {});
-      marker = null;
-    };
+      if (!marker) return;
+      const ak = '"$HOME/.ssh/authorized_keys"';
+      await this.exec(id, `f=${ak}; [ -f "$f" ] && grep -vF ${q(marker)} "$f" > "$f.sshdeck" && cat "$f.sshdeck" > "$f"; rm -f "$f.sshdeck"`).catch(() => {});
+      const problems = [];
+      try {
+        const r = await this.exec(id, `{ grep -F ${q(marker)} ${ak} 2>/dev/null || true; } | wc -l`);
+        if (r.stdout.trim() !== '0') problems.push(`hedefte ~/.ssh/authorized_keys içinde "${marker}" satırı duruyor`);
+      } catch (e) { problems.push(`hedef denetlenemedi (${e.message})`); }
+      try {
+        const r = await this.exec(A, `[ -e ${q(tmp)} ] && echo VAR || true`);
+        if (r.stdout.includes('VAR')) problems.push(`kaynakta ${tmp} klasörü duruyor`);
+      } catch (e) { problems.push(`kaynak denetlenemedi (${e.message})`); }
+      rec.keys = problems.length ? { ok: false, marker, detail: problems.join('; ') } : { ok: true };
+    })());
     rec.abort = cleanup;
     try {
-      await this.exec(A, `umask 077; cat > ${q(tmp + '/kh')}`, { stdin: `sshdeck-hedef ${keyType(hk)} ${hk.toString('base64')}
-` });
+      await this.exec(A, `umask 077; cat > ${q(tmp + '/kh')}`, { stdin: `sshdeck-hedef ${keyType(hk)} ${hk.toString('base64')}\n` });
       // İlerleme: hedefteki boyut saniyede bir ölçülür (GNU du; yoksa ilerleme sonda görünür)
       const sizeCmd = `du -sb -- ${names.map((n) => q(rpath.join(dstDir, n))).join(' ')} 2>/dev/null | awk '{s+=$1} END {print s+0}'`;
       const poll = setInterval(async () => {
@@ -881,31 +918,24 @@ class SshManager extends EventEmitter {
           `tar -C ${q(srcDir)} -cf - -- ${names.map(q).join(' ')} | ssh -F /dev/null -p ${Number(B.port) || 22}${identity ? ` -i ${q(tmp + '/k')} -o IdentitiesOnly=yes` : ''}`
             + ` -o BatchMode=yes -o ConnectTimeout=10 -o ServerAliveInterval=15 -o LogLevel=ERROR -o HostKeyAlias=sshdeck-hedef`
             + ` -o UserKnownHostsFile=${q(tmp + '/kh')} -o GlobalKnownHostsFile=/dev/null -o StrictHostKeyChecking=yes`
-            + ` -l ${q(B.username)} ${q(B.host)} ${q(`mkdir -p ${q(dstDir)} && tar -C ${q(dstDir)} -xf -`)}`,
+            + ` -l ${q(B.username)} ${q(B.host)} ${q(extractCmd)}`,
         ].join('\n');
         return this._execLong(A, `bash -c ${q(script)}`, { agentForward, onChannel: (c) => { ch = c; } });
       };
-      const denied = (r) => /Permission denied|Too many authentication failures/i.test(r.stderr);
       const fail = (r) => new Error((r.stderr.trim().split('\n').pop() || `çıkış kodu ${r.code}`).replace(/^ssh: /, ''));
       try {
-        // 1) agent yönlendirme
-        if (srcConn.client.config.allowAgentFwd) {
+        if (method === 'agent') {
           onVia('doğrudan (agent)');
-          // tar'ın kendi ilk denemesi başarısız olursa yarım dosyalar kalabilir; ikinci deneme üzerine yazar
-          // A'nın sunucusu agent yönlendirmeyi kapatmışsa istek reddedilir: geçici anahtara geç
-          const r = await run(false, true).catch((e) => ({ code: -1, stdout: '', stderr: `Permission denied (agent yönlendirme: ${e.message})` }));
+          const r = await run(false, true); // A'nın sunucusu yönlendirmeyi reddederse hata fırlar
           if (rec.cancelled) throw new CancelError();
-          if (r.code === 0) return 'doğrudan (agent)';
-          if (!denied(r)) throw fail(r);
-          await this.exec(A, `mkdir -p ${q(tmp)} && chmod 700 ${q(tmp)}`); // trap sildi
-          await this.exec(A, `umask 077; cat > ${q(tmp + '/kh')}`, { stdin: `sshdeck-hedef ${keyType(hk)} ${hk.toString('base64')}\n` });
+          if (r.code !== 0) throw fail(r);
+          return 'doğrudan (agent)';
         }
-        // 2) tek kullanımlık anahtar
+        const exp = (await this.exec(id, 'date -d "@$(( $(date +%s) + 1800 ))" +%Y%m%d%H%M 2>/dev/null')).stdout.trim();
+        if (!/^\d{12}$/.test(exp)) throw new Error('hedefte süre sınırı hesaplanamadı (GNU date yok), geçici anahtar eklenmedi');
         const kp = utils.generateKeyPairSync('ed25519', { comment: 'sshdeck' });
         marker = 'sshdeck-gecici-' + crypto.randomBytes(6).toString('hex');
-        const exp = (await this.exec(id, 'date -d "@$(( $(date +%s) + 1800 ))" +%Y%m%d%H%M 2>/dev/null')).stdout.trim();
-        const opts = 'restrict' + (/^\d{12}$/.test(exp) ? `,expiry-time="${exp}"` : '');
-        const line = `${opts} ${kp.public.trim().split(' ').slice(0, 2).join(' ')} ${marker}`;
+        const line = `restrict,command="${extractCmd}",expiry-time="${exp}" ${kp.public.trim().split(' ').slice(0, 2).join(' ')} ${marker}`;
         const ins = await this.exec(id, `umask 077; mkdir -p "$HOME/.ssh" && printf '%s\\n' ${q(line)} >> "$HOME/.ssh/authorized_keys" && echo OK`);
         if (!ins.stdout.includes('OK')) throw new Error('hedefe geçici anahtar eklenemedi');
         await this.exec(A, `umask 077; cat > ${q(tmp + '/k')}`, { stdin: kp.private });

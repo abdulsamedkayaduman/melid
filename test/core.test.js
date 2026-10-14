@@ -157,19 +157,29 @@ const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 
   // 2c''. doğrudan sunucu-sunucu (kaynak hedefe kendisi gönderir): geçici anahtar, iz bırakmama, geri dönüş
   await m.transfer('t1', { tid: 'w0', direction: 'upload', items: [{ src: L + '/r', dst: home + '/dsrc' }] });
+  await m.exec('t1', `head -c 80000000 /dev/urandom > ${home}/dsrc/huge.bin`, { timeout: 60000 });
   const akBefore = (await m.exec('t9', 'cat ~/.ssh/authorized_keys')).stdout;
-  await m.transfer('t9', { tid: 'w1', direction: 'relay', direct: true, srcConnId: 't1', items: [{ src: home + '/dsrc', dst: home + '/ddst/dsrc' }] });
+  // aktarım sürerken hedefe eklenen satırı yakala: yalnız tar açabilen, süreli, kısıtlı olmalı
+  let tmpLine = '';
+  const w1 = m.transfer('t9', { tid: 'w1', direction: 'relay', direct: 'key', srcConnId: 't1', items: [{ src: home + '/dsrc', dst: home + '/ddst/dsrc' }] });
+  for (let i = 0; i < 200 && !tmpLine; i++) { tmpLine = (await m.exec('t9', 'grep sshdeck-gecici ~/.ssh/authorized_keys || true')).stdout.trim(); if (!tmpLine) await wait(50); }
+  await w1;
+  assert(tmpLine.startsWith(`restrict,command="mkdir -p '${home}/ddst' && tar -C '${home}/ddst' -xf -",expiry-time="`), tmpLine);
   let ld = events[events.length - 1];
-  assert.deepEqual([ld.state, ld.via], ['done', 'doğrudan (geçici anahtar)'], JSON.stringify(ld));
+  assert.deepEqual([ld.state, ld.via, ld.keys], ['done', 'doğrudan (geçici anahtar)', { ok: true }], JSON.stringify(ld));
   assert.equal(await md5(home + '/ddst/dsrc/deep/big.bin'), await md5(home + '/dsrc/deep/big.bin'));
   assert.equal((await m.exec('t9', 'cat ~/.ssh/authorized_keys')).stdout, akBefore, 'geçici anahtar silinmeli');
   assert.equal((await m.exec('t9', 'ls -d /tmp/sshdeck.* 2>/dev/null | wc -l')).stdout.trim(), '0', 'geçici klasör silinmeli');
   // hedefe jump host üzerinden bağlı: doğrudan denenmez, bu bilgisayar üzerinden
   await m.connect('t8', sessions.key);
-  await m.transfer('t8', { tid: 'w2', direction: 'relay', direct: true, srcConnId: 't1', items: [{ src: home + '/dsrc', dst: home + '/ddst2' }] });
+  await m.transfer('t8', { tid: 'w2', direction: 'relay', direct: 'key', srcConnId: 't1', items: [{ src: home + '/dsrc', dst: home + '/ddst2' }] });
   ld = events[events.length - 1];
   assert.deepEqual([ld.state, ld.via, ld.fallback], ['done', 'bu bilgisayar üzerinden', 'hedefe jump host üzerinden bağlanılıyor'], JSON.stringify(ld));
   m.disconnect('t8');
+  // agent seçildi ama bu bilgisayarda agent yok: bu bilgisayar üzerinden
+  await m.transfer('t9', { tid: 'w2b', direction: 'relay', direct: 'agent', srcConnId: 't1', items: [{ src: home + '/dsrc/small.txt', dst: home + '/small.txt' }] }).catch(() => {});
+  ld = events[events.length - 1];
+  assert.equal(ld.fallback, 'bu bilgisayarda ssh-agent yok', JSON.stringify(ld));
   prompts.length = 0; // t8 anahtar parolasını sordu; sonraki testler kendi sorularını sayar
   console.log('OK doğrudan aktarım (geçici anahtar, iz yok, jump host -> geri dönüş)');
   // agent yönlendirme: kendi ssh-agent'ımız, parolasız bir anahtar sunucuya yüklenir
@@ -187,16 +197,18 @@ const wait = (ms) => new Promise((r) => setTimeout(r, ms));
     process.env.SSH_AUTH_SOCK = sock;
     await m.connect('t7', sessions.pw); // agent'lı kaynak bağlantısı
     delete process.env.SSH_AUTH_SOCK;
-    await m.transfer('t9', { tid: 'w3', direction: 'relay', direct: true, srcConnId: 't7', items: [{ src: home + '/dsrc', dst: home + '/ddst3/dsrc' }] });
+    assert.equal(await m.agentKeyCount('t7'), 1);
+    assert.equal(await m.agentKeyCount('t9'), 0);
+    await m.transfer('t9', { tid: 'w3', direction: 'relay', direct: 'agent', srcConnId: 't7', items: [{ src: home + '/dsrc', dst: home + '/ddst3/dsrc' }] });
     ld = events[events.length - 1];
-    assert.deepEqual([ld.state, ld.via], ['done', 'doğrudan (agent)'], JSON.stringify(ld));
+    assert.deepEqual([ld.state, ld.via, ld.keys], ['done', 'doğrudan (agent)', undefined], JSON.stringify(ld));
     assert.equal(await md5(home + '/ddst3/dsrc/deep/big.bin'), await md5(home + '/dsrc/deep/big.bin'));
     m.disconnect('t7'); agent.kill();
     await m.exec('t9', `grep -vF "$(cut -d' ' -f2 < /dev/stdin)" ~/.ssh/authorized_keys > ~/.ssh/ak.tmp; cat ~/.ssh/ak.tmp > ~/.ssh/authorized_keys; rm ~/.ssh/ak.tmp`, { stdin: fs.readFileSync(ad + '/k.pub', 'utf8') });
     fs.rmSync(ad, { recursive: true, force: true });
     console.log('OK doğrudan aktarım (agent yönlendirme)');
   }
-  await m.exec('t9', `rm -rf ${home}/dsrc ${home}/ddst ${home}/ddst2 ${home}/ddst3`);
+  await m.exec('t9', `rm -rf ${home}/dsrc ${home}/ddst ${home}/ddst2 ${home}/ddst3 ${home}/small.txt`);
   m.disconnect('t9');
 
   // 2d. anahtar üret + sunucuya yükle + o anahtarla bağlan

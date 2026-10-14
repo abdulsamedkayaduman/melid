@@ -656,17 +656,59 @@ export class SessionTab {
       if (r === 'resume') resume = true;
     }
     if (!list.length) return;
+    // Sunucudan sunucuya: yöntemi kullanıcı seçer (kaldığı yerden sürdürme yalnız bu bilgisayar üzerinden olur)
+    let method = null;
+    if (relay) {
+      method = resume ? 'relay' : await this.askRelayMethod(srcTab, list.length === 1 ? list[0].name : `${list.length} öğe`);
+      if (!method) return;
+    }
     this.enqueue({
-      direction, dest, destSide: destPane.side, destPane, srcTab, resume,
+      direction, dest, destSide: destPane.side, destPane, srcTab, resume, method,
       label: list.length === 1 ? list[0].name : `${list.length} öğe`,
       items: list.map((it) => ({ src: it.path, dst: dp.join(dest, it.name) })),
     });
   }
 
+  // Sunucudan sunucuya aktarım yöntemi penceresi (son seçim hatırlanır). -> 'relay' | 'key' | 'agent' | null
+  async askRelayMethod(srcTab, label) {
+    const viaJump = !!(this.session && this.session.jumpHostId) && 'hedefe jump host üzerinden bağlanılıyor';
+    let agentKeys = 0;
+    try { agentKeys = await this.api.sftp.agentKeys(srcTab.connId); } catch {}
+    const opts = [
+      { v: 'relay', title: 'Bu bilgisayar üzerinden',
+        hint: 'Veri bu bilgisayardan geçer, diske yazılmaz. Sunuculara hiçbir şey eklenmez. Hız bu bilgisayarın bağlantısıyla sınırlı.' },
+      { v: 'key', title: 'Doğrudan — geçici anahtarla', off: viaJump,
+        hint: `${srcTab.title}, dosyaları ${this.title} sunucusuna kendisi gönderir. Hedefe yalnız bu klasöre dosya açabilen, 30 dakika geçerli tek kullanımlık bir anahtar eklenir; özel anahtar kaynakta geçici bir klasörde durur. Bitince ikisi de silinir ve size bildirilir.` },
+      { v: 'agent', title: 'Doğrudan — ssh-agent yönlendirme', off: viaJump || (!agentKeys && "bu bilgisayarın ssh-agent'ında anahtar yok"),
+        hint: "Sunuculara hiçbir şey yazılmaz. Ancak aktarım sürerken kaynak sunucuda root yetkisi olan biri agent'ınızdaki anahtarları (açtıkları bütün sunucular için) kullanabilir." },
+    ];
+    let sel = this.app.settings.relayMethod;
+    if (!opts.some((o) => o.v === sel && !o.off)) sel = 'relay';
+    const inputs = [];
+    const rows = opts.map((o) => {
+      const inp = h('input', { type: 'radio', name: 'relay-method', value: o.v, checked: o.v === sel, disabled: !!o.off });
+      inputs.push(inp);
+      return h('label.method' + (o.off ? '.off' : ''), null, inp,
+        h('div', null, h('b', null, o.title), h('div.hint', null, o.off ? `Kullanılamıyor: ${o.off}` : o.hint)));
+    });
+    const r = await modal({
+      title: 'Sunucudan sunucuya aktarım', width: 540,
+      body: h('div.relay-methods', null,
+        h('p', null, `${label}: ${srcTab.title} → ${this.title}`),
+        ...rows,
+        h('p.hint', null, 'Doğrudan yöntem olmazsa (sunucular birbirine ulaşamıyor, gerekli araçlar yok) bu bilgisayar üzerinden gönderilir ve nedeni bildirilir.')),
+      buttons: [{ label: 'Vazgeç', value: null }, { label: 'Aktar', value: 'ok', primary: true }],
+    });
+    if (r !== 'ok') return null;
+    const v = (inputs.find((i) => i.checked) || {}).value || 'relay';
+    if (v !== this.app.settings.relayMethod) this.app.saveSettings({ relayMethod: v });
+    return v;
+  }
+
   // Aktarımlar sekme başına kuyruğa girer; aynı anda en fazla settings.maxTransfers tanesi çalışır.
-  enqueue({ direction, dest, destSide, destPane, srcTab, label, items, resume = false, mkdirs = false }) {
+  enqueue({ direction, dest, destSide, destPane, srcTab, method, label, items, resume = false, mkdirs = false }) {
     const tid = uid('t');
-    const t = { tid, direction, dest, destSide, destPane, srcTab, label, items, resume, mkdirs, state: 'queued', done: 0, total: 0, started: 0, samples: [] };
+    const t = { tid, direction, dest, destSide, destPane, srcTab, method, label, items, resume, mkdirs, state: 'queued', done: 0, total: 0, started: 0, samples: [] };
     this.transfers.set(tid, t);
     this.renderTransfer(t);
     this.pump();
@@ -689,7 +731,7 @@ export class SessionTab {
       running++;
       t.state = 'starting'; t.started = Date.now(); t.samples = []; t.done = 0; t.total = 0; t.error = null;
       this.renderTransfer(t);
-      this.api.sftp.transfer(this.connId, { tid: t.tid, direction: t.direction, items: t.items, resume: t.resume, mkdirs: t.mkdirs, srcConnId: t.srcTab && t.srcTab.connId, direct: this.app.settings.directTransfer !== false })
+      this.api.sftp.transfer(this.connId, { tid: t.tid, direction: t.direction, items: t.items, resume: t.resume, mkdirs: t.mkdirs, srcConnId: t.srcTab && t.srcTab.connId, direct: !t.resume && (t.method === 'key' || t.method === 'agent') ? t.method : false })
         .catch((e) => this.onTransfer({ tid: t.tid, state: 'error', error: cleanErr(e) }));
     }
   }
@@ -724,6 +766,11 @@ export class SessionTab {
       // doğrudan denendi ama olmadıysa nedenini bir kez göster
       if (t.fallback) toast(`Doğrudan aktarım olmadı (${t.fallback}); bu bilgisayar üzerinden gönderildi.`, 'info', 7000);
     } else if (info.state === 'error') toast(`Aktarım hatası: ${info.error}`, 'err', 6000);
+    // Geçici anahtar kullanıldıysa: silindiği iki tarafta da denetlendi
+    if (info.keys && ['done', 'error', 'cancelled'].includes(info.state)) {
+      if (info.keys.ok) toast('Geçici anahtarlar silindi: hedefteki authorized_keys satırı ve kaynaktaki geçici klasör kaldırıldı (denetlendi).', 'ok', 7000);
+      else toast(`Geçici anahtar tam silinemedi: ${info.keys.detail}. Elle silin; anahtar en geç 30 dakikada kendiliğinden geçersiz olur.`, 'err', 20000);
+    }
     if (['done', 'error', 'cancelled'].includes(info.state)) this.pump();
   }
 

@@ -54,7 +54,7 @@ const DEFAULT_SETTINGS = {
   logDir: '', // boş = ~/Belgeler/SSHDeck/kayitlar
   logStrip: true, // kayıtta ANSI renk/kontrol kodlarını temizle
   maxTransfers: 3, // aynı anda en fazla kaç aktarım (sekme başına)
-  directTransfer: true, // uzak -> uzak: önce kaynak sunucu hedefe doğrudan göndersin (agent / geçici anahtar)
+  relayMethod: 'relay', // uzak -> uzak aktarımda son seçilen yöntem: 'relay' (bu bilgisayar) | 'key' | 'agent'
   showStats: true, // durum çubuğunda sunucu kaynakları
   autoUpdate: true, // güncellemeleri kendiliğinden denetle (açılışta + 6 saatte bir)
   updateSkip: null, // "bu sürümü atla" denen sürüm

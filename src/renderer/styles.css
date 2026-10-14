@@ -318,6 +318,11 @@ table.files.hide-size .c-size, table.files.hide-mtime .c-date, table.files.hide-
 .xfer-main { flex: 1; min-width: 0; }
 .xfer-line { display: flex; gap: 8px; font-size: 12px; }
 .xfer-name { color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 45%; }
+.relay-methods label.method { display: flex; gap: 10px; align-items: flex-start; padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px; margin-bottom: 8px; cursor: pointer; }
+.relay-methods label.method:has(input:checked) { border-color: var(--accent); background: var(--sel-soft); }
+.relay-methods label.method.off { opacity: .5; cursor: default; }
+.relay-methods label.method input { margin-top: 3px; }
+.relay-methods label.method .hint { margin-top: 3px; }
 .drag-ghost { position: fixed; top: -100px; left: 0; display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 6px; background: var(--accent); color: #fff; font-size: 12px; }
 .xfer-dest { color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--mono); font-size: 11px; }
 .bar { height: 4px; border-radius: 2px; background: var(--border2); margin: 4px 0 3px; overflow: hidden; }

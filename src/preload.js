@@ -72,6 +72,7 @@ contextBridge.exposeInMainWorld('api', {
     compare: inv('sync:compare'),
     transfer: inv('sftp:transfer'),
     cancel: inv('sftp:cancel'),
+    agentKeys: inv('sftp:agentKeys'),
     onTransfer: on('sftp:transfer'),
     onEdit: on('edit:event'),
   },

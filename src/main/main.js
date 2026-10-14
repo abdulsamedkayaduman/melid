@@ -595,6 +595,7 @@ function registerIpc() {
   h('sync:compare', (c, localDir, remoteDir, exclude) => compareDirs(c, localDir, remoteDir, exclude));
   h('sftp:transfer', (c, t) => { manager.transfer(c, t); return true; });
   h('sftp:cancel', (c, tid) => manager.cancelTransfer(c, tid));
+  h('sftp:agentKeys', (c) => manager.agentKeyCount(c));
   h('drag:prepare', (c, tid, items) => prepareDrag(c, tid, items));
   ipcMain.on('drag:start', (e, files) => {
     files = (Array.isArray(files) ? files : []).filter((f) => typeof f === 'string' && path.isAbsolute(f));

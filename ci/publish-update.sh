@@ -20,6 +20,12 @@ node ci/update-feed.js "$version" "$notes" "$base/$version" dist > latest.json
 for f in "SSHDeck-$version-kurulum.exe" "SSHDeck-$version-tasinabilir.exe" "SSHDeck-$version.AppImage" "sshdeck-$version.pacman" "SSHDeck-$version.apk"; do
     put "dist/$f" "$version" "$f"
 done
+# İki sürümün derlemesi üst üste binerse geç biten eski sürüm latest'i geri almasın
+current=$(curl -sS "$base/latest/latest.json" 2>/dev/null | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{try{console.log(JSON.parse(Buffer.from(JSON.parse(s).payload,'base64')).version)}catch{}})" || true)
+if [ -n "$current" ] && node -e "process.exit(require('./src/main/updater.js').compareVersions(process.argv[1], process.argv[2]) > 0 ? 0 : 1)" "$current" "$version"; then
+    echo "latest daha yeni ($current), $version için latest.json yenilenmedi"
+    exit 0
+fi
 put latest.json latest latest.json
 curl -sS --fail-with-body -o /dev/null "$base/latest/latest.json"
 echo "Güncelleme yayında: $base/latest/latest.json"

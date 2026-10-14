@@ -41,10 +41,12 @@ src/main/ssh-manager.js  Electron'dan bağımsız (düz Node ile test edilir). B
                          installPublicKey() (ssh-copy-id), readFile() (önizleme), walkRemote() (eşitleme),
                          transfer() (her aktarım kendi SFTP kanalında; iptal = kanalı kapatmak; resume: aynı dosyayı atla,
                          yarımı akışla sürdür; mkdirs: üst klasörleri oluştur; direction 'relay' + srcConnId: uzak -> uzak,
-                         _relay() + sftpCopy() iki SFTP kanalı arasında paralel parça kopyası; t.direct: önce _direct():
-                         kaynak `tar | ssh hedef 'tar x'` ile kendisi gönderir — agent yönlendirme, olmazsa tek kullanımlık
-                         anahtar (hedefte restrict+expiry-time, bitince/iptalde silinir); hedef sunucu anahtarı kaynağa
-                         HostKeyAlias ile verilir; olmazsa bu bilgisayar üzerinden), startForward/stopForward (L: net.Server, D: socks.js, R: forwardIn)
+                         _relay() + sftpCopy() iki SFTP kanalı arasında paralel parça kopyası; t.direct = kullanıcının
+                         seçtiği yöntem ('key' | 'agent', tab.askRelayMethod penceresi): _direct() kaynak `tar | ssh hedef
+                         'tar x'` ile kendisi gönderir. 'key': hedefe restrict,command="mkdir+tar -x",expiry-time (30 dk)
+                         satırı; GNU tar ve süre sınırı şart; bitince/iptalde silinip denetlenir (olay: keys {ok, detail}).
+                         'agent': agent yalnız o komuta yönlendirilir. Hedef sunucu anahtarı kaynağa HostKeyAlias ile
+                         verilir. Olmazsa bu bilgisayar üzerinden (olay: fallback)), startForward/stopForward (L: net.Server, D: socks.js, R: forwardIn)
                          shellCwd(): terminal dizini (/proc + $SSH_CONNECTION; aynı bağlantıdaki diğer kabukların pid'leri hariç)
 src/main/updater.js      Güncelleme: imzalı latest.json (Forgejo generic paket deposu, Ed25519 açık anahtar gömülü),
                          check()/download() (sha256). Kurulum türü + kurulum main.js installUpdate(): NSIS sessiz,
