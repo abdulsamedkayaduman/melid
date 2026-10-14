@@ -46,6 +46,8 @@ const DEFAULT_SETTINGS = {
   paneSplit: 50, // yerel panelin genişliği (%)
   xferHeight: 0, // aktarım listesi yüksekliği (px, 0 = otomatik)
   colWidths: {}, // dosya paneli sütun genişlikleri (px)
+  hiddenCols: [], // dosya panelinde gizlenen sütunlar: 'size' | 'mtime' | 'mode' | 'owner'
+  autoHideCols: true, // dar panelde sağdaki sütunları gizle (kapalıysa yatay kaydırma)
   uiTheme: 'dark',
   autoReconnect: true, // bağlantı beklenmedik koparsa yeniden dene
   logEnabled: false, // terminal çıktısını dosyaya kaydet
@@ -66,7 +68,7 @@ const DEFAULT_SETTINGS = {
 };
 
 // Hesap eşitlemesine girmeyen, cihaza özgü ayarlar
-const LOCAL_SETTINGS = new Set(['master', 'logDir', 'logEnabled', 'colWidths', 'paneSplit', 'sftpHeight', 'xferHeight', 'updateSkip', 'updateLastCheck']);
+const LOCAL_SETTINGS = new Set(['master', 'logDir', 'logEnabled', 'colWidths', 'hiddenCols', 'autoHideCols', 'paneSplit', 'sftpHeight', 'xferHeight', 'updateSkip', 'updateLastCheck']);
 // Oturumda cihaza özgü alanlar (yerel klasör yolu başka cihazda/işletim sisteminde geçersiz)
 const LOCAL_SESSION_FIELDS = ['localDir'];
 const TOMBSTONE_TTL = 180 * 24 * 3600 * 1000;

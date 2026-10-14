@@ -133,6 +133,29 @@ const wait = (ms) => new Promise((r) => setTimeout(r, ms));
   await m.remove('t1', home + '/rs');
   console.log('OK resume, skip, mkdirs, walkRemote');
 
+  // 2c'. uzak -> uzak (iki bağlantı arası, veri bu bilgisayardan geçer): ağaç, sürdürme, iptal
+  await m.connect('t9', sessions.pw);
+  await m.transfer('t1', { tid: 'v0', direction: 'upload', items: [{ src: L + '/r', dst: home + '/rsrc' }] });
+  await m.transfer('t9', { tid: 'v1', direction: 'relay', srcConnId: 't1', items: [{ src: home + '/rsrc', dst: home + '/rdst' }] });
+  assert.equal(events[events.length - 1].state, 'done', JSON.stringify(events[events.length - 1]));
+  const md5 = async (f) => (await m.exec('t9', `md5sum < ${f}`)).stdout.split(' ')[0];
+  assert.equal(await md5(home + '/rdst/deep/big.bin'), await md5(home + '/rsrc/deep/big.bin'));
+  assert.equal((await m.exec('t9', `cat ${home}/rdst/small.txt`)).stdout, 'abc');
+  await m.exec('t9', `truncate -s 777777 ${home}/rdst/deep/big.bin`);
+  await m.transfer('t9', { tid: 'v2', direction: 'relay', srcConnId: 't1', resume: true, items: [{ src: home + '/rsrc', dst: home + '/rdst' }] });
+  lastR = events[events.length - 1];
+  assert.deepEqual([lastR.state, lastR.skipped, lastR.resumed], ['done', 1, 1], JSON.stringify(lastR));
+  assert.equal(await md5(home + '/rdst/deep/big.bin'), await md5(home + '/rsrc/deep/big.bin'));
+  await m.exec('t9', `head -c 60000000 /dev/urandom > ${home}/rbig.bin`);
+  const rp = m.transfer('t9', { tid: 'v3', direction: 'relay', srcConnId: 't1', items: [{ src: home + '/rbig.bin', dst: home + '/rbig2.bin' }] });
+  await wait(300); m.cancelTransfer('t9', 'v3'); await rp;
+  assert.equal(events[events.length - 1].state, 'cancelled');
+  await m.transfer('t9', { tid: 'v4', direction: 'relay', srcConnId: 'yok', items: [{ src: home + '/rsrc', dst: home + '/x' }] });
+  assert.equal(events[events.length - 1].state, 'error');
+  await m.exec('t9', `rm -rf ${home}/rsrc ${home}/rdst ${home}/rbig.bin ${home}/rbig2.bin`);
+  m.disconnect('t9');
+  console.log('OK uzak -> uzak aktarım (ağaç, sürdürme, iptal)');
+
   // 2d. anahtar üret + sunucuya yükle + o anahtarla bağlan
   const KD = path.join(os.tmpdir(), 'sshdeck-test-keys'); fs.rmSync(KD, { recursive: true, force: true });
   const nk = require('../src/main/keys.js').generateKey(KD, { name: 'yeni', comment: 'test@deck' });

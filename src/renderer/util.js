@@ -169,6 +169,7 @@ const I = {
   trash: 'M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6',
   download: 'M12 4v12M7 11l5 5 5-5M4 20h16',
   arrowRight: 'M5 12h14M13 6l6 6-6 6',
+  check: 'M5 12.5l4.5 4.5L19 7.5',
   arrowLeft: 'M19 12H5M11 6l-6 6 6 6',
   upgrade: 'M12 20V8M7 13l5-5 5 5M4 4h16',
   upload: 'M12 20V8M7 13l5-5 5 5M4 4h16',

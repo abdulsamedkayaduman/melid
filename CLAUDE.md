@@ -37,7 +37,8 @@ src/main/ssh-manager.js  Electron'dan bağımsız (düz Node ile test edilir). B
                          openShell/write/resize/closeShell, exec(), stats() (/proc'tan CPU/RAM/disk/ağ),
                          installPublicKey() (ssh-copy-id), readFile() (önizleme), walkRemote() (eşitleme),
                          transfer() (her aktarım kendi SFTP kanalında; iptal = kanalı kapatmak; resume: aynı dosyayı atla,
-                         yarımı akışla sürdür; mkdirs: üst klasörleri oluştur), startForward/stopForward (L: net.Server, D: socks.js, R: forwardIn)
+                         yarımı akışla sürdür; mkdirs: üst klasörleri oluştur; direction 'relay' + srcConnId: uzak -> uzak,
+                         _relay() + sftpCopy() iki SFTP kanalı arasında paralel parça kopyası), startForward/stopForward (L: net.Server, D: socks.js, R: forwardIn)
                          shellCwd(): terminal dizini (/proc + $SSH_CONNECTION; aynı bağlantıdaki diğer kabukların pid'leri hariç)
 src/main/updater.js      Güncelleme: imzalı latest.json (Forgejo generic paket deposu, Ed25519 açık anahtar gömülü),
                          check()/download() (sha256). Kurulum türü + kurulum main.js installUpdate(): NSIS sessiz,
@@ -67,7 +68,11 @@ src/renderer/tab.js      SessionTab: terminal bölmeleri (layout ağacı) + yere
 src/renderer/termpane.js TermPane: tek terminal bölmesi (xterm, arama çubuğu); kendi kabuğu sid ile
 src/renderer/tools.js    Hazır komutlar (Ctrl+Shift+K seçici + düzenleyici), SSH anahtarları, açık anahtarı sunucuya yükleme
 src/renderer/filepane.js FilePane: tek bir dosya paneli (adapter ile yerel/uzak), sürükle-bırak, klavye, bağlam menüsü,
-                         süzgeç (Ctrl+F), önizleme (Boşluk), sütun boyutlandırma
+                         süzgeç (Ctrl+F), önizleme (Boşluk), sütun boyutlandırma/gizleme (başlıkta sağ tık; layoutCols:
+                         dar panelde sağdan gizler ya da autoHideCols kapalıysa yatay kaydırma)
+                         Sürükle-bırak: uygulama içi HTML5 (inDrag; başka sekmenin paneline de) -> tab.dropFrom() yönlendirir
+                         (yerel->uzak yükleme, uzak->yerel kaynak sekme indirir, uzak->uzak 'relay'). Alt+sürükle: OS'a
+                         (webContents.startDrag; Wayland'de güvenilmez, bu yüzden varsayılan değil)
 src/renderer/dialogs.js  modal(), prompt, host key, oturum düzenleyici, ayarlar, context menu, toast, terminal temaları
 src/renderer/account.js  Hesap penceresi (giriş / hesap oluştur / durum, parola değişimi, çıkış)
 src/renderer/util.js     h() DOM yardımcısı, biçimlendirme, SVG ikon seti

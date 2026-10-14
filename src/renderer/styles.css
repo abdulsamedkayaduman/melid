@@ -299,7 +299,7 @@ tr.dir .fname .ic { color: #d6a94a; }
 tr .fname .ic { color: var(--muted); }
 tr.parent .fname span { color: var(--muted); }
 .link-tag { color: var(--accent) !important; font-size: 11px; }
-@media (max-width: 1250px) { .c-perm, .c-owner { display: none; } }
+table.files.hide-size .c-size, table.files.hide-mtime .c-date, table.files.hide-mode .c-perm, table.files.hide-owner .c-owner { display: none; }
 
 /* transfers */
 .xfers { flex: none; max-height: 34%; min-height: 50px; display: flex; flex-direction: column; background: var(--panel); }
@@ -318,6 +318,7 @@ tr.parent .fname span { color: var(--muted); }
 .xfer-main { flex: 1; min-width: 0; }
 .xfer-line { display: flex; gap: 8px; font-size: 12px; }
 .xfer-name { color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 45%; }
+.drag-ghost { position: fixed; top: -100px; left: 0; display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 6px; background: var(--accent); color: #fff; font-size: 12px; }
 .xfer-dest { color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--mono); font-size: 11px; }
 .bar { height: 4px; border-radius: 2px; background: var(--border2); margin: 4px 0 3px; overflow: hidden; }
 .bar-fill { height: 100%; background: var(--accent); transition: width .15s; }

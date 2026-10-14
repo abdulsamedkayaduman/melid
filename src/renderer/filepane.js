@@ -1,26 +1,41 @@
 import { h, icon, formatSize, formatDate, permString, uid } from './util.js';
 import { contextMenu, promptText, confirmBox, toast, modal } from './dialogs.js';
 
-// Native (OS) drag started from a pane: { pane, items }. The OS only carries file paths,
-// so drops inside the app look up the original items here. Cleared once the mouse is free again.
+// Sütunlar: varsayılan genişlikler (px) ve "Ad" sütununun en az genişliği
+const COL_W = { size: 78, mtime: 142, mode: 96, owner: 100 };
+const COL_LABEL = { size: 'Boyut', mtime: 'Değiştirilme', mode: 'İzinler', owner: 'Sahip' };
+const NAME_MIN = 160;
+
+// Uygulama içi sürükleme (tarayıcının kendi sürükle-bırakı; Wayland dahil her yerde çalışır): { pane, items }.
+// Aynı sekmenin diğer paneline ya da başka bir sekmenin paneline (ör. yan yana iki sunucu) bırakılabilir.
+let inDrag = null;
+document.addEventListener('dragend', () => { inDrag = null; });
+// Alt+sürükle: işletim sistemi sürüklemesi (dosya yöneticisine/masaüstüne bırakmak için; uzak dosyalar önce indirilir).
+// OS yalnız dosya yolu taşır; uygulamaya geri bırakılırsa asıl öğeler buradan bulunur. Fare bırakılınca temizlenir.
 let outDrag = null;
 document.addEventListener('mousemove', (e) => { if (!e.buttons) outDrag = null; }, true);
+const fileUrl = (p) => 'file://' + (p.startsWith('/') ? '' : '/') + p.replace(/\\/g, '/').split('/').map(encodeURIComponent).join('/').replace(/^\/([A-Za-z])%3A/, '/$1:');
 
 /**
  * One side of the Xftp-style dual pane. `adapter` abstracts local vs remote filesystem.
  * adapter: { list, home, join, dirname, mkdir, rename, remove, resolve?, label }
  */
 export class FilePane {
-  constructor({ side, adapter, api, settings, onTransfer, onExtraMenu, onOpenFile, onColResize, extraTools }) {
+  constructor({ side, adapter, api, settings, onTransfer, onDropFrom, onExtraMenu, onOpenFile, onColResize, onColPrefs, extraTools }) {
     this.side = side;
     this.ad = adapter;
     this.api = api;
     this.settings = settings;
-    this.onTransfer = onTransfer; // (fromSide, items[{path,name,isDir}], destDir) => void
+    this.onTransfer = onTransfer; // (fromSide, items[{path,name,isDir}], destDir) => void  (OS'tan bırakılan dosyalar)
+    this.onDropFrom = onDropFrom; // (srcPane, items, destDir) => void  (uygulama içi bir panelden bırakılanlar)
     this.onExtraMenu = onExtraMenu; // (entries) => items[]
     this.onOpenFile = onOpenFile; // (entry) => void   (double click on file)
     this.onColResize = onColResize; // (widths {key: px}) => void
     this.colW = { ...(settings.colWidths || {}) };
+    this.onColPrefs = onColPrefs; // ({ hiddenCols, autoHideCols }) => void  (başlıkta sağ tık)
+    this.hiddenCols = new Set(settings.hiddenCols || []);
+    this.autoHideCols = settings.autoHideCols !== false;
+    this.cols = side === 'remote' ? ['size', 'mtime', 'mode', 'owner'] : ['size', 'mtime', 'mode'];
     this.extraTools = extraTools || []; // extra header buttons
     this.cwd = null;
     this.entries = [];
@@ -81,6 +96,7 @@ export class FilePane {
     this.thead = h('thead', null, h('tr', null,
       col('name', 'Ad', 'c-name'), col('size', 'Boyut', 'c-size'), col('mtime', 'Değiştirilme', 'c-date'),
       col('mode', 'İzinler', 'c-perm'), this.side === 'remote' ? col('owner', 'Sahip', 'c-owner') : null));
+    this.thead.addEventListener('contextmenu', (e) => { e.preventDefault(); e.stopPropagation(); this.colMenu(e.clientX, e.clientY); });
     this.applyColWidths(this.colW);
     this.tbody = h('tbody');
     this.table = h('table.files', null, this.thead, this.tbody);
@@ -89,6 +105,7 @@ export class FilePane {
     this.foot = h('div.pane-foot');
     this.el = h('div.pane', { dataset: { side: this.side } }, this.head, this.body, this.foot);
 
+    new ResizeObserver(() => this.layoutCols()).observe(this.body);
     this.body.addEventListener('keydown', (e) => this.onKey(e));
     this.body.addEventListener('mousedown', (e) => { if (e.target === this.body || e.target === this.empty) { this.sel.clear(); this.paintSel(); } });
     this.body.addEventListener('contextmenu', (e) => { if (!e.target.closest('tr[data-name]')) { e.preventDefault(); this.sel.clear(); this.paintSel(); this.menu(e.clientX, e.clientY, []); } });
@@ -113,9 +130,10 @@ export class FilePane {
     if (row) row.classList.add('drop-into');
   }
 
+  // Kabul: başka bir panelden (yerelden yerele hariç) ya da OS'tan uzak panele dosya
   acceptsDrag(e) {
-    if (outDrag && outDrag.pane === this.peer) return true;
-    if (outDrag && outDrag.pane === this) return false;
+    const d = inDrag || outDrag;
+    if (d) return d.pane !== this && !(d.pane.side === 'local' && this.side === 'local');
     return this.side === 'remote' && [...e.dataTransfer.types].includes('Files');
   }
 
@@ -126,9 +144,9 @@ export class FilePane {
     e.preventDefault();
     let dest = this.cwd;
     if (row) { const t = this.entryByName(row.dataset.name); if (t && t.isDir) dest = this.ad.join(this.cwd, t.name); }
-    const d = outDrag; outDrag = null;
-    if (d && d.pane === this.peer) {
-      this.onTransfer(d.pane.side, d.items, dest);
+    const d = inDrag || outDrag; inDrag = outDrag = null;
+    if (d) {
+      this.onDropFrom(d.pane, d.items, dest);
     } else if (e.dataTransfer.files.length) {
       const items = [...e.dataTransfer.files].map((f) => { const p = this.api.pathForFile(f); return { path: p, name: p.split(/[\\/]/).pop() }; }).filter((x) => x.path);
       if (items.length) this.onTransfer('local', items, dest);
@@ -242,6 +260,48 @@ export class FilePane {
       const w = this.colW[th.dataset.key];
       th.style.width = th.dataset.key !== 'name' && w ? w + 'px' : '';
     }
+    this.layoutCols();
+  }
+
+  setColPrefs({ hiddenCols, autoHideCols }) {
+    this.hiddenCols = new Set(hiddenCols || []);
+    this.autoHideCols = autoHideCols !== false;
+    this.layoutCols();
+  }
+
+  // Görünen sütunlar: kullanıcının gizledikleri hariç; otomatik gizleme açıksa "Ad" en az NAME_MIN kalacak
+  // şekilde sağdan başlayarak gizlenir. Kapalıysa tablo genişler ve panel yatay kaydırılır.
+  layoutCols() {
+    if (!this.body) return; // build() sırasında henüz yok
+    const width = this.body.clientWidth;
+    if (!width) return; // görünmüyor (SFTP paneli kapalı / başka sekme)
+    const colWidth = (k) => this.colW[k] || COL_W[k];
+    const shown = this.cols.filter((k) => !this.hiddenCols.has(k));
+    if (this.autoHideCols) {
+      while (shown.length && NAME_MIN + shown.reduce((a, k) => a + colWidth(k), 0) > width) shown.pop();
+    }
+    for (const k of this.cols) this.table.classList.toggle('hide-' + k, !shown.includes(k));
+    this.autoHidden = this.cols.filter((k) => !this.hiddenCols.has(k) && !shown.includes(k));
+    this.table.style.minWidth = NAME_MIN + shown.reduce((a, k) => a + colWidth(k), 0) + 'px';
+  }
+
+  colMenu(x, y) {
+    const save = (patch) => {
+      const p = { hiddenCols: [...this.hiddenCols], autoHideCols: this.autoHideCols, ...patch };
+      if (this.onColPrefs) this.onColPrefs(p); else this.setColPrefs(p);
+    };
+    contextMenu(x, y, [
+      ...this.cols.map((k) => {
+        const hidden = this.hiddenCols.has(k);
+        const auto = !hidden && this.autoHidden && this.autoHidden.includes(k);
+        return {
+          label: COL_LABEL[k], icon: hidden ? null : 'check', hint: auto ? 'yer yok' : null,
+          action: () => save({ hiddenCols: hidden ? [...this.hiddenCols].filter((x) => x !== k) : [...this.hiddenCols, k] }),
+        };
+      }),
+      '-',
+      { label: 'Dar panelde sağdaki sütunları gizle', icon: this.autoHideCols ? 'check' : null, hint: this.autoHideCols ? null : 'kaydırılır', action: () => save({ autoHideCols: !this.autoHideCols }) },
+    ]);
   }
 
   sortBy(key) {
@@ -275,7 +335,7 @@ export class FilePane {
     this.vis = vis;
     const frag = document.createDocumentFragment();
     if (!this.atRoot()) {
-      frag.append(h('tr.parent', { ondblclick: () => this.up() }, h('td.c-name', null, h('span.fname', null, icon('up', 14), h('span', null, '..'))), h('td'), h('td'), h('td'), this.side === 'remote' ? h('td') : null));
+      frag.append(h('tr.parent', { ondblclick: () => this.up() }, h('td.c-name', null, h('span.fname', null, icon('up', 14), h('span', null, '..'))), h('td.c-size'), h('td.c-date'), h('td.c-perm'), this.side === 'remote' ? h('td.c-owner') : null));
     }
     for (const e of vis) {
       const ic = e.isDir ? 'folder' : e.isLink ? 'link' : 'file';
@@ -293,10 +353,20 @@ export class FilePane {
         this.menu(ev.clientX, ev.clientY, this.selected());
       });
       tr.addEventListener('dragstart', (ev) => {
-        // native drag instead of HTML5 so files can also be dropped into the file manager
-        ev.preventDefault();
         if (!this.sel.has(e.name)) { this.sel = new Set([e.name]); this.paintSel(); }
-        this.startNativeDrag(this.itemsFor(this.selected()));
+        const items = this.itemsFor(this.selected());
+        if (ev.altKey) { ev.preventDefault(); this.startNativeDrag(items); return; }
+        inDrag = { pane: this, items };
+        ev.dataTransfer.effectAllowed = 'copy';
+        ev.dataTransfer.setData('x-sshdeck-files', String(items.length));
+        // Yerel dosyalar dosya yöneticisine de bırakılabilsin (Linux dosya yöneticileri file:// adresini kopyalar)
+        if (this.side === 'local') ev.dataTransfer.setData('text/uri-list', items.map((it) => fileUrl(it.path)).join('\r\n'));
+        if (items.length > 1) {
+          const ghost = h('div.drag-ghost', null, icon('files', 14), `${items.length} öğe`);
+          document.body.append(ghost);
+          ev.dataTransfer.setDragImage(ghost, 10, 10);
+          setTimeout(() => ghost.remove(), 0);
+        }
       });
       frag.append(tr);
     }

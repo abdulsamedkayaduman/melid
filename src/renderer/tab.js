@@ -87,6 +87,8 @@ export class SessionTab {
       extraTools: [this.syncBtn, this.followBtn, this.localBtn],
       onTransfer: (from, items, dest) => this.transfer(from, items, dest),
       onColResize: (w) => this.saveColWidths(w),
+      onColPrefs: (p) => this.saveColPrefs(p),
+      onDropFrom: (src, items, dest) => this.dropFrom(src, items, dest, this.remote),
       onOpenFile: (e) => (this.app.settings.fileDblClick === 'transfer' ? this.transfer('remote', this.remote.itemsFor([e]), null) : this.editRemote(e)),
       onExtraMenu: (sel) => {
         const one = sel.length === 1 ? sel[0] : null;
@@ -113,6 +115,8 @@ export class SessionTab {
       },
       onTransfer: (from, items, dest) => this.transfer(from, items, dest),
       onColResize: (w) => this.saveColWidths(w),
+      onColPrefs: (p) => this.saveColPrefs(p),
+      onDropFrom: (src, items, dest) => this.dropFrom(src, items, dest, this.local),
       onOpenFile: (e) => (this.app.settings.fileDblClick === 'transfer' ? this.transfer('local', this.local.itemsFor([e]), null) : this.api.local.open(lp.join(this.local.cwd, e.name))),
       onExtraMenu: (sel) => {
         const one = sel.length === 1 ? sel[0] : null;
@@ -122,6 +126,7 @@ export class SessionTab {
         ];
       },
     });
+    this.local.tab = this.remote.tab = this;
     this.local.peer = this.remote;
     this.remote.peer = this.local;
 
@@ -180,6 +185,11 @@ export class SessionTab {
       document.body.classList.add('resizing-v');
       document.addEventListener('mousemove', move); document.addEventListener('mouseup', up);
     });
+  }
+
+  saveColPrefs(p) {
+    this.app.saveSettings(p);
+    for (const t of this.app.tabs) for (const pane of [t.local, t.remote]) pane.setColPrefs(p);
   }
 
   saveColWidths(w) {
@@ -262,7 +272,7 @@ export class SessionTab {
     const st = this.app.settings;
     for (const p of this.panes) p.applySettings();
     this.applySftpLayout();
-    for (const p of [this.local, this.remote]) p.applyColWidths(st.colWidths || {});
+    for (const p of [this.local, this.remote]) { p.applyColWidths(st.colWidths || {}); p.setColPrefs(st); }
     if (this.local.showHidden !== st.showHidden) { this.local.showHidden = this.remote.showHidden = st.showHidden; this.local.hiddenBtn.classList.toggle('on', st.showHidden); this.remote.hiddenBtn.classList.toggle('on', st.showHidden); this.local.render(); this.remote.render(); }
     if (!st.showStats) this.stats = null;
     this.pump();
@@ -599,22 +609,34 @@ export class SessionTab {
     try { await this.api.sftp.chmod(this.connId, posix.join(this.remote.cwd, e.name), parseInt(v, 8)); await this.remote.refresh(); } catch (err) { toast(cleanErr(err), 'err'); }
   }
 
-  async transfer(fromSide, items, destDir) {
+  // Bir panelden bu sekmenin destPane'ine bırakılan öğeler. Kaynak başka bir sekmede olabilir:
+  //   yerel -> uzak: bu sekme yükler · uzak -> yerel: kaynak sekme indirir (bağlantı onun)
+  //   uzak -> uzak (farklı sekme/sunucu): bu sekme kaynağın bağlantısından okuyup kendi sunucusuna yazar
+  dropFrom(src, items, dest, destPane) {
+    if (src.side === 'local') return this.transfer('local', items, dest);
+    if (destPane.side === 'local') return src.tab.transfer('remote', items, dest, { destPane });
+    if (src.tab === this) return;
+    return this.transfer('remote', items, dest, { destPane, srcTab: src.tab });
+  }
+
+  async transfer(fromSide, items, destDir, { destPane, srcTab } = {}) {
     if (this.state !== 'connected') { toast('Önce bağlanın', 'err'); return; }
-    const destPane = fromSide === 'local' ? this.remote : this.local;
+    destPane = destPane || (fromSide === 'local' ? this.remote : this.local);
+    const relay = fromSide === 'remote' && destPane.side === 'remote';
+    if (relay && (!srcTab || srcTab.state !== 'connected')) { toast('Kaynak sekmenin bağlantısı yok', 'err'); return; }
     const dest = destDir || destPane.cwd;
     if (!dest) { toast('Hedef dizin hazır değil', 'err'); return; }
-    const direction = fromSide === 'local' ? 'upload' : 'download';
+    const direction = relay ? 'relay' : fromSide === 'local' ? 'upload' : 'download';
     let resume = false;
-    const sp = fromSide === 'local' ? this.lpath : posix; const dp = fromSide === 'local' ? posix : this.lpath;
-    let list = items.filter((it) => !(sp.dirname(it.path) === dest && fromSide === destPane.side));
+    const sp = fromSide === 'local' ? this.lpath : posix; const dp = destPane.side === 'remote' ? posix : this.lpath;
+    let list = relay ? items : items.filter((it) => !(sp.dirname(it.path) === dest && fromSide === destPane.side));
     // conflicts
     let existing;
     if (dest === destPane.cwd) existing = new Set(destPane.entries.map((e) => e.name));
     else {
       existing = new Set();
       for (const it of list) {
-        const ex = direction === 'upload' ? await this.api.sftp.exists(this.connId, dp.join(dest, it.name)) : await this.api.local.exists(dp.join(dest, it.name));
+        const ex = destPane.side === 'remote' ? await this.api.sftp.exists(this.connId, dp.join(dest, it.name)) : await this.api.local.exists(dp.join(dest, it.name));
         if (ex) existing.add(it.name);
       }
     }
@@ -635,16 +657,16 @@ export class SessionTab {
     }
     if (!list.length) return;
     this.enqueue({
-      direction, dest, destSide: destPane.side, resume,
+      direction, dest, destSide: destPane.side, destPane, srcTab, resume,
       label: list.length === 1 ? list[0].name : `${list.length} öğe`,
       items: list.map((it) => ({ src: it.path, dst: dp.join(dest, it.name) })),
     });
   }
 
   // Aktarımlar sekme başına kuyruğa girer; aynı anda en fazla settings.maxTransfers tanesi çalışır.
-  enqueue({ direction, dest, destSide, label, items, resume = false, mkdirs = false }) {
+  enqueue({ direction, dest, destSide, destPane, srcTab, label, items, resume = false, mkdirs = false }) {
     const tid = uid('t');
-    const t = { tid, direction, dest, destSide, label, items, resume, mkdirs, state: 'queued', done: 0, total: 0, started: 0, samples: [] };
+    const t = { tid, direction, dest, destSide, destPane, srcTab, label, items, resume, mkdirs, state: 'queued', done: 0, total: 0, started: 0, samples: [] };
     this.transfers.set(tid, t);
     this.renderTransfer(t);
     this.pump();
@@ -658,10 +680,16 @@ export class SessionTab {
     for (const t of [...this.transfers.values()].reverse()) { // en eski önce
       if (running >= max) break;
       if (t.state !== 'queued') continue;
+      // uzak -> uzak: kaynak sekme yeniden bağlanmışsa güncel bağlantısı kullanılır
+      if (t.direction === 'relay' && t.srcTab.state !== 'connected') {
+        Object.assign(t, { state: 'error', error: `Kaynak (${t.srcTab.title}) bağlı değil` });
+        this.renderTransfer(t);
+        continue;
+      }
       running++;
       t.state = 'starting'; t.started = Date.now(); t.samples = []; t.done = 0; t.total = 0; t.error = null;
       this.renderTransfer(t);
-      this.api.sftp.transfer(this.connId, { tid: t.tid, direction: t.direction, items: t.items, resume: t.resume, mkdirs: t.mkdirs })
+      this.api.sftp.transfer(this.connId, { tid: t.tid, direction: t.direction, items: t.items, resume: t.resume, mkdirs: t.mkdirs, srcConnId: t.srcTab && t.srcTab.connId })
         .catch((e) => this.onTransfer({ tid: t.tid, state: 'error', error: cleanErr(e) }));
     }
   }
@@ -687,11 +715,11 @@ export class SessionTab {
     while (t.samples.length > 2 && now - t.samples[0][0] > 3000) t.samples.shift();
     this.renderTransfer(t);
     if (info.state === 'done') {
-      const pane = t.destSide === 'remote' ? this.remote : this.local;
+      const pane = t.destPane || (t.destSide === 'remote' ? this.remote : this.local);
       if (pane.cwd === t.dest || (t.mkdirs && pane.cwd && pane.cwd.startsWith(t.dest))) pane.refresh();
       const secs = Math.max(0.001, (now - t.started) / 1000);
       const extra = [info.skipped ? `${info.skipped} aynı dosya atlandı` : '', info.resumed ? `${info.resumed} dosya sürdürüldü` : ''].filter(Boolean).join(', ');
-      toast(`${t.label} ${t.direction === 'upload' ? 'yüklendi' : 'indirildi'} (${formatSize(t.total)}, ${secs.toFixed(1)} sn)${extra ? ' · ' + extra : ''}`, 'ok');
+      toast(`${t.label} ${{ upload: 'yüklendi', download: 'indirildi', relay: 'aktarıldı' }[t.direction]} (${formatSize(t.total)}, ${secs.toFixed(1)} sn)${extra ? ' · ' + extra : ''}`, 'ok');
     } else if (info.state === 'error') toast(`Aktarım hatası: ${info.error}`, 'err', 6000);
     if (['done', 'error', 'cancelled'].includes(info.state)) this.pump();
   }
@@ -707,9 +735,9 @@ export class SessionTab {
     }[t.state] || t.state;
     const canRetry = t.state === 'error' || t.state === 'cancelled';
     const row = h('div.xfer.' + t.state, { dataset: { tid: t.tid } },
-      icon(t.direction === 'upload' ? 'upload' : 'download', 14),
+      icon({ upload: 'upload', download: 'download', relay: 'arrowRight' }[t.direction], 14),
       h('div.xfer-main', null,
-        h('div.xfer-line', null, h('span.xfer-name', { title: t.file || t.label }, t.label), h('span.xfer-dest', { title: t.dest }, '→ ' + t.dest)),
+        h('div.xfer-line', null, h('span.xfer-name', { title: t.file || t.label }, t.label), h('span.xfer-dest', { title: t.dest }, (t.direction === 'relay' ? `${t.srcTab.title} → ` : '→ ') + t.dest)),
         h('div.bar', null, h('div.bar-fill', { style: { width: pct.toFixed(1) + '%' } })),
         h('div.xfer-info', null, stateText, t.state === 'running' && t.file ? h('span.xfer-file', null, ' · ' + t.file.split('/').pop()) : null)),
       canRetry ? h('button.icon-btn', { title: 'Yeniden dene (kaldığı yerden sürdürür)', onclick: () => this.retryTransfer(t) }, icon('refresh', 14)) : null,

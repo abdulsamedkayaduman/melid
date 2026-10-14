@@ -99,6 +99,39 @@ function globMatcher(patterns) {
   return (name) => res.some((r) => r.test(name));
 }
 
+// İki SFTP kanalı arasında dosya kopyalama (fastGet/fastPut gibi paralel: aynı anda PAR parça yolda).
+// j: { src, dst, size, mode }; start > 0 ise hedefin o kısmı zaten var (sürdürme). step(kopyalanan bayt).
+async function sftpCopy(src, dst, j, start, step, isCancelled) {
+  const CHUNK = 32768; const PAR = 32;
+  const sh = await p1((cb) => src.open(j.src, 'r', cb));
+  let dh = null;
+  try {
+    dh = await p1((cb) => dst.open(j.dst, start ? 'r+' : 'w', { mode: j.mode }, cb));
+    let next = start; let copied = start;
+    const worker = async () => {
+      while (next < j.size) {
+        if (isCancelled()) throw new CancelError();
+        const pos = next; const len = Math.min(CHUNK, j.size - pos);
+        next += len;
+        const buf = Buffer.allocUnsafe(len);
+        let got = 0;
+        while (got < len) {
+          const n = await new Promise((res, rej) => src.read(sh, buf, got, len - got, pos + got, (e, nb) => (e ? rej(e) : res(nb))));
+          if (!n) throw new Error('Kaynak dosya kopyalanırken değişti');
+          got += n;
+        }
+        await p1((cb) => dst.write(dh, buf, 0, len, pos, cb));
+        copied += len;
+        step(copied);
+      }
+    };
+    await Promise.all(Array.from({ length: PAR }, worker));
+  } finally {
+    src.close(sh, () => {});
+    if (dh) await new Promise((res) => dst.close(dh, () => res()));
+  }
+}
+
 const p1 = (fn) => new Promise((res, rej) => fn((err, v) => (err ? rej(err) : res(v))));
 
 class SshManager extends EventEmitter {
@@ -601,7 +634,8 @@ class SshManager extends EventEmitter {
   // t.resume: hedefte aynı boyut+tarihte olan dosyalar atlanır, daha küçük olanlar kaldığı yerden sürdürülür.
   // t.mkdirs: dosya öğelerinin hedef üst klasörleri yoksa oluşturulur (klasör eşitleme).
   async transfer(id, t) {
-    // t: { tid, direction: 'download'|'upload', items: [{src, dst}], resume?, mkdirs? }
+    // t: { tid, direction: 'download'|'upload'|'relay', items: [{src, dst}], resume?, mkdirs?, srcConnId? (relay) }
+    if (t.direction === 'relay') return this._relay(id, t);
     const conn = this._get(id);
     const rec = { cancelled: false, sftp: null };
     conn.transfers.set(t.tid, rec);
@@ -702,12 +736,65 @@ class SshManager extends EventEmitter {
     }
   }
 
+  // Uzak -> uzak: kaynak bağlantıdan (t.srcConnId) okunup bu bağlantıya (id) yazılır. Veri bu bilgisayardan
+  // geçer ama diske yazılmaz. Olaylar hedef bağlantı adına gelir (aktarım hedef sekmenin kuyruğunda görünür).
+  async _relay(id, t) {
+    const conn = this._get(id);
+    const rec = { cancelled: false, sftp: null, srcSftp: null };
+    conn.transfers.set(t.tid, rec);
+    const emit = (extra) => this.emit('transfer', id, { tid: t.tid, ...extra });
+    let total = 0; let done = 0; let lastEmit = 0; let skipped = 0; let resumed = 0;
+    const tick = (file, force) => {
+      const now = Date.now();
+      if (force || now - lastEmit > 120) { lastEmit = now; emit({ state: 'running', done, total, file }); }
+    };
+    try {
+      const srcConn = this.conns.get(t.srcConnId);
+      if (!srcConn || !srcConn.client) throw new Error('Kaynak sunucuya bağlı değil');
+      rec.srcSftp = await p1((cb) => srcConn.client.sftp(cb));
+      rec.sftp = await p1((cb) => conn.client.sftp(cb));
+      const src = rec.srcSftp; const dst = rec.sftp;
+      const jobs = [];
+      const walk = async (sp, dp) => {
+        const st = await p1((cb) => src.stat(sp, cb));
+        if (st.isDirectory()) {
+          jobs.push({ src: sp, dst: dp, dir: true });
+          for (const e of await p1((cb) => src.readdir(sp, cb))) await walk(rpath.join(sp, e.filename), rpath.join(dp, e.filename));
+        } else { jobs.push({ src: sp, dst: dp, size: st.size, mtime: st.mtime, atime: st.atime, mode: st.mode & 0o777 }); total += st.size; }
+      };
+      emit({ state: 'scanning', done: 0, total: 0 });
+      for (const it of t.items) await walk(it.src, it.dst);
+      for (const j of jobs) {
+        if (rec.cancelled) throw new CancelError();
+        if (j.dir) { try { await p1((cb) => dst.mkdir(j.dst, cb)); } catch { /* var */ } continue; }
+        const base = done;
+        let start = 0;
+        if (t.resume) {
+          let ds = null;
+          try { ds = await p1((cb) => dst.stat(j.dst, cb)); } catch {}
+          if (ds && ds.size === j.size && ds.mtime === j.mtime) { done = base + j.size; skipped++; continue; }
+          if (ds && ds.size > 0 && ds.size < j.size) { start = ds.size; resumed++; }
+        }
+        tick(rpath.basename(j.dst), true);
+        await sftpCopy(src, dst, j, start, (n) => { done = base + n; tick(j.src); }, () => rec.cancelled);
+        try { await p1((cb) => dst.utimes(j.dst, j.atime, j.mtime, cb)); } catch {}
+        done = base + j.size;
+      }
+      emit({ state: 'done', done: total, total, skipped, resumed });
+    } catch (e) {
+      emit({ state: rec.cancelled ? 'cancelled' : 'error', done, total, error: rec.cancelled ? 'İptal edildi' : e.message });
+    } finally {
+      for (const ch of [rec.sftp, rec.srcSftp]) { try { ch && ch.end(); } catch {} }
+      conn.transfers.delete(t.tid);
+    }
+  }
+
   cancelTransfer(id, tid) {
     const c = this.conns.get(id);
     const rec = c && c.transfers.get(tid);
     if (!rec) return;
     rec.cancelled = true;
-    try { rec.sftp && rec.sftp.end(); } catch {}
+    for (const ch of [rec.sftp, rec.srcSftp]) { try { ch && ch.end(); } catch {} }
   }
 
   // ---------------- port forwarding ----------------
