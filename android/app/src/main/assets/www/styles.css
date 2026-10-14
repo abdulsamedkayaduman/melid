@@ -84,7 +84,7 @@ html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text);
 button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; }
 input, select, textarea { font: inherit; color: inherit; }
 .ic { flex: none; display: block; }
-.hidden { display: none !important; }
+.hidden, [hidden] { display: none !important; }
 .grow { flex: 1; min-width: 0; }
 .mono { font-family: var(--mono); }
 .muted { color: var(--muted); }
@@ -175,7 +175,6 @@ select.input { appearance: none; background-image: linear-gradient(45deg, transp
 .set-card .set-row + .set-row { border-top: 1px solid var(--border); }
 .set-row .txt small.warn { color: var(--busy); }
 .scan-list { display: flex; flex-direction: column; gap: 6px; margin: -4px 0 14px; }
-.scan-list[hidden] { display: none; }
 .scan-item { display: flex; align-items: center; gap: 10px; min-height: 46px; padding: 0 14px; border-radius: 10px; border: 1px solid var(--border2); background: var(--panel); text-align: left; }
 .scan-item:active { background: var(--hover); }
 .scan-item .ic { color: var(--accent); }
