@@ -146,9 +146,11 @@ const wait = (ms) => new Promise((r) => setTimeout(r, ms));
   lastR = events[events.length - 1];
   assert.deepEqual([lastR.state, lastR.skipped, lastR.resumed], ['done', 1, 1], JSON.stringify(lastR));
   assert.equal(await md5(home + '/rdst/deep/big.bin'), await md5(home + '/rsrc/deep/big.bin'));
-  await m.exec('t9', `head -c 60000000 /dev/urandom > ${home}/rbig.bin`);
+  await m.exec('t9', `head -c 20000000 /dev/urandom > ${home}/rbig.bin`);
+  // süreye değil olaya bağlı: tarama bitip kopyalama başlarken iptal (hızlı makinede de aktarım bitmeden)
+  const started = new Promise((res) => { const l = (id, e) => { if (e.tid === 'v3' && e.state === 'running') { m.off('transfer', l); res(); } }; m.on('transfer', l); });
   const rp = m.transfer('t9', { tid: 'v3', direction: 'relay', srcConnId: 't1', items: [{ src: home + '/rbig.bin', dst: home + '/rbig2.bin' }] });
-  await wait(300); m.cancelTransfer('t9', 'v3'); await rp;
+  await started; m.cancelTransfer('t9', 'v3'); await rp;
   assert.equal(events[events.length - 1].state, 'cancelled');
   await m.transfer('t9', { tid: 'v4', direction: 'relay', srcConnId: 'yok', items: [{ src: home + '/rsrc', dst: home + '/x' }] });
   assert.equal(events[events.length - 1].state, 'error');
@@ -157,14 +159,17 @@ const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 
   // 2c''. doğrudan sunucu-sunucu (kaynak hedefe kendisi gönderir): geçici anahtar, iz bırakmama, geri dönüş
   await m.transfer('t1', { tid: 'w0', direction: 'upload', items: [{ src: L + '/r', dst: home + '/dsrc' }] });
-  await m.exec('t1', `head -c 80000000 /dev/urandom > ${home}/dsrc/huge.bin`, { timeout: 60000 });
   const akBefore = (await m.exec('t9', 'cat ~/.ssh/authorized_keys')).stdout;
-  // aktarım sürerken hedefe eklenen satırı yakala: yalnız tar açabilen, süreli, kısıtlı olmalı
-  let tmpLine = '';
-  const w1 = m.transfer('t9', { tid: 'w1', direction: 'relay', direct: 'key', srcConnId: 't1', items: [{ src: home + '/dsrc', dst: home + '/ddst/dsrc' }] });
-  for (let i = 0; i < 200 && !tmpLine; i++) { tmpLine = (await m.exec('t9', 'grep sshdeck-gecici ~/.ssh/authorized_keys || true')).stdout.trim(); if (!tmpLine) await wait(50); }
-  await w1;
-  assert(tmpLine.startsWith(`restrict,command="mkdir -p '${home}/ddst' && tar -C '${home}/ddst' -xf -",expiry-time="`), tmpLine);
+  // hedefe eklenen satır: yalnız tar açabilen, süreli, kısıtlı olmalı. Sunucuya giden ekleme komutundan okunur
+  // (dosyada aramak zamanlamaya bağlı olurdu); sshd'nin satırı kabul ettiğini aktarımın başarısı gösterir.
+  const exec0 = m.exec;
+  let addCmd = '';
+  m.exec = function (id, cmd, o) { if (/printf .*sshdeck-gecici-/.test(cmd)) addCmd = cmd; return exec0.call(this, id, cmd, o); };
+  await m.transfer('t9', { tid: 'w1', direction: 'relay', direct: 'key', srcConnId: 't1', items: [{ src: home + '/dsrc', dst: home + '/ddst/dsrc' }] });
+  m.exec = exec0;
+  const tmpLine = addCmd.replace(/'\\''/g, "'");
+  assert(tmpLine.includes(`'restrict,command="mkdir -p '${home}/ddst' && tar -C '${home}/ddst' -xf -",expiry-time="`), addCmd);
+  assert(/expiry-time="\d{12}" ssh-ed25519 \S+ sshdeck-gecici-[0-9a-f]{12}'/.test(tmpLine), tmpLine);
   let ld = events[events.length - 1];
   assert.deepEqual([ld.state, ld.via, ld.keys], ['done', 'doğrudan (geçici anahtar)', { ok: true }], JSON.stringify(ld));
   assert.equal(await md5(home + '/ddst/dsrc/deep/big.bin'), await md5(home + '/dsrc/deep/big.bin'));
