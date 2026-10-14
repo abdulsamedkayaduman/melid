@@ -19,5 +19,5 @@ services:
     ports:
       - "3150:3150"
     volumes:
-      - ../sshdeck-sync-data:/data
+      - ../../sshdeck-sync-data:/data
  
