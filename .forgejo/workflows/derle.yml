@@ -21,7 +21,9 @@ env:
   GRADLE_OPTS: "-Dorg.gradle.daemon=false -Dorg.gradle.jvmargs=-Xmx3g"
   ANDROID_HOME: /opt/android-sdk
   # android/app/build.gradle'daki compileSdk ile aynı tutun
-  ANDROID_CMDLINE_TOOLS: commandlinetools-linux-16111833_latest.zip
+  # 13114758 (19.0): 16111833 ve sonrası sdkmanager yerine her çalışmada "Android CLI" indirmeye çalışıyor
+  # (dl.google.com/android/cli/latest; yarıda kesilince derleme düşüyor). Klasik sdkmanager'da kalın.
+  ANDROID_CMDLINE_TOOLS: commandlinetools-linux-13114758_latest.zip
   ANDROID_SDK_PACKAGES: "platform-tools platforms;android-35 build-tools;35.0.0"
 
 jobs:

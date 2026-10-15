@@ -7,10 +7,16 @@ sdkmanager="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
 if [ ! -x "$sdkmanager" ]; then
     command -v unzip > /dev/null || { apt-get update -qq && apt-get install -y -qq unzip > /dev/null; }
     mkdir -p "$ANDROID_HOME/cmdline-tools"
-    curl -sSL -o /tmp/clt.zip "https://dl.google.com/android/repository/$ANDROID_CMDLINE_TOOLS"
+    curl -sSfL --retry 5 --retry-all-errors -o /tmp/clt.zip "https://dl.google.com/android/repository/$ANDROID_CMDLINE_TOOLS"
     unzip -q /tmp/clt.zip -d "$ANDROID_HOME/cmdline-tools"
     mv "$ANDROID_HOME/cmdline-tools/cmdline-tools" "$ANDROID_HOME/cmdline-tools/latest"
 fi
 yes | "$sdkmanager" --licenses > /dev/null || true
-# shellcheck disable=SC2086 # word splitting into package names is intended
-"$sdkmanager" $ANDROID_SDK_PACKAGES > /dev/null
+# Ağ hatasında birkaç kez dene (indirmeler arada yarıda kesilebiliyor)
+for try in 1 2 3; do
+    # shellcheck disable=SC2086 # word splitting into package names is intended
+    "$sdkmanager" $ANDROID_SDK_PACKAGES > /dev/null && exit 0
+    echo "sdkmanager başarısız (deneme $try), yeniden deneniyor..." >&2
+    sleep 10
+done
+exit 1
