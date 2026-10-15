@@ -192,7 +192,8 @@ export async function sessionEditor({ session, sessions, groups, secrets, api })
   f.authType = h('select.input', null, Object.entries(AUTH_LABELS).map(([v, l]) => h('option', { value: v, selected: s.authType === v }, l)));
   f.password = h('input.input', { type: 'password', value: s.password || '', placeholder: s.has_password ? '•••••• (kayıtlı — değiştirmek için yazın)' : 'Boş bırakılırsa bağlanırken sorulur' });
   f.clearPassword = h('input', { type: 'checkbox' });
-  f.keyPath = h('input.input', { value: s.keyPath || '', placeholder: '~/.ssh/id_ed25519', spellcheck: false });
+  // Başka cihazdan gelen oturum: anahtar parmak iziyle bulunur (~/.ssh ya da hesaptan eşitlenen anahtar)
+  f.keyPath = h('input.input', { value: s.keyPath || '', placeholder: s.keyFp && !s.keyPath ? 'Eşitlenen anahtar (parmak iziyle bulunur)' : '~/.ssh/id_ed25519', spellcheck: false });
   f.passphrase = h('input.input', { type: 'password', placeholder: s.has_passphrase ? '•••••• (kayıtlı)' : 'Gerekirse bağlanırken sorulur' });
   f.jumpHostId = h('select.input', null, h('option', { value: '' }, '— Yok —'),
     sessions.filter((x) => x.id !== s.id).map((x) => h('option', { value: x.id, selected: s.jumpHostId === x.id }, `${x.name}  (${x.username || '?'}@${x.host})`)));

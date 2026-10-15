@@ -113,6 +113,28 @@ async function localList(dir) {
 }
 
 // ---------- oturum kaydı ----------
+const SSH_DIR = path.join(os.homedir(), '.ssh');
+const allKeys = () => {
+  const local = keys.listKeys(SSH_DIR);
+  const have = new Set(local.map((k) => k.fingerprint));
+  return [...local, ...store.publicSyncedKeys().filter((k) => !have.has(k.fingerprint))];
+};
+
+/**
+ * Anahtarlı oturumun anahtarını bulur: keyPath dosyası yoksa (başka cihazdan gelen oturum) parmak iziyle
+ * ~/.ssh'de, sonra hesaptan gelen anahtarlarda arar. Hesaptaki anahtar dosyaya yazılmaz, keyData olarak gider.
+ */
+function resolveKey(s) {
+  if (!s || s.authType !== 'key' || !s.keyFp) return s;
+  if (s.keyPath && fs.existsSync(expandHome(s.keyPath))) return s;
+  const local = keys.listKeys(SSH_DIR).find((k) => k.fingerprint === s.keyFp && k.privatePath);
+  if (local) return { ...s, keyPath: local.privatePath };
+  const synced = store.syncedKey(s.keyFp);
+  if (synced) return { ...s, keyPath: synced.name, keyData: synced.private, passphrase: s.passphrase || synced.passphrase };
+  if (!s.keyPath) throw new Error('Bu oturumun SSH anahtarı bu bilgisayarda yok. Hesap ve eşitleme penceresinde "SSH anahtarlarını eşitle"yi bu bilgisayarda ve anahtarın olduğu cihazda açın.');
+  return s;
+}
+
 const logger = new TermLogger();
 const logDir = () => expandHome(store.settings.logDir) || path.join(app.getPath('documents'), 'SSHDeck', 'kayitlar');
 function logShellData(connId, data, sid) {
@@ -489,6 +511,12 @@ function registerIpc() {
     await account.syncNow();
     return account.status();
   });
+  h('account:setSyncKeys', async (on) => {
+    if (on && !(await ensureUnlocked())) throw new Error('Ana parola girilmedi');
+    store.setSyncKeys(on);
+    account.syncNow().catch(() => {});
+    return account.status();
+  });
   h('account:changePassword', async (oldPw, newPw) => {
     if (!(await ensureUnlocked())) throw new Error('Ana parola girilmedi');
     await account.changePassword(oldPw, newPw);
@@ -547,7 +575,7 @@ function registerIpc() {
   h('ssh:connect', async (connId, ref) => {
     let session;
     if (ref.sessionId) {
-      session = store.getSession(ref.sessionId);
+      session = resolveKey(store.getSession(ref.sessionId));
       if (!session) throw new Error('Oturum bulunamadı');
     } else session = { ...ref.session };
     await manager.connect(connId, session);
@@ -560,14 +588,15 @@ function registerIpc() {
   ipcMain.on('ssh:write', (_e, connId, data, sid) => manager.write(connId, data, sid));
   ipcMain.on('ssh:resize', (_e, connId, cols, rows, sid) => manager.resize(connId, cols, rows, sid));
   h('ssh:disconnect', (connId) => { stopEdits(connId); manager.disconnect(connId); });
-  h('ssh:installKey', async (connId, pubPath) => {
-    const k = keys.listKeys(path.join(os.homedir(), '.ssh')).find((x) => x.pubPath === pubPath);
+  h('ssh:installKey', async (connId, ref) => {
+    const k = allKeys().find((x) => x.pubPath === ref || x.fingerprint === ref);
     if (!k) throw new Error('Açık anahtar bulunamadı');
     return manager.installPublicKey(connId, k.publicKey);
   });
 
-  // ssh anahtarları
-  h('keys:list', () => keys.listKeys(path.join(os.homedir(), '.ssh')));
+  // ssh anahtarları: ~/.ssh + hesaptan gelenler (anahtar eşitlemesi; aynı parmak izi bir kez)
+  h('keys:list', () => allKeys());
+  h('keys:deleteSynced', (fp) => { store.deleteSyncedKey(fp); return allKeys(); });
   h('keys:generate', (opts) => keys.generateKey(path.join(os.homedir(), '.ssh'), opts));
 
   // oturum kaydı
@@ -711,8 +740,9 @@ app.whenReady().then(() => {
     encrypt: (s) => safeStorage.encryptString(s).toString('base64'),
     decrypt: (b) => safeStorage.decryptString(Buffer.from(b, 'base64')),
   });
+  store.sshDir = SSH_DIR;
   manager = new SshManager({
-    getSession: (id) => store.getSession(id),
+    getSession: (id) => resolveKey(store.getSession(id)),
     verifyHostKey,
     prompt: (kind, payload) => uiRequest(kind, payload),
     saveCredentials: (id, creds) => {

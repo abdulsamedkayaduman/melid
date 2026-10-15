@@ -23,13 +23,15 @@ export function accountSubtitle(st) {
   return `${st.user} · ${st.state === 'syncing' ? STATE_TEXT.syncing : 'son eşitleme ' + syncTimeText(st.lastSync)}`;
 }
 
+const KEYS_TEXT = 'Açıkken bu telefondaki SSH anahtarları (özel anahtarlar dahil) uçtan uca şifreli olarak hesaba yüklenir; bilgisayardaki ve diğer cihazlardaki anahtarlar da buraya gelir. Kapalıysa bu telefon anahtar göndermez ve almaz.';
+
 export async function accountSheet(app) {
   let st;
   try { st = await N.call('accountStatus'); } catch (e) { toast(e.message, { type: 'err' }); return; }
-  return st.loggedIn ? manageSheet(app, st) : loginSheet(app);
+  return st.loggedIn ? manageSheet(app, st) : loginSheet(app, null, st);
 }
 
-async function loginSheet(app, reauth) {
+async function loginSheet(app, reauth, st0) {
   let mode = 'login';
   let lastServer = ''; let lastUser = '';
   try { lastServer = localStorage.getItem('syncServer') || ''; lastUser = localStorage.getItem('syncUser') || ''; } catch {}
@@ -41,6 +43,7 @@ async function loginSheet(app, reauth) {
     password: inp({ type: 'password' }),
     password2: inp({ type: 'password' }),
     invite: inp({}),
+    syncKeys: h('input', { type: 'checkbox', checked: !!st0?.syncKeys }),
   };
   if (reauth) { f.server.disabled = true; f.user.disabled = true; }
   const err = h('div.form-err');
@@ -97,6 +100,8 @@ async function loginSheet(app, reauth) {
       field('Kullanıcı adı', f.user),
       field('Hesap parolası', f.password),
       ...regOnly,
+      reauth ? null : h('label.check', null, f.syncKeys, 'SSH anahtarlarını da eşitle'),
+      reauth ? null : h('p.hint', { style: { margin: '-4px 0 12px 32px', fontSize: '12px' } }, 'Özel anahtarlar da hesaba (şifreli) yüklenir. Sonradan Hesap ve eşitleme menüsünden değiştirilebilir.'),
       err),
     buttons: [{ label: 'Vazgeç', value: null }, { label: 'Devam', value: 'ok', primary: true }],
     onButton: async (v) => {
@@ -115,6 +120,7 @@ async function loginSheet(app, reauth) {
       sh.dismiss = false; // sürerken dışarı dokunmak / geri tuşu pencereyi kapatmasın
       intro.textContent = mode === 'register' ? 'Hesap oluşturuluyor ve bu telefondaki veriler yükleniyor…' : 'Giriş yapılıyor ve eşitleniyor… (anahtar türetme birkaç saniye sürebilir)';
       try {
+        if (!reauth) await N.call('accountSetKeys', { on: f.syncKeys.checked });
         res = await N.call(mode === 'register' ? 'accountRegister' : 'accountLogin', o);
         try { localStorage.setItem('syncServer', o.server); localStorage.setItem('syncUser', o.user); } catch {}
         return true;
@@ -138,17 +144,24 @@ async function manageSheet(app, st) {
   const kv = (k, v) => h('div.kv-row', null, h('span', null, k), h('b', null, v));
   const act = await actionSheet('Hesap ve eşitleme', [
     st.state === 'auth' ? { icon: 'lock', label: 'Tekrar giriş yap', value: 'reauth' } : { icon: 'sync', label: 'Şimdi eşitle', value: 'sync' },
-    { icon: 'key', label: 'Hesap parolasını değiştir', value: 'password' },
+    { icon: 'key', label: st.syncKeys ? 'SSH anahtarı eşitlemesini kapat' : 'SSH anahtarlarını da eşitle', value: 'keys' },
+    { icon: 'lock', label: 'Hesap parolasını değiştir', value: 'password' },
     '-',
     { icon: 'power', label: 'Çıkış yap', value: 'logout', danger: true },
   ], h('div', null,
     kv('Hesap', st.user), kv('Sunucu', st.server.replace(/^https?:\/\//, '')),
     kv('Durum', STATE_TEXT[st.state] || st.state), kv('Son eşitleme', syncTimeText(st.lastSync)),
+    kv('SSH anahtarları', st.syncKeys ? 'eşitleniyor' : 'eşitlenmiyor'),
     st.error ? h('div.form-err', null, st.error) : null));
   try {
     if (act === 'sync') {
       app.setAccount(await N.call('accountSync'));
       toast('Eşitlendi', { type: 'ok' });
+    } else if (act === 'keys') {
+      const on = !st.syncKeys;
+      if (!await confirm({ title: on ? 'SSH anahtarlarını eşitle' : 'Anahtar eşitlemesini kapat', message: on ? KEYS_TEXT : 'Bu telefon artık anahtar göndermez ve almaz. Buradaki anahtarlar silinmez; hesaptaki anahtarlar da diğer cihazlarda kalır.', ok: on ? 'Eşitle' : 'Kapat' })) return;
+      app.setAccount(await N.call('accountSetKeys', { on }));
+      toast(on ? 'SSH anahtarları eşitlenecek' : 'Anahtar eşitlemesi kapatıldı', { type: 'ok' });
     } else if (act === 'reauth') {
       await loginSheet(app, st);
     } else if (act === 'password') {

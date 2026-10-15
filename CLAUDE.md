@@ -53,7 +53,8 @@ src/main/updater.js      Güncelleme: imzalı latest.json (Forgejo generic paket
                          taşınabilir exe (cmd betiği), AppImage (yerine yaz), pacman (pkexec). Yayın: ci/publish-update.sh
 src/main/sync.js         Hesap eşitlemesi (AccountSync): giriş/kayıt/çıkış/parola değişimi, uçtan uca şifreli kasa,
                          syncNow() (al -> mergeVaults -> uygula -> 409'da yeniden dene). store.onChange ile tetiklenir.
-                         scanLan(): yerel ağda 3150 portu açık sunucu arama. Sunucu: server/sync-server.js (bağımsız,
+                         scanLan(): yerel ağda 3150 portu açık sunucu arama. İsteğe bağlı SSH anahtarı eşitlemesi
+                         (settings.syncKeys, cihaza özgü; kasada keys, oturumda keyFp; gelen anahtarlar store.keys). Sunucu: server/sync-server.js (bağımsız,
                          bağımlılıksız; server/Dockerfile + docker-compose.yml, Dokploy); kök adreste davet koduyla
                          girilen istatistik sayfası (HOME_PAGE, POST /api/stats). Ayrıntı ve güvenlik modeli: docs/senkron.md
 src/main/termlog.js      Oturum kaydı: TermLogger (oturum adına göre klasör, dosya başına kabuk) + parçalı ANSI temizleyici

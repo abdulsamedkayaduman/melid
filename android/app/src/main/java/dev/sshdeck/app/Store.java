@@ -191,6 +191,12 @@ public class Store implements SyncCore.Local {
             if (input.isNull(k)) next.remove(k); else next.put(k, input.get(k));
         }
         next.put("id", id);
+        // Anahtarın parmak izi eşitlenir (keyId bu cihaza özgü): diğer cihaz aynı anahtarı bununla bulur
+        String keyId = input.has("keyId") && !input.isNull("keyId") ? input.optString("keyId") : "";
+        if (!keyId.isEmpty() && !keyId.equals(prev.optString("keyId"))) {
+            String fp = keyFingerprint(keyId);
+            if (fp != null) next.put("keyFp", fp); else next.remove("keyFp");
+        } else if (input.has("keyId") && keyId.isEmpty() && !prev.optString("keyId").isEmpty()) next.remove("keyFp");
         for (String f : SECRET_FIELDS) {
             if (!input.has(f)) continue;
             String v = input.isNull(f) ? "" : input.optString(f);
@@ -341,7 +347,83 @@ public class Store implements SyncCore.Local {
             o.put("mtime", s.optLong("mtime"));
             ss.put(s.getString("id"), o);
         }
-        return new JSONObject().put("sessions", ss).put("deleted", new JSONObject(sync.getJSONObject("deleted").toString())).put("settings", settingsBlob());
+        JSONObject out = new JSONObject().put("sessions", ss).put("deleted", new JSONObject(sync.getJSONObject("deleted").toString())).put("settings", settingsBlob());
+        if (syncKeys()) {
+            JSONObject ks = new JSONObject();
+            for (int i = 0; i < keys.length(); i++) {
+                JSONObject k = keys.getJSONObject(i);
+                String fp = k.optString("fingerprint"), prv = dec(k.opt("private"));
+                if (fp.isEmpty() || prv == null || ks.has(fp)) continue;
+                JSONObject o = new JSONObject().put("name", k.optString("name")).put("type", k.optString("type"))
+                        .put("public", k.optString("public")).put("private", prv).put("mtime", keyMtime(k));
+                String pp = dec(k.opt("passphrase"));
+                if (pp != null && !pp.isEmpty()) o.put("passphrase", pp);
+                ks.put(fp, o);
+            }
+            out.put("keys", ks);
+        }
+        return out;
+    }
+
+    static long keyMtime(JSONObject k) { return k.optLong("mtime", k.optLong("created")); }
+
+    /** Hesap eşitlemesinde SSH anahtarları da gönderilsin/alınsın mı (bu cihaza özgü seçim) */
+    public synchronized boolean syncKeys() { return settings.optBoolean("syncKeys"); }
+
+    /** Açılınca anahtarlı oturumlara parmak izi eklenir (diğer cihaz anahtarı bulsun) */
+    public synchronized void setSyncKeys(boolean on) throws JSONException {
+        settings.put("syncKeys", on);
+        save("settings.json", settings);
+        if (on) {
+            boolean touched = false;
+            for (int i = 0; i < sessions.length(); i++) {
+                JSONObject s = sessions.getJSONObject(i);
+                if (s.optString("keyId").isEmpty() || s.has("keyFp")) continue;
+                String fp = keyFingerprint(s.optString("keyId"));
+                if (fp != null) { s.put("keyFp", fp).put("mtime", System.currentTimeMillis()); touched = true; }
+            }
+            if (touched) save("sessions.json", sessions);
+        }
+        changed();
+    }
+
+    synchronized String keyFingerprint(String keyId) {
+        int idx = indexOf(keys, keyId);
+        String fp = idx < 0 ? "" : keys.optJSONObject(idx).optString("fingerprint");
+        return fp.isEmpty() ? null : fp;
+    }
+
+    /** Kasadaki anahtarları uygular (parmak izine göre; yerel kimlik korunur, silineni kaldırır) */
+    void applyKeys(JSONObject vk) throws JSONException {
+        JSONArray next = new JSONArray();
+        java.util.Set<String> seen = new java.util.HashSet<>();
+        for (int i = 0; i < keys.length(); i++) {
+            JSONObject k = keys.getJSONObject(i);
+            String fp = k.optString("fingerprint");
+            JSONObject r = vk.optJSONObject(fp);
+            if (r == null || seen.contains(fp)) continue; // hesaptan silindi (ya da aynı anahtarın ikinci kopyası)
+            seen.add(fp);
+            if (!r.optString("name").equals(k.optString("name"))) k.put("name", r.optString("name"));
+            String prv = r.optString("private"), pp = r.optString("passphrase", "");
+            if (!prv.equals(dec(k.opt("private")))) k.put("private", enc(prv));
+            String oldPp = dec(k.opt("passphrase"));
+            if (!pp.equals(oldPp == null ? "" : oldPp)) { if (pp.isEmpty()) k.remove("passphrase"); else k.put("passphrase", enc(pp)); }
+            k.put("mtime", r.optLong("mtime"));
+            next.put(k);
+        }
+        for (Iterator<String> it = vk.keys(); it.hasNext(); ) {
+            String fp = it.next();
+            if (seen.contains(fp)) continue;
+            JSONObject r = vk.getJSONObject(fp);
+            JSONObject k = new JSONObject().put("id", UUID.randomUUID().toString()).put("name", r.optString("name", "anahtar"))
+                    .put("type", r.optString("type")).put("public", r.optString("public")).put("fingerprint", fp)
+                    .put("created", System.currentTimeMillis()).put("mtime", r.optLong("mtime")).put("private", enc(r.optString("private")));
+            String pp = r.optString("passphrase", "");
+            if (!pp.isEmpty()) k.put("passphrase", enc(pp));
+            next.put(k);
+        }
+        keys = next;
+        save("keys.json", keys);
     }
 
     /** Birleştirilmiş kasayı uygular; onChange tetiklenmez (eşitlemenin kendi yazması). */
@@ -377,6 +459,7 @@ public class Store implements SyncCore.Local {
             save("settings.json", settings);
             sync.put("settings", new JSONObject(rs.toString()));
         }
+        if (syncKeys() && v.optJSONObject("keys") != null) applyKeys(v.getJSONObject("keys"));
         sync.put("deleted", new JSONObject(v.getJSONObject("deleted").toString()));
         save("sync.json", sync);
     }
@@ -404,10 +487,12 @@ public class Store implements SyncCore.Local {
         k.put("public", pub);
         k.put("fingerprint", fp);
         k.put("created", System.currentTimeMillis());
+        k.put("mtime", System.currentTimeMillis());
         k.put("private", enc(prv));
         if (passphrase != null && !passphrase.isEmpty()) k.put("passphrase", enc(passphrase));
         keys.put(k);
         save("keys.json", keys);
+        if (syncKeys()) changed();
         return id;
     }
 
@@ -428,13 +513,24 @@ public class Store implements SyncCore.Local {
         JSONObject k = keys.getJSONObject(idx);
         if (name.trim().equals(k.optString("name"))) return;
         k.put("name", uniqueKeyName(name));
+        k.put("mtime", System.currentTimeMillis());
         save("keys.json", keys);
+        if (syncKeys()) changed();
     }
 
+    /** Silinen anahtar hesaptan da silinir (eşitleme açık diğer cihazlardan kalkar) */
     public synchronized void deleteKey(String id) throws JSONException {
         int idx = indexOf(keys, id);
-        if (idx >= 0) keys.remove(idx);
+        if (idx < 0) return;
+        String fp = keys.getJSONObject(idx).optString("fingerprint");
+        keys.remove(idx);
         save("keys.json", keys);
+        boolean other = false; // aynı anahtarın başka kopyası kaldıysa hesaptan silinmez
+        for (int i = 0; i < keys.length(); i++) if (fp.equals(keys.optJSONObject(i).optString("fingerprint"))) other = true;
+        if (fp.isEmpty() || other || !syncKeys()) return;
+        sync.getJSONObject("deleted").put(fp, System.currentTimeMillis());
+        save("sync.json", sync);
+        changed();
     }
 
     public synchronized String keyPublic(String id) {
@@ -457,6 +553,7 @@ public class Store implements SyncCore.Local {
                 JSONObject o = new JSONObject();
                 o.put("id", k.optString("id"));
                 o.put("name", k.optString("name"));
+                o.put("fingerprint", k.optString("fingerprint"));
                 o.put("private", prv);
                 String pp = dec(k.opt("passphrase"));
                 if (pp != null) o.put("passphrase", pp);

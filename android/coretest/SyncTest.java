@@ -27,6 +27,7 @@ public class SyncTest {
         JSONObject acc; String token; byte[] vk;
         JSONObject sessions = new JSONObject(), deleted = new JSONObject(), settings = new JSONObject();
         JSONObject blob;
+        JSONObject keys; // null: anahtar eşitlemesi kapalı (Store.syncKeys)
 
         public JSONObject account() { return acc == null ? null : new JSONObject(acc.toString()); }
         public String token() { return token; }
@@ -58,7 +59,9 @@ public class SyncTest {
         public JSONObject snapshot() {
             JSONObject ss = new JSONObject();
             for (String id : sessions.keySet()) { JSONObject o = new JSONObject(sessions.getJSONObject(id).toString()); o.remove("keyId"); ss.put(id, o); }
-            return new JSONObject().put("sessions", ss).put("deleted", new JSONObject(deleted.toString())).put("settings", blob());
+            JSONObject out = new JSONObject().put("sessions", ss).put("deleted", new JSONObject(deleted.toString())).put("settings", blob());
+            if (keys != null) out.put("keys", new JSONObject(keys.toString()));
+            return out;
         }
 
         public void apply(JSONObject v) {
@@ -78,6 +81,7 @@ public class SyncTest {
                 blob = new JSONObject(rs.toString());
             }
             deleted = new JSONObject(v.getJSONObject("deleted").toString());
+            if (keys != null && v.optJSONObject("keys") != null) keys = new JSONObject(v.getJSONObject("keys").toString());
         }
 
         JSONObject byName(String n) {
@@ -130,8 +134,16 @@ public class SyncTest {
         ok(c.status().optLong("version") >= 2, "kasa yüklendi (sürüm " + c.status().optLong("version") + ")");
 
         // Android'den yeni hesap
+        ok(SyncCore.canon(SyncCore.mergeVaults(mj.getJSONObject("a"), mj.getJSONObject("b"), 10).getJSONObject("keys")).equals(SyncCore.canon(new JSONObject(mj.getString("expected")).getJSONObject("keys"))), "anahtarlar JS ile aynı birleşir");
+        // Anahtar eşitlemesi kapalı cihaz kasadaki anahtarı silmemeli (masaüstü sonra doğrular)
+        L.keys = null;
+        c.syncNow();
+
         MemLocal L2 = new MemLocal();
-        L2.saveSession(new JSONObject().put("id", "t1").put("name", "telefondan").put("host", "t"));
+        JSONObject gk = dev.sshdeck.core.Keys.generate("ed25519", "telefon");
+        L2.keys = new JSONObject().put(gk.getString("fingerprint"), new JSONObject().put("name", "telefon-anahtari").put("type", gk.getString("type"))
+                .put("public", gk.getString("public")).put("private", gk.getString("private")).put("mtime", System.currentTimeMillis()));
+        L2.saveSession(new JSONObject().put("id", "t1").put("name", "telefondan").put("host", "t").put("authType", "key").put("keyFp", gk.getString("fingerprint")));
         SyncCore.Client c2 = new SyncCore.Client(L2, "SSHDeck test Android");
         ok(expectError(() -> c2.register(server, "telefon", "telefonParola1", "yanlis")).contains("Davet kodu yanlış"), "yanlış davet kodu");
         c2.register(server, "telefon", "telefonParola1", "davet");

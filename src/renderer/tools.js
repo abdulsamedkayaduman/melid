@@ -105,11 +105,18 @@ export async function keysDialog(app) {
     listEl.replaceChildren(...(keys.length ? keys.map((k) => h('div.key-row', null,
       icon('key', 15),
       h('div.key-main', null,
-        h('div', null, h('b', null, k.name), h('span.key-type', null, k.type.replace(/^ssh-/, '')), k.comment ? h('span.muted', null, ' ' + k.comment) : null),
-        h('div.mono.key-fp', null, k.fingerprint), k.privatePath ? null : h('div.hint.warn', null, 'Özel anahtar dosyası yok')),
+        h('div', null, h('b', null, k.name), h('span.key-type', null, k.type.replace(/^ssh-/, '')), k.synced ? h('span.key-type', { title: 'Hesap eşitlemesiyle başka cihazdan geldi; SSHDeck içinde saklanır, ~/.ssh\'de dosyası yok' }, 'hesaptan') : null, k.comment ? h('span.muted', null, ' ' + k.comment) : null),
+        h('div.mono.key-fp', null, k.fingerprint), k.privatePath || k.synced ? null : h('div.hint.warn', null, 'Özel anahtar dosyası yok')),
       h('button.btn.sm', { type: 'button', title: 'Açık anahtarı panoya kopyala', onclick: () => { app.api.clipboard.write(k.publicKey); toast('Açık anahtar kopyalandı', 'ok'); } }, 'Kopyala'),
       app.active && app.active.state === 'connected'
-        ? h('button.btn.sm', { type: 'button', title: 'Etkin sekmedeki sunucuya yükle', onclick: () => installKey(app, app.active, k) }, icon('upload', 12), 'Sunucuya yükle') : null))
+        ? h('button.btn.sm', { type: 'button', title: 'Etkin sekmedeki sunucuya yükle', onclick: () => installKey(app, app.active, k) }, icon('upload', 12), 'Sunucuya yükle') : null,
+      k.synced ? h('button.btn.sm.danger', {
+        type: 'button', title: 'Hesaptan ve eşitlenen tüm cihazlardan sil',
+        onclick: async () => {
+          if (!await confirmBox({ title: 'Anahtarı sil', message: `${k.name} hesaptan silinsin mi?`, detail: 'Anahtar eşitlemesi açık tüm cihazlardan kaldırılır (başka cihazın ~/.ssh klasöründeki dosyalara dokunulmaz).', ok: 'Sil', danger: true })) return;
+          try { await app.api.keys.deleteSynced(k.fingerprint); await refresh(); } catch (e) { toast(cleanErr(e), 'err'); }
+        },
+      }, 'Sil') : null))
       : [h('p.muted', null, '~/.ssh içinde açık anahtar (.pub) bulunamadı.')]));
     return keys;
   };
@@ -155,10 +162,10 @@ export async function keysDialog(app) {
 
 async function installKey(app, tab, k, updateSession) {
   try {
-    const r = await app.api.ssh.installKey(tab.connId, k.pubPath);
+    const r = await app.api.ssh.installKey(tab.connId, k.pubPath || k.fingerprint);
     toast(r === 'exists' ? `${k.name} zaten sunucuda kayıtlı` : `${k.name} sunucuya eklendi (~/.ssh/authorized_keys)`, 'ok', 5000);
-    if (updateSession && tab.sessionId && k.privatePath) {
-      await app.saveSession({ id: tab.sessionId, authType: 'key', keyPath: k.privatePath });
+    if (updateSession && tab.sessionId && (k.privatePath || k.synced)) {
+      await app.saveSession(k.privatePath ? { id: tab.sessionId, authType: 'key', keyPath: k.privatePath } : { id: tab.sessionId, authType: 'key', keyPath: '', keyFp: k.fingerprint });
       toast('Oturum artık bu anahtarla bağlanacak', 'ok', 5000);
     }
     return true;
@@ -170,13 +177,13 @@ export async function installKeyDialog(app, tab) {
   if (!tab || tab.state !== 'connected') { toast('Önce bağlanın', 'err'); return; }
   let keys = [];
   try { keys = await app.api.keys.list(); } catch (e) { toast(cleanErr(e), 'err'); return; }
-  keys = keys.filter((k) => k.privatePath);
+  keys = keys.filter((k) => k.privatePath || k.synced);
   if (!keys.length) {
     const ok = await confirmBox({ title: 'Anahtar yok', message: '~/.ssh içinde kullanılabilir bir anahtar bulunamadı.', detail: 'Şimdi yeni bir anahtar oluşturmak ister misiniz?', ok: 'Anahtar oluştur' });
     if (ok) await keysDialog(app);
     return;
   }
-  const sel = h('select.input', null, keys.map((k) => h('option', { value: k.pubPath }, `${k.name}  (${k.type.replace(/^ssh-/, '')}${k.comment ? ', ' + k.comment : ''})`)));
+  const sel = h('select.input', null, keys.map((k) => h('option', { value: k.fingerprint }, `${k.name}  (${k.type.replace(/^ssh-/, '')}${k.comment ? ', ' + k.comment : ''}${k.synced ? ', hesaptan' : ''})`)));
   const upd = h('input', { type: 'checkbox', checked: !!tab.sessionId });
   const r = await modal({
     title: 'Açık anahtarı sunucuya yükle',
@@ -188,5 +195,5 @@ export async function installKeyDialog(app, tab) {
     buttons: [{ label: 'Vazgeç', value: null }, { label: 'Yükle', value: 'ok', primary: true }],
   });
   if (r !== 'ok') return;
-  await installKey(app, tab, keys.find((k) => k.pubPath === sel.value), upd.checked);
+  await installKey(app, tab, keys.find((k) => k.fingerprint === sel.value), upd.checked);
 }

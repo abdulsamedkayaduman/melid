@@ -45,7 +45,7 @@ export class FilePane {
     this.sortDir = 1;
     this.showHidden = !!settings.showHidden;
     this.filter = '';
-    this.history = [];
+    this.back = []; this.fwd = []; // gezinme geçmişi (fare geri/ileri tuşları, Alt+Sol/Sağ)
     this.loading = false;
     this.build();
   }
@@ -76,6 +76,8 @@ export class FilePane {
     this.titleEl = h('span.pane-title', null, this.ad.label);
     this.head = h('div.pane-head', null,
       h('div.pane-tools', null, this.titleEl,
+        (this.backBtn = tb('arrowLeft', 'Geri (Alt+Sol, fare geri tuşu)', () => this.goBack(), { disabled: true })),
+        (this.fwdBtn = tb('arrowRight', 'İleri (Alt+Sağ, fare ileri tuşu)', () => this.goForward(), { disabled: true })),
         tb('up', 'Üst dizin (Backspace)', () => this.up()),
         tb('home', 'Ev dizini', () => this.goHome()),
         tb('refresh', 'Yenile (F5)', () => this.refresh()),
@@ -104,6 +106,13 @@ export class FilePane {
     this.body = h('div.pane-body', { tabindex: 0 }, this.table, this.empty);
     this.foot = h('div.pane-foot');
     this.el = h('div.pane', { dataset: { side: this.side } }, this.head, this.body, this.foot);
+    // Fare geri/ileri tuşları (4./5. tuş): klasör geçmişinde gezinme
+    this.el.addEventListener('mousedown', (e) => { if (e.button === 3 || e.button === 4) e.preventDefault(); });
+    this.el.addEventListener('mouseup', (e) => {
+      if (e.button !== 3 && e.button !== 4) return;
+      e.preventDefault();
+      if (e.button === 3) this.goBack(); else this.goForward();
+    });
 
     new ResizeObserver(() => this.layoutCols()).observe(this.body);
     this.body.addEventListener('keydown', (e) => this.onKey(e));
@@ -187,14 +196,48 @@ export class FilePane {
 
   async up() { if (!this.atRoot()) await this.cd(this.ad.dirname(this.cwd), this.ad.basename(this.cwd)); }
 
-  async cd(dir, focusName) {
-    if (!dir) return;
+  // Geri: önceki klasör; geldiğimiz alt klasör seçili gelir
+  async goBack() {
+    const dir = this.back[this.back.length - 1];
+    if (!dir || this.loading) return;
+    if (await this.cd(dir, this.childOf(dir, this.cwd), { hist: 'back' })) { this.back.pop(); this.fwd.push(this._from); this.histBtns(); }
+  }
+
+  async goForward() {
+    const dir = this.fwd[this.fwd.length - 1];
+    if (!dir || this.loading) return;
+    if (await this.cd(dir, this.childOf(dir, this.cwd), { hist: 'fwd' })) { this.fwd.pop(); this.back.push(this._from); this.histBtns(); }
+  }
+
+  // from, dir'in altındaysa dir'deki ilk ad (geri dönünce o klasör seçili olsun)
+  childOf(dir, from) {
+    if (!from || !dir || from === dir) return undefined;
+    const sep = from.includes('\\') && !from.includes('/') ? '\\' : '/';
+    const base = dir.endsWith(sep) ? dir : dir + sep;
+    return from.startsWith(base) ? from.slice(base.length).split(sep)[0] || undefined : undefined;
+  }
+
+  histBtns() {
+    this.backBtn.disabled = !this.back.length;
+    this.fwdBtn.disabled = !this.fwd.length;
+  }
+
+  /** Klasöre gider; başarılıysa true. hist: geçmişten gelen gezinme (geçmişe yeni kayıt eklenmez) */
+  async cd(dir, focusName, { hist } = {}) {
+    if (!dir) return false;
     if (this.ad.resolve) dir = await this.ad.resolve(dir);
     this.loading = true;
     this.el.classList.add('loading');
     try {
       const list = await this.ad.list(dir);
       if (dir !== this.cwd) { this.filter = ''; this.filterInput.value = ''; }
+      this._from = this.cwd;
+      if (!hist && this.cwd && dir !== this.cwd) {
+        this.back.push(this.cwd);
+        if (this.back.length > 100) this.back.shift();
+        this.fwd = [];
+        this.histBtns();
+      }
       this.cwd = dir;
       this.entries = list;
       this.sel.clear();
@@ -203,9 +246,11 @@ export class FilePane {
       this.render();
       if (focusName) this.scrollTo(focusName);
       else this.body.scrollTop = 0;
+      return true;
     } catch (e) {
       toast(`${dir}: ${cleanErr(e)}`, 'err');
       this.pathInput.value = this.cwd || '';
+      return false;
     } finally {
       this.loading = false;
       this.el.classList.remove('loading');
@@ -439,6 +484,8 @@ export class FilePane {
     else if (k === 'PageUp') { e.preventDefault(); move(cur - 15); }
     else if (k === 'Enter') { e.preventDefault(); const s = this.selected(); if (s.length === 1) this.activate(s[0]); else if (s.length) this.transferSelection(); }
     else if (k === 'Backspace') { e.preventDefault(); this.up(); }
+    else if (k === 'ArrowLeft' && e.altKey) { e.preventDefault(); this.goBack(); }
+    else if (k === 'ArrowRight' && e.altKey) { e.preventDefault(); this.goForward(); }
     else if (k === 'F5') { e.preventDefault(); this.refresh(); }
     else if (k === 'F2') { e.preventDefault(); const s = this.selected(); if (s.length === 1) this.rename(s[0]); }
     else if (k === 'Delete') { e.preventDefault(); this.remove(this.selected()); }

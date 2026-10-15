@@ -4,6 +4,7 @@
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
+const { listKeys, keyFileFingerprint } = require('./keys');
 
 const SECRET_FIELDS = ['password', 'passphrase'];
 
@@ -66,10 +67,12 @@ const DEFAULT_SETTINGS = {
   tabActivity: 'rainbow', // arka plan sekmesinde çıktı göstergesi: 'rainbow' | 'blink' | 'off'
   // Odak modu (Alt+Enter): hangi arayüz parçaları gizlensin
   focusHide: { toolbar: true, sidebar: true, tabs: true, status: true, sftp: false },
+  recent: [], // son bağlanılan kayıtlı oturumlar (açılış ekranı): [{ id, t }], en yenisi başta; cihaza özgü
+  syncKeys: false, // hesap eşitlemesinde SSH anahtarları da gönderilsin/alınsın (cihaza özgü seçim)
 };
 
 // Hesap eşitlemesine girmeyen, cihaza özgü ayarlar
-const LOCAL_SETTINGS = new Set(['master', 'logDir', 'logEnabled', 'colWidths', 'hiddenCols', 'autoHideCols', 'paneSplit', 'sftpHeight', 'xferHeight', 'updateSkip', 'updateLastCheck']);
+const LOCAL_SETTINGS = new Set(['master', 'syncKeys', 'recent', 'logDir', 'logEnabled', 'colWidths', 'hiddenCols', 'autoHideCols', 'paneSplit', 'sftpHeight', 'xferHeight', 'updateSkip', 'updateLastCheck']);
 // Oturumda cihaza özgü alanlar (yerel klasör yolu başka cihazda/işletim sisteminde geçersiz)
 const LOCAL_SESSION_FIELDS = ['localDir'];
 const TOMBSTONE_TTL = 180 * 24 * 3600 * 1000;
@@ -83,6 +86,10 @@ class Store {
     this.sessions = this._load('sessions.json', []);
     this.settings = { ...DEFAULT_SETTINGS, ...this._load('settings.json', {}) };
     this.knownHosts = this._load('known_hosts.json', {});
+    // Hesaptaki SSH anahtarları (anahtar eşitlemesi açıkken): [{ id: parmak izi, name, type, public, private, passphrase?, mtime }]
+    // private/passphrase oturum parolaları gibi şifreli. ~/.ssh'deki dosyalara hiç yazılmaz.
+    this.keys = this._load('keys.json', []);
+    this.sshDir = null; // ~/.ssh (main.js verir; testlerde yok): buradaki anahtarlar da gönderilir
     // Eşitleme durumu: silinen oturumlar (id -> zaman), ayarların değişme zamanı, hesap bilgisi
     this.sync = { deleted: {}, settingsMtime: 0, account: null, ...this._load('sync.json', {}) };
     this.onChange = null; // eşitlenen bir veri değişince çağrılır
@@ -225,6 +232,7 @@ class Store {
       for (const f of SECRET_FIELDS) { const v = this._dec(s[f]); if (v) c[f] = v; }
       clear.set(s.id, c);
     }
+    const keysClear = this.keys.map((k) => ({ private: this._dec(k.private), passphrase: this._dec(k.passphrase) }));
     const acc = this.sync.account;
     const accClear = acc && { token: this._dec(acc.token), vk: this._dec(acc.vk) };
     // 2. switch scheme
@@ -242,6 +250,8 @@ class Store {
       const c = clear.get(s.id) || {};
       for (const f of SECRET_FIELDS) s[f] = c[f] ? this._enc(c[f]) : undefined;
     }
+    this.keys.forEach((k, i) => { k.private = this._enc(keysClear[i].private); k.passphrase = this._enc(keysClear[i].passphrase); });
+    if (this.keys.length) this._save('keys.json', this.keys);
     if (acc) { acc.token = this._enc(accClear.token); acc.vk = this._enc(accClear.vk); this._saveSync(); }
     this._save('sessions.json', this.sessions);
     this._save('settings.json', this.settings);
@@ -276,6 +286,10 @@ class Store {
       if (input[f] === undefined) next[f] = prev[f];
       else next[f] = input[f] === '' ? undefined : this._enc(input[f]);
     }
+    // Anahtarın parmak izi eşitlenir: başka cihaz (yol farklı ya da yok) aynı anahtarı bununla bulur
+    if (input.keyPath && input.keyPath !== prev.keyPath) next.keyFp = keyFileFingerprint(input.keyPath);
+    else if ('keyPath' in input && !input.keyPath && prev.keyPath && !input.keyFp) delete next.keyFp;
+    if (!next.keyFp) delete next.keyFp;
     next.mtime = Date.now();
     if (idx >= 0) this.sessions[idx] = next; else this.sessions.push(next);
     this._touchSessions();
@@ -333,7 +347,73 @@ class Store {
     }
     const settings = {};
     for (const [k, v] of Object.entries(this.settings)) if (!LOCAL_SETTINGS.has(k)) settings[k] = v;
-    return { sessions, deleted: { ...this.sync.deleted }, settings: { data: settings, mtime: this.sync.settingsMtime || 0 } };
+    const out = { sessions, deleted: { ...this.sync.deleted }, settings: { data: settings, mtime: this.sync.settingsMtime || 0 } };
+    if (this.settings.syncKeys) out.keys = this._keysSnapshot();
+    return out;
+  }
+
+  /** Eşitlenecek anahtarlar: hesaptan gelenler + ~/.ssh'deki çiftler (aynı parmak izi bir kez; hesaptan silineni geri koymaz) */
+  _keysSnapshot() {
+    const out = {};
+    for (const k of this.keys) {
+      const prv = this._dec(k.private);
+      if (!prv) continue;
+      const o = { name: k.name, type: k.type, public: k.public, private: prv, mtime: k.mtime || 0 };
+      const pp = this._dec(k.passphrase);
+      if (pp) o.passphrase = pp;
+      out[k.id] = o;
+    }
+    for (const k of this.sshDir ? listKeys(this.sshDir) : []) {
+      if (!k.privatePath || out[k.fingerprint]) continue;
+      let prv; let mtime;
+      try {
+        const st = fs.statSync(k.privatePath);
+        if (st.size > 64 * 1024) continue;
+        prv = fs.readFileSync(k.privatePath, 'utf8');
+        mtime = Math.floor(st.mtimeMs);
+      } catch { continue; }
+      if (!/PRIVATE KEY/.test(prv) || (this.sync.deleted[k.fingerprint] || 0) >= mtime) continue;
+      out[k.fingerprint] = { name: k.name, type: k.type, public: k.publicKey, private: prv, mtime };
+    }
+    return out;
+  }
+
+  /** Anahtar eşitlemesini aç/kapat. Açılınca anahtarlı oturumlara parmak izi eklenir (diğer cihaz anahtarı bulsun). */
+  setSyncKeys(on) {
+    this.settings.syncKeys = !!on;
+    this._save('settings.json', this.settings);
+    if (on) {
+      let touched = false;
+      for (const s of this.sessions) {
+        if (!s.keyPath || s.keyFp) continue;
+        const fp = keyFileFingerprint(s.keyPath);
+        if (fp) { s.keyFp = fp; s.mtime = Date.now(); touched = true; }
+      }
+      if (touched) this._save('sessions.json', this.sessions);
+    }
+    this._changed();
+  }
+
+  /** Hesaptan gelen anahtar (parmak iziyle; sırlar açık, yalnız ana süreçte) */
+  syncedKey(fp) {
+    const k = fp && this.keys.find((x) => x.id === fp);
+    if (!k) return null;
+    const prv = this._dec(k.private);
+    return prv ? { name: k.name, private: prv, passphrase: this._dec(k.passphrase) } : null;
+  }
+
+  /** Hesaptan gelen anahtarı sil (diğer cihazlardan da silinir; ~/.ssh'deki dosyalara dokunulmaz) */
+  deleteSyncedKey(fp) {
+    this.keys = this.keys.filter((k) => k.id !== fp);
+    this._save('keys.json', this.keys);
+    this.sync.deleted[fp] = Date.now();
+    this._saveSync();
+    this._changed();
+  }
+
+  /** Hesaptan gelen anahtarlar (anahtar listesi için; sırsız) */
+  publicSyncedKeys() {
+    return this.keys.map((k) => ({ name: k.name, type: k.type, fingerprint: k.id, publicKey: k.public, synced: true }));
   }
 
   /** Birleştirilmiş kasayı yerele uygular. onChange tetiklenmez (eşitlemenin kendi yazması). */
@@ -354,6 +434,15 @@ class Store {
       this._save('settings.json', this.settings);
       this.sync.settingsMtime = v.settings.mtime;
     }
+    if (this.settings.syncKeys && v.keys) {
+      const prevKeys = new Map(this.keys.map((k) => [k.id, k]));
+      this.keys = Object.entries(v.keys).map(([id, k]) => {
+        const old = prevKeys.get(id);
+        if (old && old.mtime === (k.mtime || 0) && old.name === k.name && this._dec(old.private) === k.private && (this._dec(old.passphrase) || '') === (k.passphrase || '')) return old;
+        return { id, name: k.name, type: k.type, public: k.public, private: this._enc(k.private), passphrase: k.passphrase ? this._enc(k.passphrase) : undefined, mtime: k.mtime || 0 };
+      });
+      this._save('keys.json', this.keys);
+    }
     this.sync.deleted = { ...v.deleted };
     this._saveSync();
   }
@@ -370,27 +459,38 @@ class Store {
 
 /**
  * İki kasayı birleştirir (değişme zamanı yeni olan kazanır). Aynı girdilerle her cihazda aynı sonucu verir.
- * Silme kaydı, kendinden sonra değişmemiş oturumu siler; daha yeni düzenleme silmeyi geçersiz kılar.
+ * Silme kaydı, kendinden sonra değişmemiş oturumu/anahtarı siler; daha yeni düzenleme silmeyi geçersiz kılar.
+ * keys: SSH anahtarları (parmak izine göre; yalnız "anahtarları eşitle" açık cihazlar katkı verir).
  */
 function mergeVaults(a, b, now = Date.now()) {
-  const empty = { sessions: {}, deleted: {}, settings: { data: {}, mtime: 0 } };
+  const empty = { sessions: {}, deleted: {}, settings: { data: {}, mtime: 0 }, keys: {} };
   a = a || empty; b = b || empty;
-  const sessions = {};
-  for (const id of new Set([...Object.keys(a.sessions || {}), ...Object.keys(b.sessions || {})])) {
-    const x = a.sessions[id]; const y = b.sessions[id];
-    if (!x || !y) { sessions[id] = x || y; continue; }
-    const tx = x.mtime || 0; const ty = y.mtime || 0;
-    sessions[id] = tx !== ty ? (tx > ty ? x : y) : (sortedJson(x) >= sortedJson(y) ? x : y);
-  }
+  const mergeItems = (ma, mb) => {
+    const out = {};
+    ma = ma || {}; mb = mb || {};
+    for (const id of new Set([...Object.keys(ma), ...Object.keys(mb)])) {
+      const x = ma[id]; const y = mb[id];
+      if (!x || !y) { out[id] = x || y; continue; }
+      const tx = x.mtime || 0; const ty = y.mtime || 0;
+      out[id] = tx !== ty ? (tx > ty ? x : y) : (sortedJson(x) >= sortedJson(y) ? x : y);
+    }
+    return out;
+  };
+  const sessions = mergeItems(a.sessions, b.sessions);
+  const keys = mergeItems(a.keys, b.keys);
   const deleted = {};
   for (const src of [a.deleted || {}, b.deleted || {}]) for (const [id, t] of Object.entries(src)) if (!(deleted[id] >= t)) deleted[id] = t;
   for (const [id, t] of Object.entries(deleted)) {
-    if (sessions[id] && (sessions[id].mtime || 0) <= t) delete sessions[id];
-    else if (sessions[id] || now - t > TOMBSTONE_TTL) delete deleted[id];
+    let live = false;
+    for (const items of [sessions, keys]) {
+      if (!items[id]) continue;
+      if ((items[id].mtime || 0) <= t) delete items[id]; else live = true;
+    }
+    if (live || now - t > TOMBSTONE_TTL) delete deleted[id];
   }
   const sa = a.settings || empty.settings; const sb = b.settings || empty.settings;
   const settings = sa.mtime !== sb.mtime ? (sa.mtime > sb.mtime ? sa : sb) : (sortedJson(sa) >= sortedJson(sb) ? sa : sb);
-  return { sessions, deleted, settings };
+  return { sessions, deleted, settings, keys };
 }
 
 module.exports = { Store, DEFAULT_SETTINGS, mergeVaults, sortedJson, encWithKey, decWithKey };

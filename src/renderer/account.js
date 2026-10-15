@@ -23,6 +23,8 @@ export function syncTimeText(t) {
 
 export const STATE_TEXT = { idle: 'Bekliyor', syncing: 'Eşitleniyor…', ok: 'Eşitlendi', error: 'Hata', locked: 'Ana parola kilitli', auth: 'Tekrar giriş gerekli' };
 
+export const KEYS_HINT = 'Açıkken bu cihazın SSH anahtarları (~/.ssh ve hesaptan gelenler) uçtan uca şifreli olarak hesaba yüklenir, diğer cihazların anahtarları buraya gelir. Anahtarlar ~/.ssh\'ye yazılmaz; SSHDeck bağlanırken kullanır. Kapalıysa bu cihaz anahtar göndermez ve almaz.';
+
 export async function accountDialog(app) {
   const st = await api.account.status();
   if (st.loggedIn) return manageDialog(app, st);
@@ -40,7 +42,9 @@ async function loginDialog(app, { reauth } = {}) {
     password: h('input.input', { type: 'password' }),
     password2: h('input.input', { type: 'password' }),
     invite: h('input.input', { type: 'text', spellcheck: false }),
+    syncKeys: h('input', { type: 'checkbox' }),
   };
+  api.account.status().then((st) => { f.syncKeys.checked = !!st.syncKeys; }).catch(() => {});
   if (reauth) { f.server.disabled = true; f.user.disabled = true; }
   const field = (label, control, cls) => h('label.field' + (cls || ''), null, h('span', null, label), control);
   const warn = h('div.hint.warn', { hidden: true }, 'Bu adres internette ve şifresiz (http). Kasa uçtan uca şifreli olsa da giriş bilgisi ağda açık gider; https kullanın.');
@@ -76,6 +80,8 @@ async function loginDialog(app, { reauth } = {}) {
     field('Kullanıcı adı', f.user),
     field('Hesap parolası', f.password),
     ...regOnly,
+    reauth ? null : h('label.check', { title: KEYS_HINT }, f.syncKeys, 'SSH anahtarlarını da eşitle'),
+    reauth ? null : h('p.hint.keys-hint', null, 'Özel anahtarlar da hesaba (şifreli) yüklenir. Sonradan hesap penceresinden değiştirilebilir.'),
     err);
   const setMode = (m) => {
     mode = m;
@@ -114,6 +120,7 @@ async function loginDialog(app, { reauth } = {}) {
       err.textContent = '';
       intro.textContent = mode === 'register' ? 'Hesap oluşturuluyor ve bu cihazdaki veriler yükleniyor…' : 'Giriş yapılıyor ve eşitleniyor…';
       try {
+        if (!reauth) await api.account.setSyncKeys(f.syncKeys.checked);
         const res = mode === 'register' ? await api.account.register(o) : await api.account.login(o);
         try { localStorage.setItem('syncServer', o.server); localStorage.setItem('syncUser', o.user); } catch {}
         return res;
@@ -142,6 +149,17 @@ async function manageDialog(app, st) {
       h('dt', null, 'Son eşitleme'), h('dd', null, syncTimeText(st.lastSync))),
     st.error ? h('div.upd-err', null, st.error) : null,
     insecureServer(st.server) ? h('div.hint.warn', null, 'Sunucu şifresiz (http) ve yerel ağ dışında; https kullanın.') : null,
+    h('label.check', null, h('input', {
+      type: 'checkbox', checked: !!st.syncKeys,
+      onchange: async (e) => {
+        const on = e.target.checked;
+        try {
+          await api.account.setSyncKeys(on);
+          toast(on ? 'SSH anahtarları eşitlenecek' : 'SSH anahtarları artık bu cihazdan gönderilmeyecek ve alınmayacak', 'ok', 5000);
+        } catch (err) { e.target.checked = !on; toast(cleanErr(err), 'err'); }
+      },
+    }), 'SSH anahtarlarını da eşitle'),
+    h('p.hint', null, KEYS_HINT),
     h('p.hint', null, 'Oturumlar, kayıtlı parolalar, ayarlar ve hazır komutlar uçtan uca şifreli eşitlenir. Bu cihaza özgü ayarlar (kayıt klasörü, panel boyutları) ve oturumların yerel klasörü eşitlenmez.'));
   const act = await modal({
     title: 'Hesap ve eşitleme', width: 460, body,

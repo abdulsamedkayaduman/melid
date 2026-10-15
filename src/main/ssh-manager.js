@@ -260,9 +260,9 @@ class SshManager extends EventEmitter {
     const username = cfg.username;
     const who = `${username}@${s.host}`;
     const methods = []; // tried in order before falling back to password / keyboard-interactive prompts
-    const loadKey = async (keyPath, savedPass, required) => {
-      let buf;
-      try { buf = fs.readFileSync(keyPath); } catch (e) { if (required) throw new Error(`Anahtar dosyası okunamadı: ${keyPath}`); return; }
+    const loadKey = async (keyPath, savedPass, required, data) => {
+      let buf = data;
+      if (!buf) try { buf = fs.readFileSync(keyPath); } catch (e) { if (required) throw new Error(`Anahtar dosyası okunamadı: ${keyPath}`); return; }
       let pass = savedPass || undefined;
       let parsed = utils.parseKey(buf, pass);
       for (let tries = 0; parsed instanceof Error && /encrypt|passphrase|decrypt|bad/i.test(parsed.message) && tries < 3; tries++) {
@@ -278,7 +278,8 @@ class SshManager extends EventEmitter {
     // Agent yönlendirme yalnız istenen komutta açılır (doğrudan aktarım); bağlantıda kendiliğinden açılmaz
     if (agentSock) { cfg.agent = agentSock; cfg.agentForward = true; }
     if (auth === 'key') {
-      await loadKey(expandHome(s.keyPath || '~/.ssh/id_ed25519'), s.passphrase, true);
+      // keyData: hesaptan gelen anahtar (dosyası yok; main.js resolveKey)
+      await loadKey(s.keyData ? s.keyPath : expandHome(s.keyPath || '~/.ssh/id_ed25519'), s.passphrase, true, s.keyData && Buffer.from(s.keyData));
     } else if (auth === 'agent') {
       if (!agentSock) throw new Error(process.platform === 'win32' ? 'ssh-agent bulunamadı (OpenSSH Authentication Agent hizmeti veya Pageant çalışmıyor)' : 'ssh-agent bulunamadı (SSH_AUTH_SOCK tanımlı değil)');
       methods.push({ type: 'agent', username, agent: agentSock });

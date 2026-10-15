@@ -4,7 +4,7 @@
 // Anahtarlar: hesap parolası -> PBKDF2-SHA512 (sunucudaki tuz) -> ana anahtar -> HKDF ile
 //   authKey (sunucuya gider, yalnız kimlik doğrulama) ve wrapKey (cihazdan çıkmaz).
 // Kasa anahtarı (VK) rastgele 32 bayt; sunucuda wrapKey ile şifreli (wrappedKey) durur.
-// Kasa = { sessions, deleted, settings } JSON'u, VK ile AES-256-GCM. Parola değişince yalnız VK yeniden sarılır.
+// Kasa = { sessions, deleted, settings, keys } JSON'u, VK ile AES-256-GCM. Parola değişince yalnız VK yeniden sarılır.
 const crypto = require('crypto');
 const net = require('net');
 const os = require('os');
@@ -103,8 +103,9 @@ class AccountSync extends EventEmitter {
 
   status() {
     const a = this.account;
-    return a ? { loggedIn: true, server: a.server, user: a.user, version: a.version || 0, lastSync: a.lastSync || 0, state: this.state, error: this.error }
-      : { loggedIn: false, state: 'idle' };
+    const syncKeys = !!this.store.settings.syncKeys;
+    return a ? { loggedIn: true, server: a.server, user: a.user, version: a.version || 0, lastSync: a.lastSync || 0, state: this.state, error: this.error, syncKeys }
+      : { loggedIn: false, state: 'idle', syncKeys };
   }
 
   _set(state, error = null) { this.state = state; this.error = error; this.emit('status', this.status()); }
@@ -238,6 +239,8 @@ class AccountSync extends EventEmitter {
       for (let attempt = 0; ; attempt++) {
         const remote = cur.data ? JSON.parse(decWithKey(cur.data, vk)) : null;
         const local = this.store.syncSnapshot();
+        // Anahtar eşitlemesi kapalı: bu cihaz anahtar göndermez/almaz, kasadakiler olduğu gibi kalır
+        if (!local.keys) local.keys = (remote && remote.keys) || {};
         const merged = mergeVaults(local, remote);
         if (sortedJson(merged) !== sortedJson(local)) { this.store.applySync(merged); changed = true; }
         if (remote && sortedJson(merged) === sortedJson(remote)) { this._done(cur.version); break; }

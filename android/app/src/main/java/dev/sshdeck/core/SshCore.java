@@ -200,7 +200,8 @@ public class SshCore {
             if (k == null) {
                 String kp = s.optString("keyPath");
                 throw new Exception("SSH anahtarı bulunamadı" + (kp.isEmpty() ? "" : " (" + kp + ")")
-                        + ". Ayarlar > SSH anahtarları bölümünden anahtarı içe aktarıp oturumda seçin.");
+                        + ". Ayarlar > SSH anahtarları bölümünden anahtarı içe aktarıp oturumda seçin"
+                        + (s.optString("keyFp").isEmpty() ? "." : " ya da Hesap ve eşitleme'de \"SSH anahtarlarını eşitle\"yi açın (anahtarın olduğu cihazda da)."));
             }
             String pp = passphrase != null ? passphrase : k.optString("passphrase", null);
             addIdentity(jsch, k, pp);
@@ -247,13 +248,16 @@ public class SshCore {
     static JSONObject pickKey(List<JSONObject> keys, JSONObject s) {
         String keyId = s.optString("keyId");
         if (!keyId.isEmpty()) for (JSONObject k : keys) if (k.optString("id").equals(keyId)) return k;
+        // Başka cihazdan gelen oturum: anahtarın parmak iziyle (hesap eşitlemesi keyFp'yi taşır)
+        String fp = s.optString("keyFp");
+        if (!fp.isEmpty()) for (JSONObject k : keys) if (k.optString("fingerprint").equals(fp)) return k;
         // Masaüstünden gelen oturum: keyPath'in dosya adı ile eşleştir (~/.ssh/id_ed25519 -> id_ed25519)
         String kp = s.optString("keyPath");
         if (!kp.isEmpty()) {
             String base = kp.replaceAll("^.*/", "");
             for (JSONObject k : keys) if (k.optString("name").equals(base)) return k;
         }
-        if (keyId.isEmpty() && kp.isEmpty() && keys.size() == 1) return keys.get(0);
+        if (keyId.isEmpty() && kp.isEmpty() && fp.isEmpty() && keys.size() == 1) return keys.get(0);
         return null;
     }
 

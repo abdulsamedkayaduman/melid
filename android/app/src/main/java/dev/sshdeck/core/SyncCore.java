@@ -65,7 +65,10 @@ public final class SyncCore {
         void setVersion(long version, long lastSync);
         /** Hesabı bu cihaz açtı: buradaki ayarlar hesabın ayarları olur */
         void firstDevice();
-        /** { sessions: {id: {...}}, deleted: {id: zaman}, settings: { data, mtime } } — sırlar açık */
+        /**
+         * { sessions: {id: {...}}, deleted: {id: zaman}, settings: { data, mtime }, keys?: {parmak izi: {...}} } — sırlar açık.
+         * keys yalnız anahtar eşitlemesi açıksa; yoksa kasadaki anahtarlar olduğu gibi kalır (apply onlara dokunmamalı).
+         */
         JSONObject snapshot() throws Exception;
         void apply(JSONObject merged) throws Exception;
     }
@@ -181,19 +184,8 @@ public final class SyncCore {
     static double num(Object v) { return v instanceof Number ? ((Number) v).doubleValue() : 0; }
 
     public static JSONObject mergeVaults(JSONObject a, JSONObject b, long now) throws JSONException {
-        JSONObject sa = a == null ? null : a.optJSONObject("sessions"), sb = b == null ? null : b.optJSONObject("sessions");
-        if (sa == null) sa = new JSONObject();
-        if (sb == null) sb = new JSONObject();
-        JSONObject sessions = new JSONObject();
-        Set<String> ids = new LinkedHashSet<>();
-        for (Iterator<String> it = sa.keys(); it.hasNext(); ) ids.add(it.next());
-        for (Iterator<String> it = sb.keys(); it.hasNext(); ) ids.add(it.next());
-        for (String id : ids) {
-            JSONObject x = sa.optJSONObject(id), y = sb.optJSONObject(id);
-            if (x == null || y == null) { sessions.put(id, x != null ? x : y); continue; }
-            double tx = num(x.opt("mtime")), ty = num(y.opt("mtime"));
-            sessions.put(id, tx != ty ? (tx > ty ? x : y) : (canon(x).compareTo(canon(y)) >= 0 ? x : y));
-        }
+        JSONObject sessions = mergeItems(a, b, "sessions");
+        JSONObject keys = mergeItems(a, b, "keys");
         JSONObject deleted = new JSONObject();
         for (JSONObject src : new JSONObject[]{a == null ? null : a.optJSONObject("deleted"), b == null ? null : b.optJSONObject("deleted")}) {
             if (src == null) continue;
@@ -207,9 +199,13 @@ public final class SyncCore {
         for (Iterator<String> it = deleted.keys(); it.hasNext(); ) dids.add(it.next());
         for (String id : dids) {
             double t = num(deleted.opt(id));
-            JSONObject s = sessions.optJSONObject(id);
-            if (s != null && num(s.opt("mtime")) <= t) sessions.remove(id);
-            else if (s != null || now - t > TOMBSTONE_TTL) deleted.remove(id);
+            boolean live = false;
+            for (JSONObject items : new JSONObject[]{sessions, keys}) {
+                JSONObject s = items.optJSONObject(id);
+                if (s == null) continue;
+                if (num(s.opt("mtime")) <= t) items.remove(id); else live = true;
+            }
+            if (live || now - t > TOMBSTONE_TTL) deleted.remove(id);
         }
         JSONObject empty = new JSONObject().put("data", new JSONObject()).put("mtime", 0);
         JSONObject ea = a == null ? null : a.optJSONObject("settings"), eb = b == null ? null : b.optJSONObject("settings");
@@ -217,7 +213,25 @@ public final class SyncCore {
         if (eb == null) eb = empty;
         double ma = num(ea.opt("mtime")), mb = num(eb.opt("mtime"));
         JSONObject settings = ma != mb ? (ma > mb ? ea : eb) : (canon(ea).compareTo(canon(eb)) >= 0 ? ea : eb);
-        return new JSONObject().put("sessions", sessions).put("deleted", deleted).put("settings", settings);
+        return new JSONObject().put("sessions", sessions).put("deleted", deleted).put("settings", settings).put("keys", keys);
+    }
+
+    /** Kimliğe göre birleştirme: değişme zamanı yeni olan, eşitse sıralı JSON'u büyük olan kazanır */
+    static JSONObject mergeItems(JSONObject a, JSONObject b, String field) throws JSONException {
+        JSONObject sa = a == null ? null : a.optJSONObject(field), sb = b == null ? null : b.optJSONObject(field);
+        if (sa == null) sa = new JSONObject();
+        if (sb == null) sb = new JSONObject();
+        JSONObject out = new JSONObject();
+        Set<String> ids = new LinkedHashSet<>();
+        for (Iterator<String> it = sa.keys(); it.hasNext(); ) ids.add(it.next());
+        for (Iterator<String> it = sb.keys(); it.hasNext(); ) ids.add(it.next());
+        for (String id : ids) {
+            JSONObject x = sa.optJSONObject(id), y = sb.optJSONObject(id);
+            if (x == null || y == null) { out.put(id, x != null ? x : y); continue; }
+            double tx = num(x.opt("mtime")), ty = num(y.opt("mtime"));
+            out.put(id, tx != ty ? (tx > ty ? x : y) : (canon(x).compareTo(canon(y)) >= 0 ? x : y));
+        }
+        return out;
     }
 
     // ------------------------------------------------------------------ adres
@@ -479,6 +493,7 @@ public final class SyncCore {
                     String data = cur.isNull("data") ? null : cur.optString("data", null);
                     JSONObject remote = data == null ? null : new JSONObject(Backup.decrypt(data, vk));
                     JSONObject snap = local.snapshot();
+                    if (!snap.has("keys")) snap.put("keys", remote != null && remote.optJSONObject("keys") != null ? remote.getJSONObject("keys") : new JSONObject());
                     JSONObject merged = mergeVaults(snap, remote, System.currentTimeMillis());
                     String mj = canon(merged);
                     if (!mj.equals(canon(snap))) { local.apply(merged); changed = true; }

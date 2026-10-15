@@ -158,6 +158,45 @@ const names = (st) => st.sessions.map((s) => s.name).sort().join(',');
   assert.equal((await fetch(`http://127.0.0.1:${closed.address().port}/api/stats`, { method: 'POST', body: '{"invite":""}' })).status, 403);
   console.log('OK ana sayfa ve istatistikler (davet koduyla)');
 
+  // --- SSH anahtarları: yalnız "anahtarları eşitle" açık cihazlar gönderir/alır; kapalı cihaz kasadakilere dokunmaz ---
+  const { generateKey } = require('../src/main/keys');
+  const keyDev = async (sshDir, on) => {
+    const st = new Store(tmp('sshdeck-dev-'), noKeyring);
+    st.sshDir = sshDir || null;
+    const sync = new AccountSync(st, { debounce: 10 });
+    st.setSyncKeys(on);
+    await sync.login({ server, user: 'samed', password: 'yeniParola' });
+    return { st, sync };
+  };
+  const sshDir = tmp('sshdeck-ssh-');
+  const gk = generateKey(sshDir, { name: 'id_test', type: 'ed25519', comment: 'k1' });
+  const K1 = await keyDev(sshDir, true);
+  const sid = K1.st.saveSession({ name: 'anahtarli', host: 'k.example', authType: 'key', keyPath: gk.privatePath });
+  assert.equal(K1.st.sessions.find((x) => x.id === sid).keyFp, gk.fingerprint, 'oturuma anahtarın parmak izi yazılır');
+  await K1.sync.syncNow();
+  const K3 = await keyDev(null, false);
+  await K3.sync.syncNow();
+  assert.equal(K3.st.keys.length, 0, 'anahtar eşitlemesi kapalı cihaza anahtar gelmez');
+  assert.equal(K3.st.sessions.find((x) => x.id === sid).keyFp, gk.fingerprint, 'oturumun parmak izi her cihaza gider');
+  const K2 = await keyDev(null, true);
+  assert.equal(K2.st.syncedKey(gk.fingerprint).private, fs.readFileSync(gk.privatePath, 'utf8'), 'anahtar diğer cihaza geldi (kapalı cihaz kasadan silmedi)');
+  assert.equal(K2.st.publicSyncedKeys()[0].name, 'id_test');
+  // Kasa sunucuda şifreli: özel anahtar düz görünmez
+  const vaultFile = fs.readdirSync(path.join(dataDir, 'vaults')).map((f) => fs.readFileSync(path.join(dataDir, 'vaults', f), 'utf8')).join();
+  assert(!vaultFile.includes('OPENSSH PRIVATE KEY'), 'sunucuda özel anahtar düz yok');
+  // Hesaptan silme: diğer cihazdan da kalkar, ~/.ssh'deki dosya geri yüklemez
+  K2.st.deleteSyncedKey(gk.fingerprint);
+  await K2.sync.syncNow();
+  await K1.sync.syncNow();
+  assert.equal(K1.st.keys.length, 0, 'silinen anahtar diğer cihazdan kalktı');
+  assert(fs.existsSync(gk.privatePath), '~/.ssh dosyasına dokunulmaz');
+  await K2.sync.syncNow();
+  assert.equal(K2.st.keys.length, 0, '~/.ssh\'deki kopya silineni geri getirmez');
+  const km = mergeVaults({ sessions: {}, deleted: { f: 5, h: 5 }, keys: { f: { name: 'x', mtime: 4 }, g: { name: 'g', mtime: 9 }, h: { name: 'h', mtime: 3 } } }, { sessions: {}, deleted: { g: 8 }, keys: { f: { name: 'x', mtime: 6 } } }, 10);
+  assert.deepEqual(Object.keys(km.keys).sort(), ['f', 'g'], 'silme eski anahtarı kaldırır, sonradan değişeni bırakır');
+  assert.deepEqual(km.deleted, { h: 5 });
+  console.log('OK SSH anahtarı eşitlemesi');
+
   // --- yerel ağ taraması: portu açık olan SSHDeck sunucusu bulunur, başka hizmet ve kapalı adres atlanır ---
   const port = srv.address().port;
   const other = http.createServer((q, s2) => s2.end('{"app":"baska"}'));

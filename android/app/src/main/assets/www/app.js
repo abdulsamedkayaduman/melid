@@ -7,6 +7,18 @@ import { sessionEditor, settingsView, editorView, importBackup, snippetsView } f
 import { updateSheet } from './update.js';
 import { accountSheet } from './account.js';
 
+// "az önce", "12 dk önce", "14:05", "dün 14:05", "3 Eki"
+function recentWhen(t) {
+  const d = new Date(t); const now = new Date();
+  const min = Math.round((now - d) / 60000);
+  if (min < 1) return 'az önce';
+  if (min < 60) return `${min} dk önce`;
+  const hm = d.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
+  if (d.toDateString() === now.toDateString()) return hm;
+  if (d.toDateString() === new Date(now - 86400000).toDateString()) return `dün ${hm}`;
+  return d.toLocaleDateString('tr-TR', { day: 'numeric', month: 'short' });
+}
+
 class App {
   constructor() {
     this.sessions = [];
@@ -202,6 +214,18 @@ class App {
         h('button.tb', { onclick: async (e) => { e.stopPropagation(); if (await t.confirmClose()) this.closeTab(t); } }, icon('x', 20))))));
     }
     const q = this.query.trim().toLocaleLowerCase('tr');
+    // Son bağlantılar: tek satır, dokununca bağlanır (arama yapılırken gizli)
+    const byId = new Map(this.sessions.filter((s) => !s.temporary).map((s) => [s.id, s]));
+    const recent = q ? [] : (this.settings.recent || []).filter((r) => byId.has(r.id)).slice(0, 5);
+    if (recent.length) {
+      out.push(h('div.sec-title', null, 'Son bağlantılar'));
+      out.push(h('div.recent', null, recent.map((r) => {
+        const s = byId.get(r.id);
+        return h('button.recent-row', { type: 'button', onclick: () => this.connectSession(s) },
+          icon('terminal', 16), h('b', null, s.name), h('span', null, `${s.username ? s.username + '@' : ''}${s.host}`), h('small', null, recentWhen(r.t)));
+      })));
+      out.push(h('div.sec-title', null, 'Oturumlar'));
+    }
     const list = this.sessions.filter((s) => !s.temporary && (!q || [s.name, s.host, s.username, s.group].some((v) => String(v || '').toLocaleLowerCase('tr').includes(q))));
     if (!this.sessions.filter((s) => !s.temporary).length) {
       out.push(h('div.empty', null, h('div.big', null, icon('server', 32)), h('h3', null, 'Henüz oturum yok'),
@@ -254,12 +278,14 @@ class App {
     r.addEventListener('touchstart', () => { long = false; lp = setTimeout(() => { long = true; try { navigator.vibrate?.(15); } catch { /* yok */ } this.sessionMenu(s); }, 500); }, { passive: true });
     r.addEventListener('touchmove', () => clearTimeout(lp), { passive: true });
     r.addEventListener('touchend', () => clearTimeout(lp));
-    r.addEventListener('click', () => {
-      if (long) return;
-      const t = open[0];
-      if (t) { this.activate(t); if (t.state !== 'connected' && t.state !== 'connecting') t.connect(); } else this.openTab(s);
-    });
+    r.addEventListener('click', () => { if (!long) this.connectSession(s); });
     return r;
+  }
+
+  /** Açık sekmesi varsa ona geçer (kopmuşsa yeniden bağlanır), yoksa yeni sekmede bağlanır */
+  connectSession(s) {
+    const t = this.tabs.find((x) => x.session.id === s.id);
+    if (t) { this.activate(t); if (t.state !== 'connected' && t.state !== 'connecting') t.connect(); } else this.openTab(s);
   }
 
   async sessionMenu(s) {
@@ -376,6 +402,10 @@ class App {
 
   async openTab(session, view = 'term') {
     if (!session) return;
+    if (!session.temporary && session.id) {
+      const recent = [{ id: session.id, t: Date.now() }, ...(this.settings.recent || []).filter((r) => r.id !== session.id)].slice(0, 20);
+      this.saveSettings({ recent }, { quiet: true }).catch(() => {});
+    }
     const t = new SessionTab(this, session);
     this.tabs.push(t);
     t.el.classList.add('hidden');

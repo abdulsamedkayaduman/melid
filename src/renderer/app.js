@@ -8,6 +8,18 @@ import { accountDialog, STATE_TEXT, syncTimeText } from './account.js';
 
 const api = window.api;
 
+// "az önce", "12 dk önce", "dün 14:05", "3 Eki"
+function recentWhen(t) {
+  const d = new Date(t); const now = new Date();
+  const min = Math.round((now - d) / 60000);
+  if (min < 1) return 'az önce';
+  if (min < 60) return `${min} dk önce`;
+  const hm = d.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
+  if (d.toDateString() === now.toDateString()) return hm;
+  if (d.toDateString() === new Date(now - 86400000).toDateString()) return `dün ${hm}`;
+  return d.toLocaleDateString('tr-TR', { day: 'numeric', month: 'short' });
+}
+
 class App {
   constructor() {
     this.api = api;
@@ -193,6 +205,7 @@ class App {
         h('div.w-logo', null, icon('terminal', 40)),
         h('h1', null, 'SSH', h('b', null, 'Deck')),
         h('p.muted', null, 'SSH terminali ve SFTP dosya yöneticisi bir arada.'),
+        (this.recentEl = h('div.w-recent')),
         h('div.w-cards', null,
           card('plus', 'Yeni oturum', 'Sunucu bilgilerini kaydedin', () => this.newSession()),
           card('bolt', 'Hızlı bağlan', 'kullanici@sunucu yazın veya bağlantı bilgilerini yapıştırın', () => this.quickInput.focus()),
@@ -202,6 +215,24 @@ class App {
             ['Ctrl+Shift+D / S', 'Sağa / aşağı böl'], ['Ctrl+Shift+M', 'Sekmeyi yana ayır'], ['Ctrl+Shift+PgUp / PgDn', 'Sekmeyi sola / sağa al'], ['Alt+Shift+Oklar', 'Bölmeler arası geç'], ['Ctrl+Shift+K', 'Hazır komutlar'],
             ['Ctrl+Shift+E', 'SFTP paneli'], ['Ctrl+Shift+F', 'Terminalde ara'], ['Ctrl+Shift+C / V', 'Kopyala / yapıştır'], ['Ctrl + / −', 'Yazı boyutu'], ['Alt+Enter', 'Odak modu']]
             .map(([k, v]) => h('div.w-key', null, h('kbd', null, k), h('span', null, v))))));
+  }
+
+  // Açılış ekranındaki son bağlantılar: tek tıkla bağlanır
+  renderRecent() {
+    if (!this.recentEl) return;
+    const byId = new Map(this.sessions.map((s) => [s.id, s]));
+    const list = (this.settings.recent || []).filter((r) => byId.has(r.id)).slice(0, 6);
+    this.recentEl.replaceChildren(...(list.length ? [
+      h('div.w-recent-head', null, 'Son bağlantılar'),
+      ...list.map((r) => {
+        const s = byId.get(r.id);
+        return h('button.w-recent-row', { type: 'button', title: 'Bağlan', onclick: () => this.openSession(s.id) },
+          icon('terminal', 15),
+          h('b', null, s.name || s.host),
+          h('span.muted', null, `${s.username ? s.username + '@' : ''}${s.host}${Number(s.port || 22) !== 22 ? ':' + s.port : ''}`),
+          h('span.w-recent-when', null, recentWhen(r.t)),
+          icon('play', 13));
+      })] : []));
   }
 
   toggleSidebar(v) {
@@ -284,6 +315,7 @@ class App {
   }
 
   renderSidebar() {
+    this.renderRecent();
     const q = this.filter.value.trim().toLowerCase();
     const match = (s) => !q || [s.name, s.host, s.username, s.group].some((v) => v && String(v).toLowerCase().includes(q));
     const root = { name: '', path: '', groups: new Map(), items: [] };
@@ -626,6 +658,8 @@ class App {
   openSession(id, opts = {}) {
     const s = this.sessions.find((x) => x.id === id);
     if (!s) return;
+    this.saveSettings({ recent: [{ id, t: Date.now() }, ...(this.settings.recent || []).filter((r) => r.id !== id)].slice(0, 20) }).catch(() => {});
+    this.renderRecent();
     const tab = new SessionTab(this, { sessionId: id, title: s.name });
     if (opts.sftpOnly) { tab.sftpVisible = true; tab.sftpOnly = true; }
     this.addTab(tab, opts.group);

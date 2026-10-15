@@ -137,7 +137,8 @@ async function handle(id, m, a) {
       return null;
     }
     case 'updateCancel': mockCancel = true; return null;
-    case 'accountStatus': return db.account ? { loggedIn: true, state: 'ok', version: 3, lastSync: Date.now(), ...db.account } : { loggedIn: false, state: 'idle' };
+    case 'accountStatus': return db.account ? { loggedIn: true, state: 'ok', version: 3, lastSync: Date.now(), syncKeys: !!db.syncKeys, ...db.account } : { loggedIn: false, state: 'idle', syncKeys: !!db.syncKeys };
+    case 'accountSetKeys': db.syncKeys = !!a.on; save(); return db.account ? { loggedIn: true, state: 'ok', version: 3, lastSync: Date.now(), syncKeys: db.syncKeys, ...db.account } : { loggedIn: false, state: 'idle', syncKeys: db.syncKeys };
     case 'accountScan': await new Promise((r) => setTimeout(r, 1500)); return [{ server: 'http://192.168.1.50:3150', host: '192.168.1.50', register: true }];
     case 'accountLogin': case 'accountRegister': {
       await new Promise((r) => setTimeout(r, 1200));

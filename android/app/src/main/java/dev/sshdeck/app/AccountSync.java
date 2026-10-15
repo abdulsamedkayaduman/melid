@@ -26,8 +26,15 @@ class AccountSync {
     AccountSync(App app, String version) {
         this.app = app;
         client = new SyncCore.Client(app.store, "SSHDeck " + version + " Android " + Build.VERSION.RELEASE);
-        client.onStatus = () -> app.emit("account", client.status());
+        client.onStatus = () -> app.emit("account", status());
         app.store.onChange = this::schedule;
+    }
+
+    /** Hesap durumu + bu cihazda anahtar eşitlemesi açık mı */
+    JSONObject status() {
+        JSONObject st = client.status();
+        try { st.put("syncKeys", app.store.syncKeys()); } catch (Exception ignored) { }
+        return st;
     }
 
     boolean loggedIn() { return app.store.account() != null; }
@@ -66,7 +73,7 @@ class AccountSync {
     /** Eşitler; yerel veri değiştiyse arayüze bildirir. Hata fırlatır (elle "Şimdi eşitle" için). */
     JSONObject run() throws Exception {
         if (client.syncNow()) app.emit("stateChanged", new JSONObject());
-        return client.status();
+        return status();
     }
 
     /** Giriş/hesap açma ilk eşitlemeyi kendisi yapar; burada yalnız arayüz tazelenir ve zamanlayıcı kurulur */

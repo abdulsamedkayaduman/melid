@@ -78,9 +78,26 @@ kasa JSON'u ──AES-256-GCM(VK)──► sunucuda yalnız bu şifreli blob
 - Yerel ağ dışında düz `http://` kullanılırsa giriş penceresi uyarır: kasa yine şifreli olsa da authKey ağda açık gider.
   Android düz `http://`'yi yalnız yerel ağ / Tailscale adreslerine izin verir; internetteki sunucu için https şarttır.
 
+## SSH anahtarları (isteğe bağlı)
+
+Her cihazda ayrı seçilir: masaüstünde hesap penceresindeki **SSH anahtarlarını da eşitle** kutusu, Android'de
+Hesap ve eşitleme menüsü (giriş ekranında da sorulur). Varsayılan kapalı; seçim eşitlenmez (`syncKeys`, cihaza özgü).
+
+- Açık cihaz, anahtarlarını kasanın `keys` bölümüne koyar (parmak izine göre: `{ "SHA256:…": { name, type, public, private,
+  passphrase?, mtime } }`) ve diğer cihazların anahtarlarını alır. Özel anahtarlar da kasayla birlikte uçtan uca şifrelidir.
+- Masaüstü: `~/.ssh`'deki çiftler (`.pub` + özel dosya) ve hesaptan gelenler gönderilir. Gelen anahtarlar `~/.ssh`'ye
+  **yazılmaz**; `keys.json`'da (oturum parolaları gibi şifreli) durur, anahtar listesinde "hesaptan" etiketiyle görünür,
+  bağlanırken bellekten kullanılır (`resolveKey`, main.js). Silme yalnız hesaptan gelenler için; `~/.ssh` dosyalarına dokunulmaz.
+- Android: Ayarlar > SSH anahtarları'ndaki anahtarlar. Eşitleme açıkken silinen anahtar hesaptan da silinir.
+- Oturumlar anahtarı `keyFp` (parmak izi) ile taşır: masaüstündeki `keyPath` ya da telefondaki `keyId` başka cihazda
+  geçersiz olsa da aynı anahtar bulunur (Android `SshCore.pickKey`, masaüstü `resolveKey`).
+- Kapalı cihaz kasadaki anahtarlara dokunmaz (gönderdiği kasaya olduğu gibi geri koyar). 1.6 öncesi sürümler `keys`
+  bölümünü tanımaz ve silebilir; anahtar eşitlemesi açık bir cihaz eşitlenince geri yüklenir. Tüm cihazları güncelleyin.
+
 ## Birleştirme
 
-Kasa: `{ sessions: {id: {..., mtime}}, deleted: {id: zaman}, settings: {data, mtime} }`.
+Kasa: `{ sessions: {id: {..., mtime}}, deleted: {id: zaman}, settings: {data, mtime}, keys: {parmak izi: {..., mtime}} }`.
+Anahtarlar oturumlarla aynı kuralla (yeni olan kazanır, silme kaydı `deleted`'da) birleşir.
 `mergeVaults()` (store.js): her oturumda değişme zamanı yeni olan kazanır; silme kaydı kendinden sonra
 düzenlenmemiş oturumu siler; ayarlar bütün olarak yeni olan kazanır. Silme kayıtları 180 gün tutulur.
 Sunucu iyimser kilit kullanır (`baseVersion`); çakışırsa (409) istemci güncel kasayla yeniden birleştirir.

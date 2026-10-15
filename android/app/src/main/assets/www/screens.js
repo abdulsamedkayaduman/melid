@@ -24,7 +24,7 @@ export async function sessionEditor(app, session) {
     password: h('input.input', { type: 'password', placeholder: s.has_password ? '•••••• (kayıtlı — değiştirmek için yazın)' : 'Boş bırakılırsa bağlanırken sorulur', autocomplete: 'off' }),
     keyId: h('select.input', null,
       h('option', { value: '' }, app.keys.length ? '— Anahtar seçin —' : '— Kayıtlı anahtar yok —'),
-      app.keys.map((k) => h('option', { value: k.id, selected: s.keyId === k.id || (!s.keyId && s.keyPath && s.keyPath.split('/').pop() === k.name) }, `${k.name}  (${k.type.replace('ssh-', '')})`))),
+      app.keys.map((k) => h('option', { value: k.id, selected: s.keyId === k.id || (!s.keyId && ((s.keyFp && s.keyFp === k.fingerprint) || (s.keyPath && s.keyPath.split('/').pop() === k.name))) }, `${k.name}  (${k.type.replace('ssh-', '')})`))),
     passphrase: h('input.input', { type: 'password', placeholder: s.has_passphrase ? '•••••• (kayıtlı)' : 'Gerekirse bağlanırken sorulur', autocomplete: 'off' }),
     jumpHostId: h('select.input', null, h('option', { value: '' }, '— Yok —'),
       app.sessions.filter((x) => x.id !== s.id && !x.temporary).map((x) => h('option', { value: x.id, selected: s.jumpHostId === x.id }, `${x.name} (${x.username || '?'}@${x.host})`))),

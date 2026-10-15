@@ -3,7 +3,26 @@
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
+const os = require('os');
 const { utils } = require('ssh2');
+
+const expandHome = (p) => (p && p.startsWith('~') ? path.join(os.homedir(), p.slice(1)) : p);
+const fingerprintOf = (b64) => 'SHA256:' + crypto.createHash('sha256').update(Buffer.from(b64, 'base64')).digest('base64').replace(/=+$/, '');
+
+/** Anahtar dosyasının parmak izi (.pub'dan, yoksa parolasız özel anahtardan); bulunamazsa undefined */
+function keyFileFingerprint(keyPath) {
+  const p = expandHome(String(keyPath || '').trim());
+  if (!p) return undefined;
+  try {
+    const b64 = fs.readFileSync(p + '.pub', 'utf8').trim().split(/\s+/)[1];
+    if (b64) return fingerprintOf(b64);
+  } catch {}
+  try {
+    const k = utils.parseKey(fs.readFileSync(p));
+    if (!(k instanceof Error)) return fingerprintOf((Array.isArray(k) ? k[0] : k).getPublicSSH().toString('base64'));
+  } catch {}
+  return undefined;
+}
 
 function listKeys(dir) {
   let names = [];
@@ -19,7 +38,7 @@ function listKeys(dir) {
         name: n.slice(0, -4),
         type,
         comment: rest.join(' '),
-        fingerprint: 'SHA256:' + crypto.createHash('sha256').update(Buffer.from(b64, 'base64')).digest('base64').replace(/=+$/, ''),
+        fingerprint: fingerprintOf(b64),
         publicKey: pub,
         pubPath: path.join(dir, n),
         privatePath: fs.existsSync(priv) ? priv : null,
@@ -47,4 +66,4 @@ function generateKey(dir, opts) {
   return listKeys(dir).find((x) => x.name === name);
 }
 
-module.exports = { listKeys, generateKey };
+module.exports = { listKeys, generateKey, keyFileFingerprint, expandHome };

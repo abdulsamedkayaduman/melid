@@ -111,6 +111,13 @@ input, select, textarea { font: inherit; color: inherit; }
 
 /* ---- listeler */
 .sec-title { padding: 16px 16px 6px; font-size: 12px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); display: flex; align-items: center; gap: 6px; }
+.recent { display: flex; flex-direction: column; padding: 0 8px; }
+.recent-row { display: flex; align-items: center; gap: 10px; height: 44px; padding: 0 10px; border: 0; border-radius: 10px; background: none; color: var(--text); font: inherit; text-align: left; }
+.recent-row:active { background: var(--hover); }
+.recent-row .ic { color: var(--accent); flex: none; }
+.recent-row b { font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 0 1 auto; max-width: 45%; }
+.recent-row span { flex: 1; min-width: 0; color: var(--muted); font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.recent-row small { color: var(--muted); font-size: 12px; white-space: nowrap; flex: none; }
 .group-h { display: flex; align-items: center; gap: 8px; padding: 12px 16px 6px; color: var(--text2); font-size: 13px; font-weight: 600; }
 .group-h .ic { transition: transform .15s; }
 .group-h .count { color: var(--muted); font-weight: 400; }

@@ -123,18 +123,20 @@ public class Bridge {
             case "removeKnownHost": app.store.removeKnownHost(a.getString("key")); return null;
 
             // ---- hesap eşitlemesi (AccountSync / core/SyncCore)
-            case "accountStatus": return app.sync.client.status();
+            case "accountStatus": return app.sync.status();
             case "accountScan": return dev.sshdeck.core.SyncCore.scan(dev.sshdeck.core.SyncCore.lanTargets(), dev.sshdeck.core.SyncCore.DEFAULT_PORT, 900);
             // ilk eşitleme hata verse de hesap kaydedilmiştir: zamanlayıcı yine başlar
             case "accountRegister":
-                try { return app.sync.client.register(a.getString("server"), a.getString("user"), a.getString("password"), a.getString("invite")); }
+                try { app.sync.client.register(a.getString("server"), a.getString("user"), a.getString("password"), a.getString("invite")); return app.sync.status(); }
                 finally { app.sync.afterLogin(); }
             case "accountLogin":
-                try { return app.sync.client.login(a.getString("server"), a.getString("user"), a.getString("password")); }
+                try { app.sync.client.login(a.getString("server"), a.getString("user"), a.getString("password")); return app.sync.status(); }
                 finally { app.sync.afterLogin(); }
-            case "accountLogout": app.sync.stop(); return app.sync.client.logout();
+            case "accountLogout": app.sync.stop(); app.sync.client.logout(); return app.sync.status();
+            // SSH anahtarlarını eşitleme seçimi (bu cihaza özgü); açılınca hemen eşitlenir
+            case "accountSetKeys": app.store.setSyncKeys(a.optBoolean("on")); app.sync.syncAsync(); return app.sync.status();
             case "accountSync": return app.sync.run();
-            case "accountPassword": app.sync.client.changePassword(a.getString("old"), a.getString("new")); return app.sync.client.status();
+            case "accountPassword": app.sync.client.changePassword(a.getString("old"), a.getString("new")); return app.sync.status();
 
             // ---- ssh
             case "connect": {
