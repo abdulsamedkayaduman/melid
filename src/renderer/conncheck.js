@@ -16,6 +16,17 @@ const STATES = {
   hostkey: { label: 'Sunucu anahtarı', ic: 'lock' },
   error: { label: 'Hata', ic: 'x' },
 };
+const CHIP_HINTS = {
+  all: 'Denetlenen tüm oturumlar',
+  bad: 'Silmeye aday olanlar: ulaşılamayanlar ve girişi kabul edilmeyenler ("Sorunluları seç" bunları seçer)',
+  ok: 'Bağlanıldı ve kayıtlı bilgilerle giriş yapıldı',
+  auth: 'Sunucuya ulaşıldı ama kayıtlı bilgiler kabul edilmedi: parola değişmiş, kullanıcı silinmiş ya da anahtar yetkisiz',
+  unreachable: 'Sunucuya ulaşılamadı: kapalı, IP/ad değişmiş, port kapalı ya da zaman aşımı (VPN bağlı mı?)',
+  input: 'Kayıtlı bilgi eksik: parola, kullanıcı adı ya da anahtar parolası kayıtlı değil veya 2FA gerekiyor. Elle bağlanınca sorulur',
+  hostkey: 'Sunucu anahtarı değişmiş ya da henüz onaylanmamış. Yeni sunucular için "anahtarlarını kabul et" kutusunu işaretleyip yeniden denetleyin',
+  error: 'Beklenmeyen hata (satırın üzerine gelince ayrıntı görünür)',
+};
+
 // "Sorunlu" sayılanlar (silmeye aday): ulaşılamayan ve girişi kabul edilmeyenler
 const BAD = new Set(['unreachable', 'auth']);
 
@@ -46,7 +57,9 @@ export async function checkDialog(app, ids, title = 'Bağlantıları denetle') {
 
   const render = () => {
     const c = counts();
-    const chip = (key, label, n) => (n || key === 'all' ? h('button.cc-chip' + (filter === key ? '.on' : '') + (key !== 'all' && key !== 'bad' ? '.s-' + key : ''), { type: 'button', onclick: () => { filter = key; render(); } }, label, h('b', null, String(n || 0))) : null);
+    // Rozetler her zaman görünür (0 olsa da); üzerine gelince ne anlama geldiği yazar
+    const chip = (key, label, n) => h('button.cc-chip' + (filter === key ? '.on' : '') + (key !== 'all' && key !== 'bad' ? '.s-' + key : ''),
+      { type: 'button', title: CHIP_HINTS[key], onclick: () => { filter = key; render(); } }, label, h('b', null, String(n || 0)));
     chips.replaceChildren(
       chip('all', 'Tümü', c.all),
       chip('bad', 'Sorunlu', (c.unreachable || 0) + (c.auth || 0)),
