@@ -300,6 +300,11 @@ class Store {
     this._removeSessions(new Set([id]));
   }
 
+  deleteSessions(ids) {
+    const set = new Set((ids || []).filter((id) => this.sessions.some((s) => s.id === id)));
+    if (set.size) this._removeSessions(set);
+  }
+
   _removeSessions(ids) {
     const now = Date.now();
     this.sessions = this.sessions.filter((s) => !ids.has(s.id));

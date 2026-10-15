@@ -2,6 +2,7 @@ import { h, icon, parseConnText, debounce, formatSize } from './util.js';
 import { modal, promptText, confirmBox, hostKeyDialog, kbdDialog, contextMenu, toast, sessionEditor, settingsDialog, applyUiTheme } from './dialogs.js';
 import { SessionTab } from './tab.js';
 import { cleanErr } from './filepane.js';
+import { checkDialog } from './conncheck.js';
 import { snippetPalette, snippetsEditor, keysDialog, installKeyDialog } from './tools.js';
 import { updateDialog } from './update.js';
 import { accountDialog, STATE_TEXT, syncTimeText } from './account.js';
@@ -131,6 +132,8 @@ class App {
         { label: 'Tümünü genişlet', icon: 'expand', action: () => this.expandAll() },
         { label: 'Tümünü daralt', icon: 'collapse', action: () => this.collapseAll() },
         '-',
+        { label: 'Tüm bağlantıları denetle…', icon: 'check', action: () => checkDialog(this, this.sessions.map((s) => s.id)) },
+        '-',
         ...this.importItems(),
       ]);
     });
@@ -140,6 +143,7 @@ class App {
         h('div.side-head-btns', null,
           h('button.icon-btn', { title: 'Tümünü genişlet', onclick: () => this.expandAll() }, icon('expand', 15)),
           h('button.icon-btn', { title: 'Tümünü daralt', onclick: () => this.collapseAll() }, icon('collapse', 15)),
+          h('button.icon-btn', { title: 'Bağlantıları denetle (hangileri çalışıyor?)', onclick: () => checkDialog(this, this.sessions.map((s) => s.id)) }, icon('check', 15)),
           h('button.icon-btn', { title: 'Yeni oturum', onclick: () => this.newSession() }, icon('plus', 15)))),
       h('div.side-filter', null, this.filter), this.tree);
     const sideResize = h('div.side-resize');
@@ -423,6 +427,7 @@ class App {
       '-',
       { label: 'Düzenle…', icon: 'edit', action: () => this.editSession(s) },
       { label: 'Kopyasını oluştur', icon: 'plus', action: () => this.duplicateSession(s) },
+      { label: 'Bağlantıyı denetle…', icon: 'check', action: () => checkDialog(this, [s.id], 'Bağlantı denetimi') },
       { label: 'ssh komutunu kopyala', icon: 'terminal', action: () => api.clipboard.write(`ssh ${Number(s.port) !== 22 ? `-p ${s.port} ` : ''}${s.username ? s.username + '@' : ''}${s.host}`) },
       '-',
       { label: 'Sil', icon: 'trash', danger: true, action: () => this.deleteSession(s) },
@@ -433,6 +438,7 @@ class App {
     contextMenu(x, y, [
       { label: 'Bu gruba yeni oturum', icon: 'plus', action: () => this.newSession({ group: path }) },
       { label: 'Gruptaki tüm oturumlara bağlan', icon: 'play', action: () => { for (const s of this.sessions.filter((s) => s.group === path || (s.group || '').startsWith(path + '/'))) this.openSession(s.id); } },
+      { label: 'Gruptaki bağlantıları denetle…', icon: 'check', action: () => checkDialog(this, this.sessions.filter((s) => s.group === path || (s.group || '').startsWith(path + '/')).map((s) => s.id), `“${path}” denetimi`) },
       { label: 'Grubu yeniden adlandır…', icon: 'edit', action: async () => {
         const n = await promptText({ title: 'Grubu yeniden adlandır', label: 'Yeni ad (alt grup için / kullanın)', value: path });
         if (n && n.trim() && n.trim() !== path) { this.sessions = await api.sessions.renameGroup(path, n.trim().replace(/^\/+|\/+$/g, '')); this.renderSidebar(); }

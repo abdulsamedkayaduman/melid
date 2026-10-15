@@ -33,6 +33,10 @@ Android 10 (API 29) ve üzeri desteklenir.
 - Masaüstü yedeği (Ayarlar > Yedekle) içe aktarma ve masaüstüyle uyumlu yedek dışa aktarma
 - Hesap ve eşitleme (Ayarlar > Hesap ve eşitleme): masaüstüyle aynı uçtan uca şifreli hesap; oturumlar, parolalar,
   hazır komutlar iki yönlü eşitlenir. **Yerel ağda ara** Wi-Fi'deki 3150 portlu sunucuları bulur (`docs/senkron.md`)
+  İsteğe bağlı olarak SSH anahtarları da eşitlenir (cihaz başına seçim)
+- Ana ekranda son bağlantılar (tek dokunuşla bağlan)
+- Uygulama kilidi (Ayarlar > Uygulama kilidi): ana parola, isteğe bağlı parmak izi / yüz tanıma, arka planda
+  seçilen süre sonra kilitlenir. Kilitliyken bağlantılar ve eşitleme sürer; Android 13+'ta son uygulamalarda içerik gizlenir
 - 8 arayüz teması + 5 terminal teması (masaüstüyle aynı)
 
 Sırlar (parolalar, anahtar parolaları, özel anahtarlar) Android Keystore'daki AES anahtarıyla şifrelenir

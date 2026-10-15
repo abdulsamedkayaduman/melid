@@ -541,3 +541,29 @@ dl.kv.sync-dirs { margin: 0 0 14px; grid-template-columns: 60px 1fr; }
 .upd-stat { display: block; margin-top: 6px; font-size: 12px; color: var(--text2); }
 .upd-err { color: var(--err); font-size: 12px; margin-top: 8px; white-space: pre-wrap; }
 .upd-err:empty { display: none; }
+
+/* bağlantı denetimi (conncheck.js) */
+.cc .hint { margin: 0 0 6px; }
+.cc-chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 10px 0; }
+.cc-chip { display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 10px; border-radius: 13px; border: 1px solid var(--border2); background: var(--panel2); color: var(--text2); cursor: pointer; font: inherit; font-size: 12px; }
+.cc-chip b { font-weight: 600; color: var(--text); }
+.cc-chip.on { border-color: var(--accent2); color: var(--text); background: var(--sel-soft); }
+.cc-list { height: min(52vh, 460px); overflow: auto; border: 1px solid var(--border); border-radius: 8px; }
+.cc-row { display: grid; grid-template-columns: 22px minmax(140px, 1.1fr) minmax(140px, 1fr) minmax(180px, 1.6fr); align-items: center; gap: 10px; padding: 6px 10px; border-bottom: 1px solid var(--border); cursor: pointer; font-size: 12px; }
+.cc-row:hover { background: var(--hover); }
+.cc-name { min-width: 0; display: flex; flex-direction: column; }
+.cc-name b, .cc-name span, .cc-host { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cc-name span { font-size: 11px; }
+.cc-host { color: var(--text2); }
+.cc-state { display: flex; align-items: center; gap: 6px; min-width: 0; color: var(--muted); }
+.cc-state span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cc-state .ic { flex: none; }
+.s-ok .cc-state, .cc-chip.s-ok b { color: var(--ok); }
+.s-auth .cc-state, .s-unreachable .cc-state, .s-error .cc-state, .cc-chip.s-auth b, .cc-chip.s-unreachable b, .cc-chip.s-error b { color: var(--err); }
+.s-input .cc-state, .s-hostkey .cc-state, .s-running .cc-state, .cc-chip.s-input b, .cc-chip.s-hostkey b { color: var(--busy); }
+.s-running .cc-state .ic { animation: spin 1s linear infinite; }
+.cc-empty { padding: 24px; text-align: center; }
+.cc-foot { display: flex; align-items: center; gap: 8px; margin-top: 12px; }
+.cc-foot .spacer { flex: 1; }
+.cc-foot .btn:disabled { opacity: .5; cursor: default; }
+@keyframes spin { to { transform: rotate(360deg); } }

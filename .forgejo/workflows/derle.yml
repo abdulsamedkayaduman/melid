@@ -41,12 +41,14 @@ jobs:
           key: npm-${{ hashFiles('package-lock.json') }}
           restore-keys: npm-
       - run: npm ci --no-audit --no-fund
-      - name: Birim testleri (içe aktarma, store, oturum kaydı, güncelleme)
+      - name: Birim testleri (içe aktarma, store, oturum kaydı, güncelleme, eşitleme, bağlantı denetimi)
         run: |
           node test/importers.test.js
           node test/store.test.js
           node test/termlog.test.js
           node test/updater.test.js
+          node test/sync.test.js
+          node test/conncheck.test.js
       - name: Çekirdek testleri (geçici sshd)
         run: |
           ci/test-sshd.sh

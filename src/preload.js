@@ -13,6 +13,7 @@ contextBridge.exposeInMainWorld('api', {
   sessions: {
     save: inv('sessions:save'),
     remove: inv('sessions:delete'),
+    removeMany: inv('sessions:deleteMany'),
     renameGroup: inv('sessions:renameGroup'),
     deleteGroup: inv('sessions:deleteGroup'),
     importSshConfig: inv('sessions:importSshConfig'),
@@ -25,6 +26,7 @@ contextBridge.exposeInMainWorld('api', {
     lock: inv('master:lock'),
     set: inv('master:set'),
   },
+  check: { start: inv('check:start'), cancel: inv('check:cancel'), onProgress: on('check:progress'), onDone: on('check:done') },
   account: {
     status: inv('account:status'),
     scan: inv('account:scan'),

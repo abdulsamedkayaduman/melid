@@ -108,9 +108,25 @@ public class Bridge {
         });
     }
 
+    /** Kilitliyken izin verilen çağrılar (kilit ekranı) */
+    static boolean lockFree(String m) {
+        return m.equals("lockStatus") || m.equals("lockUnlock") || m.equals("lockBiometric") || m.equals("appInfo");
+    }
+
     Object dispatch(String m, JSONObject a) throws Exception {
         String c = a.optString("c");
+        if (app.lock.locked && !lockFree(m)) throw new Exception("SSHDECK_LOCKED");
         switch (m) {
+            // ---- uygulama kilidi (AppLock)
+            case "lockStatus": return app.lock.status();
+            case "lockUnlock": app.lock.unlock(a.optString("password")); return app.lock.status();
+            case "lockBiometric": app.lock.unlockBiometric(act); return app.lock.status();
+            case "lockSet": app.lock.setPassword(a.optString("old", null), a.optString("password")); app.main.post(act::applyLockWindow); return app.lock.status();
+            case "lockDisable": app.lock.disable(a.optString("password")); app.main.post(act::applyLockWindow); return app.lock.status();
+            case "lockSetBiometric": app.lock.setBiometric(act, a.optBoolean("on"), a.optString("password", null)); return app.lock.status();
+            case "lockTimeout": app.lock.setTimeout(a.optInt("sec")); return app.lock.status();
+            case "lockNow": app.lock.lockNow(); app.emit("lock", new JSONObject()); return app.lock.status();
+
             // ---- store
             case "state": return app.store.state();
             case "saveSession": return app.store.saveSession(a.getJSONObject("session"));

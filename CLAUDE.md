@@ -16,7 +16,7 @@ Bekleyen işler için `YAPILACAKLAR.md` (otomatik güncelleme, AUR paketi, elect
   `env -u SSH_AUTH_SOCK SSHDECK_TEST_PORT=3161 node test/core.test.js`. `ci/test-sshd.sh`'yi geliştirme makinesinde
   çalıştırmayın: çalışan tüm sshd'leri durdurur
   + sunucusuz: `test/importers.test.js` (WindTerm/Xshell), `test/store.test.js`, `test/termlog.test.js` (ANSI temizleme),
-  `test/sync.test.js` (hesap eşitlemesi: gerçek eşitleme sunucusu + iki cihaz)
+  `test/sync.test.js` (hesap eşitlemesi: gerçek eşitleme sunucusu + iki cihaz), `test/conncheck.test.js` (bellek içi ssh2 sunucusu)
 - `npm run dist` — `dist/` içine `.pacman` ve `.AppImage` (pacman için `bsdtar` gerekir: `sudo pacman -S libarchive`).
   `npmRebuild:false` — ssh2'nin opsiyonel native `cpu-features` modülü derlenmez (ssh2 onsuz saf-JS çalışır)
 - `npm run dist:win` — Windows 10/11 x64: `SSHDeck-<sürüm>-kurulum.exe` (NSIS) + `SSHDeck-<sürüm>-tasinabilir.exe`.
@@ -57,6 +57,9 @@ src/main/sync.js         Hesap eşitlemesi (AccountSync): giriş/kayıt/çıkı�
                          (settings.syncKeys, cihaza özgü; kasada keys, oturumda keyFp; gelen anahtarlar store.keys). Sunucu: server/sync-server.js (bağımsız,
                          bağımlılıksız; server/Dockerfile + docker-compose.yml, Dokploy); kök adreste davet koduyla
                          girilen istatistik sayfası (HOME_PAGE, POST /api/stats). Ayrıntı ve güvenlik modeli: docs/senkron.md
+src/main/conncheck.js    Bağlantı denetimi: ayrı, sormayan SshManager ile oturumlara bağlanıp kimlik doğrulamayı dener ve
+                         sınıflandırır (ok/auth/input/unreachable/hostkey/error); arayüz src/renderer/conncheck.js
+                         (sonuç listesi, sorunluları seç, toplu sil). Bilinmeyen sunucu anahtarına yalnız seçilirse güvenir.
 src/main/termlog.js      Oturum kaydı: TermLogger (oturum adına göre klasör, dosya başına kabuk) + parçalı ANSI temizleyici
 src/main/keys.js         ~/.ssh anahtarlarını listeleme, ssh2 utils ile anahtar üretme (OpenSSH biçimi)
 src/main/socks.js        -D için minimal SOCKS5 (CONNECT, kimlik doğrulamasız)
@@ -109,6 +112,9 @@ derlemede `../node_modules`'tan kopyalanır); SSH Java'da: JSch (mwiede) + Bounc
 - Köprü: JS `SSHDeckNative.call(id, metot, json)` -> `window.__nreply`; olaylar `window.__nevent` (Bridge.java).
   Yeni çağrı: `Bridge.dispatch` içine `case` + JS'te `N.call('metot', {...})`.
 - Güncelleme: `Updater.java` (masaüstüyle aynı imzalı latest.json; JobScheduler + bildirim, PackageInstaller).
+- Uygulama kilidi: `app/AppLock.java` (ana parola PBKDF2 doğrulayıcısı `lock.json`, biyometrik = kullanıcı doğrulaması
+  isteyen Keystore anahtarıyla BiometricPrompt CryptoObject). Kilitliyken `Bridge.dispatch` yalnız `lock*` çağrılarını
+  kabul eder; arayüz `www/lock.js`. Bağlantılar ve eşitleme kilitliyken de sürer.
 - Sırlar Android Keystore ile şifreli (`Store.java`), WebView'a gitmez. Yedek biçimi masaüstüyle aynı (`Backup.java`).
 - Hesap eşitlemesi: `core/SyncCore.java` (sync.js + mergeVaults'un karşılığı, yerel ağ taraması), `app/AccountSync.java`
   (zamanlama), `Store` `SyncCore.Local`'ı uygular; arayüz `www/account.js`. Masaüstüyle uyumu coretest'teki

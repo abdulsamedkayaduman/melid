@@ -13,6 +13,7 @@ const { TermLogger } = require('./termlog');
 const keys = require('./keys');
 const updater = require('./updater');
 const { AccountSync, scanLan } = require('./sync');
+const { checkSessions } = require('./conncheck');
 const { spawn } = require('child_process');
 
 app.setName('SSHDeck');
@@ -406,6 +407,29 @@ function registerIpc() {
     return { id, sessions: store.publicSessions() };
   });
   h('sessions:delete', (id) => { store.deleteSession(id); return store.publicSessions(); });
+  h('sessions:deleteMany', (ids) => { store.deleteSessions(ids); return store.publicSessions(); });
+
+  // Bağlantı denetimi: kayıtlı oturumları sormadan dener (conncheck.js); sonuçlar check:progress ile akar
+  const checkRuns = new Map(); // runId -> { cancelled }
+  h('check:start', async (ids, o = {}) => {
+    if (!(await ensureUnlocked())) throw new Error('Ana parola girilmedi');
+    const runId = crypto.randomUUID();
+    const run = { cancelled: false };
+    checkRuns.set(runId, run);
+    checkSessions(ids, {
+      resolve: (id) => resolveKey(store.getSession(id)),
+      getSession: (id) => resolveKey(store.getSession(id)),
+      hostKey: (host, port) => store.hostKey(host, port),
+      trustHostKey: (host, port, type, fp) => store.trustHostKey(host, port, type, fp),
+      acceptNew: !!o.acceptNew,
+      concurrency: 6,
+      isCancelled: () => run.cancelled,
+      onStart: (id) => send('check:progress', runId, id, { state: 'running' }),
+      onResult: (id, r) => send('check:progress', runId, id, r),
+    }).finally(() => { checkRuns.delete(runId); send('check:done', runId, run.cancelled); });
+    return runId;
+  });
+  h('check:cancel', (runId) => { const r = checkRuns.get(runId); if (r) r.cancelled = true; });
   h('sessions:renameGroup', (a, b) => { store.renameGroup(a, b); return store.publicSessions(); });
   h('sessions:deleteGroup', (g) => ({ removed: store.deleteGroup(g), sessions: store.publicSessions() }));
   // Adds parsed sessions, skipping ones already present (same name/host/port/user).

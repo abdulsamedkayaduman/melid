@@ -31,6 +31,7 @@ public class App extends Application implements Host {
     Sftp sftp;
     Forwards fwd;
     AccountSync sync;
+    AppLock lock;
     volatile Bridge bridge;
     final Handler main = new Handler(Looper.getMainLooper());
 
@@ -42,6 +43,7 @@ public class App extends Application implements Host {
         super.onCreate();
         I = this;
         store = new Store(this);
+        lock = new AppLock(this);
         core = new SshCore(this);
         sftp = new Sftp(core);
         fwd = new Forwards(core);

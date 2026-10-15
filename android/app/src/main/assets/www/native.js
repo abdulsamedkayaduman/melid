@@ -9,7 +9,7 @@ window.__nreply = (id, err, res) => {
   const p = pending.get(id);
   if (!p) return;
   pending.delete(id);
-  if (err != null) p.reject(new Error(err)); else p.resolve(res);
+  if (err != null) p.reject(new Error(err === 'SSHDECK_LOCKED' ? 'Uygulama kilitli' : err)); else p.resolve(res);
 };
 
 const listeners = new Map();

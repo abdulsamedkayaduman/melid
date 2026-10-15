@@ -4,6 +4,7 @@ import * as N from './native.js';
 import { sheet, actionSheet, promptText, confirm, toast, THEMES, UI_THEMES } from './dialogs.js';
 import { updateSheet } from './update.js';
 import { accountSubtitle } from './account.js';
+import { lockSheet, lockSubtitle } from './lock.js';
 
 const field = (label, control, hint) => h('label.field', null, h('span', null, label), control, hint ? h('small.hint', { style: { margin: 0 } }, hint) : null);
 const sw = (checked) => { const i = h('input', { type: 'checkbox', checked: !!checked }); return { input: i, el: h('label.switch', null, i, h('i')) }; };
@@ -176,9 +177,15 @@ export function settingsView(app) {
     accSub.textContent = accountSubtitle(app.account);
     accSub.classList.toggle('warn', !!app.account && ['error', 'auth'].includes(app.account.state));
   };
+  const lockSub = h('small');
+  const lockRow = h('div.set-row', { onclick: () => lockSheet(app) }, icon('lock', 22),
+    h('div.txt', null, h('b', null, 'Uygulama kilidi'), lockSub), icon('chevron', 18));
+  const refreshLock = () => { lockSub.textContent = lockSubtitle(app.lock); };
+  N.call('lockStatus').then((st) => app.setLock(st)).catch(() => {});
   const render = () => {
     const st = app.settings;
     refreshAccount();
+    refreshLock();
     const uiKey = UI_THEMES[st.uiTheme] ? st.uiTheme : 'dark';
     const fs = st.fontSize || 13;
     const fsVal = h('b', { style: { minWidth: '28px', textAlign: 'center' } }, String(fs));
@@ -186,6 +193,8 @@ export function settingsView(app) {
     body.replaceChildren(
       h('div.sec-title', null, 'Hesap'),
       h('div.set-card', null, accRow),
+      h('div.sec-title', null, 'Güvenlik'),
+      h('div.set-card', null, lockRow),
       h('div.sec-title', null, 'Görünüm'),
       h('div.set-card', null,
         h('div', { style: { padding: '12px 16px 4px', fontWeight: 500 } }, 'Arayüz teması'),
@@ -228,6 +237,7 @@ export function settingsView(app) {
     el: h('div.view', null, topbar(app, 'Ayarlar'), body),
     refresh: render,
     refreshAccount,
+    refreshLock,
   };
 }
 

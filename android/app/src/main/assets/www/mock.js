@@ -138,6 +138,14 @@ async function handle(id, m, a) {
     }
     case 'updateCancel': mockCancel = true; return null;
     case 'accountStatus': return db.account ? { loggedIn: true, state: 'ok', version: 3, lastSync: Date.now(), syncKeys: !!db.syncKeys, ...db.account } : { loggedIn: false, state: 'idle', syncKeys: !!db.syncKeys };
+    case 'lockStatus': return { enabled: !!db.lock, locked: !!db.lockLocked, biometric: !!db.lock?.bio, bioAvailable: true, timeout: db.lock?.timeout ?? 60 };
+    case 'lockUnlock': if (!db.lock || a.password !== db.lock.pw) throw new Error('Parola yanlış'); db.lockLocked = false; save(); return { enabled: true, locked: false, biometric: !!db.lock.bio, bioAvailable: true, timeout: db.lock.timeout };
+    case 'lockBiometric': db.lockLocked = false; save(); return { enabled: true, locked: false, biometric: true, bioAvailable: true, timeout: db.lock.timeout };
+    case 'lockSet': if (db.lock && a.old !== db.lock.pw) throw new Error('Mevcut parola yanlış'); db.lock = { ...(db.lock || { timeout: 60 }), pw: a.password }; save(); return { enabled: true, locked: false, biometric: !!db.lock.bio, bioAvailable: true, timeout: db.lock.timeout };
+    case 'lockDisable': if (a.password !== db.lock?.pw) throw new Error('Parola yanlış'); delete db.lock; save(); return { enabled: false, locked: false, biometric: false, bioAvailable: true, timeout: 60 };
+    case 'lockSetBiometric': db.lock.bio = !!a.on; save(); return { enabled: true, locked: false, biometric: db.lock.bio, bioAvailable: true, timeout: db.lock.timeout };
+    case 'lockTimeout': db.lock.timeout = a.sec; save(); return { enabled: true, locked: false, biometric: !!db.lock.bio, bioAvailable: true, timeout: a.sec };
+    case 'lockNow': db.lockLocked = true; save(); setTimeout(() => emit('lock', {}), 0); return {};
     case 'accountSetKeys': db.syncKeys = !!a.on; save(); return db.account ? { loggedIn: true, state: 'ok', version: 3, lastSync: Date.now(), syncKeys: db.syncKeys, ...db.account } : { loggedIn: false, state: 'idle', syncKeys: db.syncKeys };
     case 'accountScan': await new Promise((r) => setTimeout(r, 1500)); return [{ server: 'http://192.168.1.50:3150', host: '192.168.1.50', register: true }];
     case 'accountLogin': case 'accountRegister': {

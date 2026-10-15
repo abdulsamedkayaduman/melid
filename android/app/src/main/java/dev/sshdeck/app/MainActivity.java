@@ -136,7 +136,23 @@ public class MainActivity extends Activity {
             App.I.core.disconnectAll();
             App.I.updateService();
         }
+        applyLockWindow();
         web.loadUrl(ORIGIN + "index.html");
+    }
+
+    /** Kilit açıkken son uygulamalar ekranında içerik görünmesin (Android 13+) */
+    void applyLockWindow() {
+        if (Build.VERSION.SDK_INT >= 33) setRecentsScreenshotEnabled(!App.I.lock.enabled());
+    }
+
+    @Override protected void onStart() {
+        super.onStart();
+        if (App.I.lock.onStart()) App.I.emit("lock", new org.json.JSONObject());
+    }
+
+    @Override protected void onStop() {
+        super.onStop();
+        App.I.lock.onStop();
     }
 
     WebResourceResponse asset(Uri u) {

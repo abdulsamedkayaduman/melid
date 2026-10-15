@@ -6,6 +6,7 @@ import { SessionTab } from './tab.js';
 import { sessionEditor, settingsView, editorView, importBackup, snippetsView } from './screens.js';
 import { updateSheet } from './update.js';
 import { accountSheet } from './account.js';
+import { ensureUnlocked, showLock, lockShown } from './lock.js';
 
 // "az önce", "12 dk önce", "14:05", "dün 14:05", "3 Eki"
 function recentWhen(t) {
@@ -32,6 +33,8 @@ class App {
   }
 
   async init() {
+    await ensureUnlocked();
+    N.on('lock', () => showLock());
     await this.reload();
     // önceki çalıştırmadan kalan geçici (hızlı bağlan) oturumları temizle
     for (const s of this.sessions.filter((x) => x.temporary)) await N.call('deleteSession', { id: s.id }).catch(() => {});
@@ -84,6 +87,11 @@ class App {
   }
 
   accountSheet() { return accountSheet(this); }
+
+  setLock(st) {
+    this.lock = st;
+    for (const v of this.stack) v.refreshLock?.();
+  }
 
   tabFor(c) { return c ? this.tabs.find((t) => t.connId === c) : null; }
 
@@ -153,6 +161,7 @@ class App {
   }
 
   onBack() {
+    if (lockShown()) return false;
     if (modalOpen()) { closeTop(); return true; }
     if (this.stack.length > 1) { this.back(); return true; }
     if (this.query) { this.setQuery(''); return true; }
