@@ -1,4 +1,4 @@
-import { h, icon, formatSize, formatDate, permString, uid } from './util.js';
+import { h, icon, formatSize, formatDate, permString, uid, backForward } from './util.js';
 import { contextMenu, promptText, confirmBox, toast, modal } from './dialogs.js';
 
 // Sütunlar: varsayılan genişlikler (px) ve "Ad" sütununun en az genişliği
@@ -106,12 +106,11 @@ export class FilePane {
     this.body = h('div.pane-body', { tabindex: 0 }, this.table, this.empty);
     this.foot = h('div.pane-foot');
     this.el = h('div.pane', { dataset: { side: this.side } }, this.head, this.body, this.foot);
-    // Fare geri/ileri tuşları (4./5. tuş): klasör geçmişinde gezinme
-    this.el.addEventListener('mousedown', (e) => { if (e.button === 3 || e.button === 4) e.preventDefault(); });
-    this.el.addEventListener('mouseup', (e) => {
-      if (e.button !== 3 && e.button !== 4) return;
-      e.preventDefault();
-      if (e.button === 3) this.goBack(); else this.goForward();
+    // Fare geri/ileri tuşları ve touchpad'de iki parmakla yatay kaydırma: klasör geçmişinde gezinme
+    // (sütunlar yatay kayabiliyorsa önce kaydırılır)
+    backForward(this.el, {
+      back: () => this.goBack(), forward: () => this.goForward(),
+      canScroll: (d) => (d < 0 ? this.body.scrollLeft > 0 : this.body.scrollLeft + this.body.clientWidth < this.body.scrollWidth - 1),
     });
 
     new ResizeObserver(() => this.layoutCols()).observe(this.body);

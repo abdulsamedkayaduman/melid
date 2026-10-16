@@ -196,3 +196,31 @@ export function icon(name, size = 16) {
   svg.append(p);
   return svg;
 }
+
+/**
+ * Geri/ileri hareketleri: fare yan tuşları (4./5.) ve touchpad'de iki parmakla yatay kaydırma
+ * (parmaklar sağa = geri, sola = ileri; tarayıcılardaki gibi). canScroll(dir): öğe o yönde kendisi kayabiliyorsa
+ * hareket kaydırmaya bırakılır. Shift+tekerlek (farede yatay kaydırma) sayılmaz.
+ */
+export function backForward(el, { back, forward, canScroll = () => false }) {
+  el.addEventListener('mousedown', (e) => { if (e.button === 3 || e.button === 4) e.preventDefault(); });
+  el.addEventListener('mouseup', (e) => {
+    if (e.button !== 3 && e.button !== 4) return;
+    e.preventDefault();
+    if (e.button === 3) back(); else forward();
+  });
+  let acc = 0; let fired = false; let idle = 0;
+  el.addEventListener('wheel', (e) => {
+    if (e.shiftKey || e.ctrlKey || Math.abs(e.deltaX) <= Math.abs(e.deltaY) * 1.5 || !e.deltaX) return;
+    const dir = e.deltaX < 0 ? -1 : 1;
+    if (canScroll(dir)) { acc = 0; return; }
+    clearTimeout(idle);
+    idle = setTimeout(() => { acc = 0; fired = false; }, 350); // hareket bitince yeniden tetiklenebilir
+    if (fired) return;
+    acc += e.deltaX * (e.deltaMode === 1 ? 30 : 1);
+    if (Math.abs(acc) < 120) return;
+    fired = true;
+    if (acc < 0) back(); else forward();
+  }, { capture: true, passive: true });
+}
+

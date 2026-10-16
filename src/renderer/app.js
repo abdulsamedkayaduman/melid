@@ -704,6 +704,14 @@ class App {
     return g;
   }
 
+  /** Etkin gruptaki önceki (-1) / sonraki (1) sekme */
+  stepTab(d) {
+    const list = this.tabsOf(this.curGroup());
+    if (list.length < 2) return;
+    const i = list.indexOf(this.active);
+    this.activate(list[(i + d + list.length) % list.length]);
+  }
+
   fitAll() { for (const g of this.tabGroups ?? []) g.active?.scheduleFit(); }
 
   tabsOf(gi) { return this.tabs.filter((t) => t.group === gi); }

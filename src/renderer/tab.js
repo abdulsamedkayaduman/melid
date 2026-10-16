@@ -1,4 +1,4 @@
-import { h, icon, uid, formatSize } from './util.js';
+import { h, icon, uid, formatSize, backForward } from './util.js';
 import { FilePane, cleanErr } from './filepane.js';
 import { contextMenu, modal, toast, promptText } from './dialogs.js';
 import { TermPane } from './termpane.js';
@@ -61,6 +61,8 @@ export class SessionTab {
     this.activePane = first;
     this.layout = { pane: first };
     this.termWrap = h('div.term-wrap');
+    // Terminalde fare geri/ileri tuşları ve touchpad iki parmak yatay kaydırma: önceki / sonraki sekme
+    backForward(this.termWrap, { back: () => this.app.stepTab(-1), forward: () => this.app.stepTab(1) });
     this.renderLayout();
 
     // file panes
