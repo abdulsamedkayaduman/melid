@@ -116,7 +116,11 @@ export class FilePane {
 
     new ResizeObserver(() => this.layoutCols()).observe(this.body);
     this.body.addEventListener('keydown', (e) => this.onKey(e));
-    this.body.addEventListener('mousedown', (e) => { if (e.target === this.body || e.target === this.empty) { this.sel.clear(); this.paintSel(); } });
+    // Boş alandan sürükleme: seçim kutusu (satırların ad dışı hücrelerinden de; bkz. render)
+    this.body.addEventListener('mousedown', (e) => {
+      if (e.button !== 0 || e.target.closest('tr, thead')) return;
+      if (e.target === this.body || e.target === this.empty || e.target.closest('table.files')) this.startLasso(e, null);
+    });
     this.body.addEventListener('contextmenu', (e) => { if (!e.target.closest('tr[data-name]')) { e.preventDefault(); this.sel.clear(); this.paintSel(); this.menu(e.clientX, e.clientY, []); } });
 
     // drop target: whole pane body = current dir
@@ -390,7 +394,11 @@ export class FilePane {
         h('td.c-date', null, formatDate(e.mtime)),
         h('td.c-perm.mono', null, permString(e.mode, e.isDir, e.isLink)),
         this.side === 'remote' ? h('td.c-owner', null, `${e.owner}:${e.group}`) : null);
-      tr.addEventListener('mousedown', (ev) => this.onRowDown(ev, e.name));
+      // Addan tutunca sürükle-bırak (aktarım), satırın geri kalanından tutunca seçim kutusu (Windows Gezgini gibi)
+      tr.addEventListener('mousedown', (ev) => {
+        if (ev.button === 0 && !ev.shiftKey && !ev.target.closest('.fname')) this.startLasso(ev, e.name);
+        else this.onRowDown(ev, e.name);
+      });
       tr.addEventListener('dblclick', () => this.activate(e));
       tr.addEventListener('contextmenu', (ev) => {
         ev.preventDefault();
@@ -434,6 +442,73 @@ export class FilePane {
   scrollTo(name) {
     const tr = [...this.tbody.children].find((r) => r.dataset.name === name);
     if (tr) tr.scrollIntoView({ block: 'nearest' });
+  }
+
+  /**
+   * Fareyle seçim kutusu. Hareket etmeden bırakılırsa normal tıklama sayılır (name: tıklanan satır ya da boş alan).
+   * Ctrl ile mevcut seçime eklenir; kenara gelince liste kendiliğinden kayar.
+   */
+  startLasso(down, name) {
+    down.preventDefault(); // yerel sürükle-bırak ve metin seçimi başlamasın
+    this.body.focus({ preventScroll: true });
+    const body = this.body;
+    const base = down.ctrlKey || down.metaKey ? new Set(this.sel) : new Set();
+    const br0 = body.getBoundingClientRect();
+    const sx = down.clientX - br0.left + body.scrollLeft;
+    const sy = down.clientY - br0.top + body.scrollTop;
+    let box = null; let last = down; let raf = 0; let scrollTimer = 0;
+    const update = () => {
+      raf = 0;
+      const br = body.getBoundingClientRect();
+      const cx = Math.min(Math.max(last.clientX, br.left), br.right) - br.left + body.scrollLeft;
+      const cy = Math.min(Math.max(last.clientY, br.top), br.bottom) - br.top + body.scrollTop;
+      const x1 = Math.min(sx, cx); const y1 = Math.min(sy, cy);
+      Object.assign(box.style, { left: x1 + 'px', top: y1 + 'px', width: Math.abs(cx - sx) + 'px', height: Math.abs(cy - sy) + 'px' });
+      const top = br.top - body.scrollTop + y1; const bottom = top + Math.abs(cy - sy);
+      const sel = new Set(base);
+      for (const tr of this.tbody.children) {
+        if (!tr.dataset.name) continue;
+        const r = tr.getBoundingClientRect();
+        if (r.bottom > top && r.top < bottom) sel.add(tr.dataset.name);
+      }
+      this.sel = sel;
+      this.paintSel();
+    };
+    const schedule = () => { if (!raf) raf = requestAnimationFrame(update); };
+    const autoScroll = () => {
+      const br = body.getBoundingClientRect();
+      const d = last.clientY < br.top + 16 ? -1 : last.clientY > br.bottom - 16 ? 1 : 0;
+      if (d) { body.scrollTop += d * 18; schedule(); }
+    };
+    const move = (e) => {
+      last = e;
+      if (!box) {
+        if (Math.abs(e.clientX - down.clientX) < 4 && Math.abs(e.clientY - down.clientY) < 4) return;
+        box = h('div.lasso');
+        body.append(box);
+        scrollTimer = setInterval(autoScroll, 30);
+      }
+      schedule();
+    };
+    const up = () => {
+      document.removeEventListener('mousemove', move);
+      document.removeEventListener('mouseup', up);
+      clearInterval(scrollTimer);
+      if (raf) { cancelAnimationFrame(raf); raf = 0; }
+      if (box) {
+        update();
+        box.remove();
+        const names = (this.vis || []).map((x) => x.name).filter((n) => this.sel.has(n));
+        if (names.length && !base.size) this.anchor = names[0];
+        return;
+      }
+      // hareketsiz: normal tıklama
+      if (name && !down.ctrlKey && !down.metaKey && this.sel.has(name)) { this.sel = new Set([name]); this.anchor = name; this.paintSel(); }
+      else if (name) this.onRowDown(down, name);
+      else if (!base.size) { this.sel.clear(); this.paintSel(); }
+    };
+    document.addEventListener('mousemove', move);
+    document.addEventListener('mouseup', up);
   }
 
   onRowDown(ev, name) {

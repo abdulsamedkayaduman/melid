@@ -567,3 +567,6 @@ dl.kv.sync-dirs { margin: 0 0 14px; grid-template-columns: 60px 1fr; }
 .cc-foot .spacer { flex: 1; }
 .cc-foot .btn:disabled { opacity: .5; cursor: default; }
 @keyframes spin { to { transform: rotate(360deg); } }
+
+/* dosya panelinde fareyle seçim kutusu (filepane.js startLasso) */
+.lasso { position: absolute; z-index: 3; pointer-events: none; border: 1px solid var(--accent); background: color-mix(in srgb, var(--accent) 14%, transparent); border-radius: 2px; }
