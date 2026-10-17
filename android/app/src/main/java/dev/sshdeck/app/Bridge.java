@@ -110,7 +110,8 @@ public class Bridge {
 
     /** Kilitliyken izin verilen çağrılar (kilit ekranı) */
     static boolean lockFree(String m) {
-        return m.equals("lockStatus") || m.equals("lockUnlock") || m.equals("lockBiometric") || m.equals("appInfo");
+        return m.equals("lockStatus") || m.equals("lockUnlock") || m.equals("lockBiometric") || m.equals("appInfo")
+                || m.equals("barColors"); // kilit ekranı temaya uygun sistem çubukları için
     }
 
     Object dispatch(String m, JSONObject a) throws Exception {

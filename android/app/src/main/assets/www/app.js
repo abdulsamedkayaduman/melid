@@ -33,6 +33,10 @@ class App {
   }
 
   async init() {
+    // Kilitliyken ayarlar okunamaz: kilit ekranı son kullanılan temayla açılsın
+    let cached = null;
+    try { cached = localStorage.getItem('uiTheme'); } catch { /* yok */ }
+    this.applyTheme(cached);
     await ensureUnlocked();
     N.on('lock', () => showLock());
     await this.reload();
@@ -118,9 +122,10 @@ class App {
     if ('keepScreenOn' in patch) this.updateKeepAwake();
   }
 
-  applyTheme() {
-    const key = UI_THEMES[this.settings.uiTheme] ? this.settings.uiTheme : 'dark';
+  applyTheme(name = this.settings.uiTheme) {
+    const key = UI_THEMES[name] ? name : 'dark';
     document.documentElement.dataset.ui = key;
+    try { localStorage.setItem('uiTheme', key); } catch { /* yok */ }
     const bg = getComputedStyle(document.documentElement).getPropertyValue('--bg2').trim() || '#14171c';
     N.call('barColors', { bg, light: !!UI_THEMES[key].light }).catch(() => {});
   }
