@@ -13,7 +13,7 @@ const { TermLogger } = require('./termlog');
 const keys = require('./keys');
 const updater = require('./updater');
 const { AccountSync, scanLan } = require('./sync');
-const { checkSessions } = require('./conncheck');
+const { runSessions, runOne, execTask, statsTask } = require('./conncheck');
 const { spawn } = require('child_process');
 
 app.setName('SSHDeck');
@@ -409,25 +409,40 @@ function registerIpc() {
   h('sessions:delete', (id) => { store.deleteSession(id); return store.publicSessions(); });
   h('sessions:deleteMany', (ids) => { store.deleteSessions(ids); return store.publicSessions(); });
 
-  // Bağlantı denetimi: kayıtlı oturumları sormadan dener (conncheck.js); sonuçlar check:progress ile akar
+  // Toplu işler (conncheck.js): kayıtlı oturumlara sormadan bağlanıp denetim / komut / kaynak özeti.
+  // o.kind: 'check' (varsayılan) | 'exec' (o.cmd) | 'stats'. Sonuçlar check:progress ile akar.
   const checkRuns = new Map(); // runId -> { cancelled }
+  const jobOpts = (o = {}) => ({
+    resolve: (id) => resolveKey(store.getSession(id)),
+    getSession: (id) => resolveKey(store.getSession(id)),
+    hostKey: (host, port) => store.hostKey(host, port),
+    trustHostKey: (host, port, type, fp) => store.trustHostKey(host, port, type, fp),
+    acceptNew: !!o.acceptNew,
+    task: o.kind === 'exec' ? execTask(String(o.cmd || ''), Math.min(600000, Number(o.timeout) || 60000)) : o.kind === 'stats' ? statsTask : null,
+  });
   h('check:start', async (ids, o = {}) => {
     if (!(await ensureUnlocked())) throw new Error('Ana parola girilmedi');
+    if (o.kind === 'exec' && !String(o.cmd || '').trim()) throw new Error('Komut boş');
     const runId = crypto.randomUUID();
     const run = { cancelled: false };
     checkRuns.set(runId, run);
-    checkSessions(ids, {
-      resolve: (id) => resolveKey(store.getSession(id)),
-      getSession: (id) => resolveKey(store.getSession(id)),
-      hostKey: (host, port) => store.hostKey(host, port),
-      trustHostKey: (host, port, type, fp) => store.trustHostKey(host, port, type, fp),
-      acceptNew: !!o.acceptNew,
-      concurrency: 6,
+    runSessions(ids, {
+      ...jobOpts(o),
+      concurrency: Math.min(16, Math.max(1, Number(o.concurrency) || 6)),
       isCancelled: () => run.cancelled,
       onStart: (id) => send('check:progress', runId, id, { state: 'running' }),
       onResult: (id, r) => send('check:progress', runId, id, r),
     }).finally(() => { checkRuns.delete(runId); send('check:done', runId, run.cancelled); });
     return runId;
+  });
+  // Tek oturumu yeniden dene (ör. parolası düzeltildikten sonra)
+  h('check:one', async (id, o = {}) => {
+    if (!(await ensureUnlocked())) throw new Error('Ana parola girilmedi');
+    const opts = jobOpts(o);
+    try {
+      const s = opts.resolve(id);
+      return s ? await runOne(s, opts, opts.task) : { state: 'error', message: 'Oturum bulunamadı' };
+    } catch (e) { return { state: 'error', message: e.message }; }
   });
   h('check:cancel', (runId) => { const r = checkRuns.get(runId); if (r) r.cancelled = true; });
   h('sessions:renameGroup', (a, b) => { store.renameGroup(a, b); return store.publicSessions(); });
@@ -541,6 +556,45 @@ function registerIpc() {
     account.syncNow().catch(() => {});
     return account.status();
   });
+  // kurtarma anahtarı (sync.js): kod kullanıcıya bir kez gösterilir, istenirse metin dosyasına kaydedilir
+  h('account:info', () => account.info());
+  h('account:recoveryCreate', async (pw) => {
+    if (!(await ensureUnlocked())) throw new Error('Ana parola girilmedi');
+    return account.createRecovery(pw);
+  });
+  h('account:recoveryRemove', (pw) => account.removeRecovery(pw));
+  h('account:recover', (o) => accountCall(() => account.recover(o)));
+  h('account:recoverySave', async (rc) => {
+    const r = await dialog.showSaveDialog(win, {
+      title: 'Kurtarma anahtarını kaydet', defaultPath: path.join(app.getPath('documents'), `sshdeck-kurtarma-${rc.user}.txt`),
+      filters: [{ name: 'Metin', extensions: ['txt'] }],
+    });
+    if (r.canceled || !r.filePath) return null;
+    const text = [
+      'SSHDeck hesap kurtarma anahtarı',
+      '',
+      `Sunucu: ${rc.server}`,
+      `Kullanıcı: ${rc.user}`,
+      `Anahtar: ${rc.code}`,
+      `Oluşturulma: ${new Date(rc.created || Date.now()).toLocaleString('tr-TR')}`,
+      '',
+      'Hesap parolanızı unutursanız SSHDeck giriş penceresinde "Parolamı unuttum" ile bu anahtarla yeni parola',
+      'belirleyebilirsiniz; bağlantılarınız ve parolalarınız korunur. Bu dosyayı parola yöneticisi ya da şifreli bir',
+      'diskte saklayın: anahtarı ele geçiren biri hesabınıza girebilir. Yeni anahtar oluşturunca bu geçersiz olur.',
+      '',
+    ].join('\n');
+    await fsp.writeFile(r.filePath, text, { mode: 0o600 });
+    return r.filePath;
+  });
+  h('account:recoveryOpen', async () => {
+    const r = await dialog.showOpenDialog(win, { title: 'Kurtarma anahtarı dosyası', properties: ['openFile'], filters: [{ name: 'Metin', extensions: ['txt'] }, { name: 'Tümü', extensions: ['*'] }] });
+    if (r.canceled || !r.filePaths[0]) return null;
+    const t = (await fsp.readFile(r.filePaths[0], 'utf8')).slice(0, 20000);
+    const get = (k) => { const m = new RegExp('^' + k + ':\\s*(.+)$', 'mi').exec(t); return m ? m[1].trim() : ''; };
+    const code = get('Anahtar') || (/([A-Z2-7]{4}-){7}[A-Z2-7]{4}/.exec(t) || [''])[0];
+    if (!code) throw new Error('Dosyada kurtarma anahtarı bulunamadı');
+    return { server: get('Sunucu'), user: get('Kullanıcı'), code };
+  });
   h('account:changePassword', async (oldPw, newPw) => {
     if (!(await ensureUnlocked())) throw new Error('Ana parola girilmedi');
     await account.changePassword(oldPw, newPw);
@@ -612,6 +666,40 @@ function registerIpc() {
   ipcMain.on('ssh:write', (_e, connId, data, sid) => manager.write(connId, data, sid));
   ipcMain.on('ssh:resize', (_e, connId, cols, rows, sid) => manager.resize(connId, cols, rows, sid));
   h('ssh:disconnect', (connId) => { stopEdits(connId); manager.disconnect(connId); });
+  // ---- SFTP ek işleri: uzakta arama, sıkıştırma, arşiv açma (kabuk komutları burada güvenle tırnaklanır)
+  const shq = (x) => `'${String(x).replace(/'/g, `'\\''`)}'`;
+  const safeName = (n) => { if (!n || n.includes('/') || n === '.' || n === '..') throw new Error('Geçersiz ad'); return n; };
+  h('sftp:search', async (connId, dir, pattern) => {
+    let p = String(pattern || '').trim();
+    if (!p) throw new Error('Aranacak adı yazın');
+    if (!/[*?[]/.test(p)) p = `*${p}*`;
+    const cmd = `find ${shq(dir)} -mindepth 1 \\( -type d -iname ${shq(p)} -exec printf 'd %s\\n' {} + \\) -o \\( -iname ${shq(p)} -exec printf 'f %s\\n' {} + \\) 2>/dev/null | head -n 1001`;
+    const r = await manager.exec(connId, cmd, { timeout: 60000 });
+    const lines = r.stdout.split('\n').filter((l) => /^[df] \//.test(l));
+    return { truncated: lines.length > 1000, items: lines.slice(0, 1000).map((l) => ({ isDir: l[0] === 'd', path: l.slice(2) })) };
+  });
+  // Seçilenleri sunucuda .tar.gz yapar. tmp: true -> /tmp altına (indirilip silinmek üzere), yoksa aynı klasöre
+  h('sftp:compress', async (connId, dir, names, { tmp = false, name } = {}) => {
+    const list = (names || []).map(safeName);
+    if (!list.length) throw new Error('Seçim yok');
+    const base = safeName(name || (list.length === 1 ? list[0] : path.posix.basename(dir) || 'arsiv') + '.tar.gz');
+    const out = tmp ? `/tmp/sshdeck-${crypto.randomBytes(6).toString('hex')}-${base}` : path.posix.join(dir, base);
+    const r = await manager.exec(connId, `cd ${shq(dir)} && tar czf ${shq(out)} -- ${list.map(shq).join(' ')}`, { timeout: 600000 });
+    if (r.code !== 0) throw new Error(`Sıkıştırılamadı: ${(r.stderr || '').trim().split('\n').slice(-2).join(' ') || 'çıkış kodu ' + r.code}`);
+    return { path: out, name: base };
+  });
+  h('sftp:extract', async (connId, dir, name) => {
+    const n = safeName(name);
+    const f = shq(n);
+    const cmd = /\.(tar\.gz|tgz)$/i.test(n) ? `tar xzf ${f}` : /\.(tar\.xz|txz)$/i.test(n) ? `tar xJf ${f}` : /\.(tar\.bz2|tbz2?)$/i.test(n) ? `tar xjf ${f}`
+      : /\.(tar\.zst|tzst)$/i.test(n) ? `tar --zstd -xf ${f}` : /\.tar$/i.test(n) ? `tar xf ${f}` : /\.zip$/i.test(n) ? `unzip -o -q ${f}` : /\.gz$/i.test(n) ? `gunzip -k ${f}` : null;
+    if (!cmd) throw new Error('Desteklenmeyen arşiv türü (.tar, .tar.gz/.tgz, .tar.xz, .tar.bz2, .tar.zst, .zip, .gz)');
+    const r = await manager.exec(connId, `cd ${shq(dir)} && ${cmd}`, { timeout: 600000 });
+    if (r.code === 127) throw new Error(`Sunucuda ${cmd.split(' ')[0]} yok`);
+    if (r.code !== 0) throw new Error(`Açılamadı: ${(r.stderr || '').trim().split('\n').slice(-2).join(' ') || 'çıkış kodu ' + r.code}`);
+    return true;
+  });
+
   h('ssh:installKey', async (connId, ref) => {
     const k = allKeys().find((x) => x.pubPath === ref || x.fingerprint === ref);
     if (!k) throw new Error('Açık anahtar bulunamadı');

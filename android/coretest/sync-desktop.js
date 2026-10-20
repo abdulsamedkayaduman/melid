@@ -31,9 +31,14 @@ const names = (st) => st.sessions.map((s) => s.name).sort().join(',');
     await sync.register({ server, user: 'samed', password: 'hesapParolası-ş', invite: 'davet' });
     // Java'nın canon/mergeVaults'u JS ile aynı sonucu vermeli (eşit zamanda aynı taraf seçilmeli)
     const a = { sessions: { x: { id: 'x', name: 'Ç"\\/\n\u0001😀', mtime: 5, n: 1.5, arr: [1, null, true] }, y: { id: 'y', name: 'b', mtime: 2 } }, deleted: { z: 1, y: 3, 'SHA256:k2': 4 }, settings: { data: { b: 1, a: 'ş' }, mtime: 7 },
-      keys: { 'SHA256:k1': { name: 'a', private: 'p1', mtime: 3 }, 'SHA256:k2': { name: 'b', mtime: 2 } } };
+      keys: { 'SHA256:k1': { name: 'a', private: 'p1', mtime: 3 }, 'SHA256:k2': { name: 'b', mtime: 2 } },
+      snippets: { s1: { id: 's1', name: 'bir', mtime: 4 }, s2: { id: 's2', name: 'iki', mtime: 9 }, s9: { id: 's9', name: 'silinen', mtime: 1 } } };
+    a.deleted.s9 = 2;
+    a.settings.data.snippets = [{ id: 's2', name: 'iki' }, { id: 's1', name: 'bir' }];
     const b = { sessions: { x: { id: 'x', name: 'Ä', mtime: 5 }, z: { id: 'z', mtime: 0 } }, deleted: { y: 1 }, settings: { data: { a: 'z' }, mtime: 7 },
       keys: { 'SHA256:k1': { name: 'c', private: 'p1', mtime: 3 }, 'SHA256:k3': { name: 'd', mtime: 9 } } };
+    // b eski biçim: komut haritası yok, liste ayar bloğunda
+    b.settings.data.snippets = [{ id: 's1', name: 'BİR', mtime: 6 }, { id: 's3', name: 'üç' }, { id: 's9', name: 'silinen' }];
     fs.writeFileSync(path.join(work, 'merge.json'), JSON.stringify({ a, b, expected: sortedJson(mergeVaults(a, b, 10)), canonA: sortedJson(a) }));
     console.log('  ✓ masaüstü hesap açtı');
   } else {
@@ -75,5 +80,13 @@ const names = (st) => st.sessions.map((s) => s.name).sort().join(',');
     assert(tk && st5.syncedKey(tk.fingerprint).private.includes('OPENSSH PRIVATE KEY'), 'Android anahtarı masaüstüne geldi');
     assert.equal(st5.sessions.find((s) => s.name === 'telefondan').keyFp, tk.fingerprint, 'Android oturumu anahtarı parmak iziyle bulur');
     console.log('  ✓ SSH anahtarları (açık/kapalı cihaz) masaüstü ile uyumlu');
+    // Java'nın oluşturduğu kurtarma anahtarıyla masaüstünden kurtarma
+    const rc = JSON.parse(fs.readFileSync(path.join(work, 'rec.json'), 'utf8'));
+    for (const d of ['desk6', 'desk7']) fs.rmSync(path.join(work, d), { recursive: true, force: true });
+    const st6 = new Store(path.join(work, 'desk6'), noKeyring);
+    await new AccountSync(st6).recover({ server, user: 'telefon', code: rc.code, password: 'telefonYeni-12' });
+    assert.equal(names(st6), 'telefondan');
+    await new AccountSync(new Store(path.join(work, 'desk7'), noKeyring)).login({ server, user: 'telefon', password: 'telefonYeni-12' });
+    console.log('  ✓ Android kurtarma anahtarı masaüstünde çalışıyor');
   }
 })().catch((e) => { console.error(e); process.exit(1); });

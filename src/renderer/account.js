@@ -80,6 +80,7 @@ async function loginDialog(app, { reauth } = {}) {
     field('Kullanıcı adı', f.user),
     field('Hesap parolası', f.password),
     ...regOnly,
+    h('div.forgot', null, h('a', { href: '#', onclick: (e) => { e.preventDefault(); forgot = true; closeLogin?.(null); } }, 'Hesap parolamı unuttum (kurtarma anahtarıyla gir)')),
     reauth ? null : h('label.check', { title: KEYS_HINT }, f.syncKeys, 'SSH anahtarlarını da eşitle'),
     reauth ? null : h('p.hint.keys-hint', null, 'Özel anahtarlar da hesaba (şifreli) yüklenir. Sonradan hesap penceresinden değiştirilebilir.'),
     err);
@@ -98,8 +99,10 @@ async function loginDialog(app, { reauth } = {}) {
   f.server.addEventListener('input', checkWarn); checkWarn();
 
   let busy = false;
+  let forgot = false; let closeLogin = null;
   const r = await modal({
     title: 'Hesap ve eşitleme', width: 460, body,
+    bind: (c) => { closeLogin = c; },
     canClose: () => !busy,
     buttons: [{ label: 'Vazgeç', value: null }, { label: 'Devam', value: 'ok', primary: true }],
     onButton: async (v) => {
@@ -134,6 +137,7 @@ async function loginDialog(app, { reauth } = {}) {
       }
     },
   });
+  if (forgot) { await recoverDialog(app, { server: f.server.value.trim() || lastServer, user: f.user.value.trim() || lastUser }); return; }
   if (r && r.loggedIn) {
     app.setAccount(r);
     toast(mode === 'register' ? `Hesap oluşturuldu: ${r.user}` : `Giriş yapıldı: ${r.user}. Bağlantılar eşitlendi.`, 'ok', 5000);
@@ -141,6 +145,13 @@ async function loginDialog(app, { reauth } = {}) {
 }
 
 async function manageDialog(app, st) {
+  const recState = h('span.muted', null, 'denetleniyor…');
+  let recInfo = null;
+  const recRow = h('div.rec-row', null, icon('key', 15), h('div', null, h('b', null, 'Kurtarma anahtarı: '), recState,
+    h('div.hint', null, 'Hesap parolanızı unutursanız bu anahtarla yeni parola belirlersiniz; yoksa kasa kurtarılamaz.')),
+  h('button.btn.sm', { type: 'button', onclick: () => recoveryMenu(app, recInfo, (i) => { recInfo = i; showRec(); }) }, 'Yönet…'));
+  const showRec = () => { recState.textContent = recInfo && recInfo.recovery ? `var (${new Date(recInfo.recovery).toLocaleDateString('tr-TR')})` : 'yok — oluşturmanız önerilir'; recState.classList.toggle('warn-text', !(recInfo && recInfo.recovery)); };
+  api.account.info().then((i) => { recInfo = i; showRec(); }).catch(() => { recState.textContent = 'sunucuya sorulamadı'; });
   const body = h('div.account', null,
     h('dl.kv', null,
       h('dt', null, 'Hesap'), h('dd', null, st.user),
@@ -160,6 +171,7 @@ async function manageDialog(app, st) {
       },
     }), 'SSH anahtarlarını da eşitle'),
     h('p.hint', null, KEYS_HINT),
+    recRow,
     h('p.hint', null, 'Oturumlar, kayıtlı parolalar, ayarlar ve hazır komutlar uçtan uca şifreli eşitlenir. Bu cihaza özgü ayarlar (kayıt klasörü, panel boyutları) ve oturumların yerel klasörü eşitlenmez.'));
   const act = await modal({
     title: 'Hesap ve eşitleme', width: 460, body,
@@ -197,4 +209,94 @@ async function manageDialog(app, st) {
       toast('Hesaptan çıkıldı', 'ok');
     }
   } catch (e) { toast(cleanErr(e), 'err', 6000); }
+}
+
+// ---------------------------------------------------------------- kurtarma anahtarı
+async function recoveryMenu(app, info, done) {
+  const has = !!(info && info.recovery);
+  const act = has ? await modal({
+    title: 'Kurtarma anahtarı', width: 440,
+    body: h('div', null, h('p', null, `Bu hesabın ${new Date(info.recovery).toLocaleDateString('tr-TR')} tarihli bir kurtarma anahtarı var.`),
+      h('p.hint', null, 'Kaybettiyseniz yenisini oluşturun: eskisi hemen geçersiz olur.')),
+    buttons: [{ label: 'Kaldır', value: 'remove', danger: true }, { label: 'Vazgeç', value: null }, { label: 'Yeni anahtar oluştur', value: 'new', primary: true }],
+  }) : 'new';
+  if (!act) return;
+  const pw = await promptText({ title: 'Kurtarma anahtarı', label: 'Doğrulamak için hesap parolanız', password: true, ok: act === 'remove' ? 'Kaldır' : 'Oluştur' });
+  if (pw == null) return;
+  try {
+    if (act === 'remove') {
+      await api.account.recoveryRemove(pw);
+      done({ ...info, recovery: null });
+      toast('Kurtarma anahtarı kaldırıldı', 'ok');
+      return;
+    }
+    const rc = await api.account.recoveryCreate(pw);
+    done({ ...info, recovery: rc.created });
+    await showRecoveryCode(rc);
+  } catch (e) { toast(cleanErr(e), 'err', 6000); }
+}
+
+async function showRecoveryCode(rc) {
+  const saved = h('div.hint');
+  await modal({
+    title: 'Kurtarma anahtarınız', width: 520,
+    body: h('div.rec-show', null,
+      h('p', null, 'Bu anahtarı şimdi kaydedin: bir daha gösterilmez. Parola yöneticisine yazın ya da dosyaya kaydedip güvenli bir yerde saklayın.'),
+      h('div.rec-code.mono', null, rc.code),
+      h('div.row', null,
+        h('button.btn', { type: 'button', onclick: () => { api.clipboard.write(rc.code); toast('Kurtarma anahtarı kopyalandı', 'ok'); } }, icon('copy', 14), 'Kopyala'),
+        h('button.btn', { type: 'button', onclick: async () => { try { const p = await api.account.recoverySave(rc); if (p) saved.textContent = `Kaydedildi: ${p}`; } catch (e) { toast(cleanErr(e), 'err'); } } }, icon('save', 14), 'Dosyaya kaydet…')),
+      saved,
+      h('p.hint.warn', null, 'Anahtarı ele geçiren biri hesap parolanızı değiştirip bağlantılarınıza erişebilir.')),
+    buttons: [{ label: 'Kaydettim', value: true, primary: true }],
+  });
+}
+
+/** Parolası unutulan hesap: kurtarma anahtarı (yazarak ya da dosyadan) + yeni parola */
+export async function recoverDialog(app, pre = {}) {
+  const f = {
+    server: h('input.input', { value: pre.server || '', placeholder: 'örn. 192.168.1.50 veya https://senkron.ornek.com', spellcheck: false }),
+    user: h('input.input', { value: pre.user || '', spellcheck: false, autocapitalize: 'off' }),
+    code: h('input.input.mono', { placeholder: 'XXXX-XXXX-XXXX-XXXX-XXXX-XXXX-XXXX-XXXX', spellcheck: false, autocapitalize: 'characters' }),
+    pw1: h('input.input', { type: 'password' }),
+    pw2: h('input.input', { type: 'password' }),
+  };
+  const err = h('div.upd-err');
+  const fromFile = h('button.btn', { type: 'button', onclick: async () => {
+    try {
+      const r = await api.account.recoveryOpen();
+      if (!r) return;
+      f.code.value = r.code;
+      if (r.server) f.server.value = r.server;
+      if (r.user) f.user.value = r.user;
+    } catch (e) { err.textContent = cleanErr(e); }
+  } }, icon('file', 14), 'Dosyadan…');
+  const field = (label, control) => h('label.field', null, h('span', null, label), control);
+  let busy = false;
+  const r = await modal({
+    title: 'Hesabı kurtar', width: 480,
+    canClose: () => !busy,
+    body: h('div.account', null,
+      h('p.hint', null, 'Kurtarma anahtarıyla yeni bir hesap parolası belirlenir. Bağlantılarınız ve kayıtlı parolalarınız korunur; diğer cihazlarda yeni parolayla tekrar giriş yapmanız gerekir.'),
+      field('Sunucu', f.server), field('Kullanıcı adı', f.user),
+      h('label.field', null, h('span', null, 'Kurtarma anahtarı'), h('div.row', null, f.code, fromFile)),
+      field('Yeni hesap parolası (en az 10 karakter)', f.pw1), field('Yeni parola (tekrar)', f.pw2), err),
+    buttons: [{ label: 'Vazgeç', value: null }, { label: 'Kurtar', value: 'ok', primary: true }],
+    onButton: async (v) => {
+      if (v !== 'ok') return busy ? false : undefined;
+      if (busy) return false;
+      err.textContent = '';
+      if (!f.server.value.trim() || !f.user.value.trim() || !f.code.value.trim()) { err.textContent = 'Sunucu, kullanıcı adı ve kurtarma anahtarı gerekli'; return false; }
+      if (f.pw1.value.length < 10) { err.textContent = 'Yeni parola en az 10 karakter olmalı'; return false; }
+      if (f.pw1.value !== f.pw2.value) { err.textContent = 'Parolalar eşleşmiyor'; return false; }
+      busy = true;
+      try {
+        return await api.account.recover({ server: f.server.value.trim(), user: f.user.value.trim(), code: f.code.value, password: f.pw1.value });
+      } catch (e) { err.textContent = cleanErr(e); return false; } finally { busy = false; }
+    },
+  });
+  if (r && r.loggedIn) {
+    app.setAccount(r);
+    toast(`Hesap kurtarıldı: ${r.user}. Diğer cihazlarda yeni parolayla giriş yapın.`, 'ok', 7000);
+  }
 }

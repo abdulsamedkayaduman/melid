@@ -570,3 +570,72 @@ dl.kv.sync-dirs { margin: 0 0 14px; grid-template-columns: 60px 1fr; }
 
 /* dosya panelinde fareyle seçim kutusu (filepane.js startLasso) */
 .lasso { position: absolute; z-index: 3; pointer-events: none; border: 1px solid var(--accent); background: color-mix(in srgb, var(--accent) 14%, transparent); border-radius: 2px; }
+.cc-row { grid-template-columns: 22px minmax(140px, 1.1fr) minmax(140px, 1fr) minmax(200px, 1.6fr) auto; }
+.cc-reach { flex: none; font-weight: 600; }
+.cc-fix { height: 24px; }
+
+/* toplu işler (bulk.js) */
+.bk-top { display: grid; grid-template-columns: 1fr 260px; gap: 14px; }
+.bk-left .field { margin-bottom: 8px; }
+.bk-left .row { display: flex; align-items: center; gap: 8px; }
+.bk-cmd { width: 100%; resize: vertical; min-height: 64px; font-size: 12px; }
+.bk-picker { border: 1px solid var(--border); border-radius: 8px; display: flex; flex-direction: column; min-height: 0; max-height: 150px; }
+.bk-picker-head { display: flex; align-items: center; gap: 10px; padding: 5px 8px; border-bottom: 1px solid var(--border); font-size: 11px; }
+.bk-picker-head .spacer { flex: 1; }
+.bk-picker-list { overflow: auto; padding: 4px 6px; }
+.bk-group { font-size: 10px; font-weight: 600; text-transform: uppercase; color: var(--muted); margin: 6px 2px 2px; }
+.bk-pick { display: flex; align-items: center; gap: 6px; padding: 2px; font-size: 12px; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.bk-res-head { display: flex; align-items: center; gap: 8px; margin: 12px 0 8px; }
+.bk-res-head .spacer { flex: 1; }
+.bk-results { height: min(46vh, 420px); overflow: auto; border: 1px solid var(--border); border-radius: 8px; }
+.bk-results:empty::before { content: 'Komutu yazıp Çalıştır\'a basın; her sunucunun çıktısı burada listelenir.'; display: block; padding: 24px; text-align: center; color: var(--muted); font-size: 12px; }
+.bk-row { border-bottom: 1px solid var(--border); }
+.bk-row-head { display: flex; align-items: center; gap: 8px; width: 100%; padding: 6px 10px; border: 0; background: none; color: var(--text); font: inherit; font-size: 12px; text-align: left; cursor: pointer; }
+.bk-row-head:hover { background: var(--hover); }
+.bk-row-head b { flex: none; max-width: 30%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-weight: 500; }
+.bk-first { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--text2); }
+.bk-code { flex: none; font-family: var(--mono); font-size: 11px; padding: 0 6px; border-radius: 8px; background: var(--panel2); }
+.bk-same { flex: none; font-size: 11px; color: var(--accent); }
+.bk-row.st-ok .bk-code { color: var(--ok); }
+.bk-row.st-warn .bk-code, .bk-row.st-warn .bk-first { color: var(--busy); }
+.bk-row.st-fail .bk-first { color: var(--err); }
+.bk-row.st-run .bk-first, .bk-row.st-wait .bk-first { color: var(--muted); }
+.bk-out { margin: 0; padding: 8px 12px 10px 30px; max-height: 320px; overflow: auto; font: 12px/1.45 var(--mono); white-space: pre-wrap; word-break: break-all; background: var(--bg); user-select: text; }
+.bk-stats { max-height: min(62vh, 560px); overflow: auto; border: 1px solid var(--border); border-radius: 8px; }
+.bk-srow { display: grid; grid-template-columns: minmax(150px, 1.2fr) minmax(110px, .9fr) 140px 90px minmax(170px, 1.2fr) minmax(170px, 1.2fr) 90px; gap: 10px; align-items: center; padding: 6px 10px; border-bottom: 1px solid var(--border); font-size: 12px; }
+.bk-srow.head { position: sticky; top: 0; z-index: 1; background: var(--panel); padding-top: 4px; padding-bottom: 4px; }
+.bk-srow.head button { border: 0; background: none; color: var(--muted); font: inherit; font-size: 11px; font-weight: 600; text-align: left; cursor: pointer; padding: 0; }
+.bk-srow.fail { grid-template-columns: minmax(150px, 1.2fr) 1fr; }
+.bk-sname { display: flex; flex-direction: column; min-width: 0; }
+.bk-sname b, .bk-sname span, .bk-os, .bk-smsg { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.bk-sname b { font-weight: 500; }
+.bk-sname span { font-size: 11px; }
+.bk-os { color: var(--text2); }
+.bk-smsg { color: var(--err); }
+.bk-load, .bk-up { font-family: var(--mono); color: var(--text2); }
+.bk-load.hi { color: var(--err); }
+.bk-bar { position: relative; height: 18px; border-radius: 4px; background: var(--panel2); overflow: hidden; }
+.bk-bar i { position: absolute; inset: 0 auto 0 0; background: color-mix(in srgb, var(--ok) 45%, transparent); }
+.bk-bar.mid i { background: color-mix(in srgb, var(--busy) 55%, transparent); }
+.bk-bar.hi i { background: color-mix(in srgb, var(--err) 60%, transparent); }
+.bk-bar span { position: relative; padding: 0 6px; line-height: 18px; font-size: 11px; white-space: nowrap; }
+
+/* hesap: kurtarma anahtarı */
+.account .forgot { margin: -4px 0 8px; font-size: 12px; }
+.account .forgot a { color: var(--accent); }
+.rec-row { display: flex; align-items: flex-start; gap: 10px; margin: 10px 0 2px; padding: 10px; border: 1px solid var(--border); border-radius: 8px; }
+.rec-row > div { flex: 1; min-width: 0; }
+.rec-row .hint { margin: 2px 0 0; font-size: 12px; }
+.warn-text { color: var(--busy); }
+.rec-code { margin: 14px 0; padding: 14px; text-align: center; font-size: 17px; letter-spacing: .5px; border: 1px dashed var(--accent2); border-radius: 8px; background: var(--bg); user-select: all; word-break: break-all; }
+.rec-show .row { display: flex; gap: 8px; }
+
+/* uzakta arama */
+.rs .row { display: flex; gap: 8px; }
+.rs .row .input { flex: 1; }
+.rs-list { max-height: 50vh; overflow: auto; border: 1px solid var(--border); border-radius: 8px; margin-top: 8px; }
+.rs-list:empty { display: none; }
+.rs-item { display: flex; align-items: center; gap: 8px; padding: 5px 8px; border-bottom: 1px solid var(--border); font-size: 12px; cursor: default; }
+.rs-item:hover { background: var(--hover); }
+.rs-name { flex: none; max-width: 45%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-weight: 500; }
+.rs-dir { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--muted); }

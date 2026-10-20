@@ -149,6 +149,15 @@ public class SyncTest {
         c2.register(server, "telefon", "telefonParola1", "davet");
         ok(c2.status().optLong("version") == 1, "Android'den hesap açma");
 
+        // Kurtarma anahtarı: yanlış parola reddedilir; anahtarla aynı/yeni parolaya geçilir, kasa korunur
+        ok(expectError(() -> c2.createRecovery("yanlis")).contains("Hesap parolası yanlış"), "kurtarma: yanlış hesap parolası");
+        JSONObject rc = c2.createRecovery("telefonParola1");
+        ok(rc.getString("code").matches("([A-Z2-7]{4}-){7}[A-Z2-7]{4}") && !c2.info().isNull("recovery"), "kurtarma anahtarı oluşturuldu");
+        ok(expectError(() -> c2.recover(server, "telefon", "AAAA-AAAA-AAAA-AAAA-AAAA-AAAA-AAAA-AAAA", "x1234567890")).contains("kurtarma anahtarı yanlış"), "yanlış kurtarma anahtarı");
+        c2.recover(server, "telefon", rc.getString("code").toLowerCase(), "telefonParola1");
+        ok(c2.status().optBoolean("loggedIn") && L2.byName("telefondan") != null, "Android'de kurtarma (kasa korunur)");
+        Files.writeString(new File(work, "rec.json").toPath(), rc.toString());
+
         // Yerel ağ taraması: kapalı adres ve port atlanır, sunucu bulunur
         JSONArray found = SyncCore.scan(Arrays.asList("127.0.0.3", "127.0.0.1"), port, 500);
         ok(found.length() == 1 && found.getJSONObject(0).getString("server").equals("http://127.0.0.1:" + port) && found.getJSONObject(0).optBoolean("register"), "yerel ağ taraması sunucuyu buldu");

@@ -20,6 +20,28 @@ async function deriveKeys(password, saltB64, iter = KDF_ITER) {
   return { authKey: sub('sshdeck-auth').toString('base64'), wrapKey: sub('sshdeck-wrap') };
 }
 
+// ---- kurtarma anahtarı: 20 rastgele bayt, base32 (32 harf) "ABCD-EFGH-..." ----
+// Sunucuya koddan türetilen recAuth gider (doğrulama) ve kasa anahtarı recWrap ile sarılı durur; kod yalnız kullanıcıda.
+const B32 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
+function newRecoveryCode() {
+  const b = crypto.randomBytes(20);
+  let bits = 0; let val = 0; let out = '';
+  for (const x of b) { val = (val << 8) | x; bits += 8; while (bits >= 5) { out += B32[(val >>> (bits - 5)) & 31]; bits -= 5; } }
+  return out.match(/.{4}/g).join('-');
+}
+function recoveryBytes(code) {
+  const c = String(code || '').toUpperCase().replace(/[^A-Z2-7]/g, '');
+  if (c.length !== 32) throw new Error('Kurtarma anahtarı 32 karakter olmalı (ör. ABCD-EFGH-…; tireler önemli değil)');
+  let bits = 0; let val = 0; const out = [];
+  for (const ch of c) { val = (val << 5) | B32.indexOf(ch); bits += 5; if (bits >= 8) { out.push((val >>> (bits - 8)) & 255); bits -= 8; } }
+  return Buffer.from(out);
+}
+function recoveryKeys(code) {
+  const raw = recoveryBytes(code);
+  const sub = (info) => Buffer.from(crypto.hkdfSync('sha256', raw, Buffer.alloc(0), info, 32));
+  return { recAuth: sub('sshdeck-recovery-auth').toString('base64'), recWrap: sub('sshdeck-recovery-wrap') };
+}
+
 const DEFAULT_PORT = 3150;
 
 const normServer = (s) => {
@@ -186,6 +208,48 @@ class AccountSync extends EventEmitter {
     }, this._token());
   }
 
+  /** Sunucudaki hesap bilgisi: { user, created, recovery: oluşturulma zamanı | null } */
+  info() { return this._req('GET', '/api/account', null, this._token()); }
+
+  /** Yeni kurtarma anahtarı (eskisi geçersiz olur). Hesap parolası gerekir. Dönüş: { code, created } */
+  async createRecovery(password) {
+    const a = this.account;
+    if (!a) throw new Error('Giriş yapılmamış');
+    const vk = this._vk();
+    const pre = await this._req('GET', '/api/prelogin?user=' + encodeURIComponent(a.user));
+    const { authKey } = await deriveKeys(password, pre.salt, pre.iter);
+    const code = newRecoveryCode();
+    const { recAuth, recWrap } = recoveryKeys(code);
+    const r = await this._req('POST', '/api/recovery', { authKey, recAuth, recWrapped: encWithKey(vk.toString('base64'), recWrap) }, this._token())
+      .catch((e) => { if (e.status === 401) e.message = 'Hesap parolası yanlış'; throw e; });
+    return { code, created: r.recovery, server: a.server, user: a.user };
+  }
+
+  async removeRecovery(password) {
+    const a = this.account;
+    if (!a) throw new Error('Giriş yapılmamış');
+    const pre = await this._req('GET', '/api/prelogin?user=' + encodeURIComponent(a.user));
+    const { authKey } = await deriveKeys(password, pre.salt, pre.iter);
+    await this._req('POST', '/api/recovery', { authKey, remove: true }, this._token());
+  }
+
+  /** Parolasını unutan kullanıcı: kurtarma anahtarıyla yeni parola belirler ve giriş yapar (kasa korunur) */
+  async recover({ server, user, code, password }) {
+    server = normServer(server);
+    user = String(user || '').trim().toLowerCase();
+    const { recAuth, recWrap } = recoveryKeys(code);
+    const b = await this._req('POST', '/api/recover/begin', { user, recAuth }, null, server);
+    let vk;
+    try { vk = Buffer.from(decWithKey(b.recWrapped, recWrap), 'base64'); } catch { throw new Error('Kurtarma anahtarı kasayı açamadı'); }
+    const newSalt = crypto.randomBytes(16).toString('base64');
+    const nk = await deriveKeys(password, newSalt, KDF_ITER);
+    const r = await this._req('POST', '/api/recover/finish', {
+      user, recAuth, newSalt, iter: KDF_ITER, newAuthKey: nk.authKey, wrappedKey: encWithKey(vk.toString('base64'), nk.wrapKey),
+    }, null, server);
+    this._saveAccount({ server, user, token: r.token, version: 0 }, vk);
+    return this.syncNow();
+  }
+
   // Jeton ve kasa anahtarı yerelde oturum parolaları gibi saklanır (anahtarlık / ana parola)
   _saveAccount(a, vk) {
     this.store.setAccount({ server: a.server, user: a.user, version: a.version, lastSync: 0, token: this.store._enc(a.token), vk: this.store._enc(vk.toString('base64')) });
@@ -271,4 +335,4 @@ class AccountSync extends EventEmitter {
   }
 }
 
-module.exports = { AccountSync, deriveKeys, normServer, scanLan, lanTargets, KDF_ITER };
+module.exports = { AccountSync, deriveKeys, normServer, scanLan, lanTargets, KDF_ITER, newRecoveryCode, recoveryKeys };

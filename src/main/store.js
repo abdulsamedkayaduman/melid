@@ -331,10 +331,18 @@ class Store {
   }
 
   saveSettings(patch) {
-    const synced = Object.keys(patch).some((k) => !LOCAL_SETTINGS.has(k) && sortedJson(patch[k]) !== sortedJson(this.settings[k]));
+    // Hazır komutlar ayrı ayrı eşitlenir (komut başına mtime + silme kaydı); ayar bloğunun zamanını değiştirmez
+    let snipChanged = false;
+    if (Array.isArray(patch.snippets)) {
+      const r = stampSnippets(this.settings.snippets || [], patch.snippets, this.sync.deleted, this.sync.settingsMtime || 0);
+      patch = { ...patch, snippets: r.list };
+      snipChanged = r.changed;
+    }
+    const synced = Object.keys(patch).some((k) => k !== 'snippets' && !LOCAL_SETTINGS.has(k) && sortedJson(patch[k]) !== sortedJson(this.settings[k]));
     this.settings = { ...this.settings, ...patch };
     this._save('settings.json', this.settings);
-    if (synced) { this.sync.settingsMtime = Date.now(); this._saveSync(); this._changed(); }
+    if (synced) this.sync.settingsMtime = Date.now();
+    if (synced || snipChanged) { this._saveSync(); this._changed(); }
     return this.settings;
   }
 
@@ -353,6 +361,7 @@ class Store {
     const settings = {};
     for (const [k, v] of Object.entries(this.settings)) if (!LOCAL_SETTINGS.has(k)) settings[k] = v;
     const out = { sessions, deleted: { ...this.sync.deleted }, settings: { data: settings, mtime: this.sync.settingsMtime || 0 } };
+    out.snippets = snippetMap(this.settings.snippets, this.sync.settingsMtime || 0);
     if (this.settings.syncKeys) out.keys = this._keysSnapshot();
     return out;
   }
@@ -439,6 +448,12 @@ class Store {
       this._save('settings.json', this.settings);
       this.sync.settingsMtime = v.settings.mtime;
     }
+    // Hazır komutlar ayar bloğundan bağımsız birleşir (bkz. mergeVaults); blok eski kalsa da liste güncellenir
+    const snips = v.settings && v.settings.data && v.settings.data.snippets;
+    if (Array.isArray(snips) && sortedJson(snips) !== sortedJson(this.settings.snippets || [])) {
+      this.settings = { ...this.settings, snippets: snips };
+      this._save('settings.json', this.settings);
+    }
     if (this.settings.syncKeys && v.keys) {
       const prevKeys = new Map(this.keys.map((k) => [k.id, k]));
       this.keys = Object.entries(v.keys).map(([id, k]) => {
@@ -462,6 +477,33 @@ class Store {
   }
 }
 
+// ---- hazır komutlar: komut başına birleştirme ----
+const snipBody = (x) => { const { mtime, ...rest } = x || {}; return sortedJson(rest); };
+
+/** Kaydedilen yeni listeye mtime koyar (değişen/yeni: şimdi), silinenler için silme kaydı yazar */
+function stampSnippets(oldList, newList, deleted, fallbackMtime) {
+  const now = Date.now();
+  const old = new Map((oldList || []).filter((x) => x && x.id).map((x) => [x.id, x]));
+  let changed = false;
+  const list = (newList || []).map((x) => {
+    if (!x || !x.id) return x;
+    const o = old.get(x.id);
+    if (o && snipBody(o) === snipBody(x)) return { ...x, mtime: o.mtime || x.mtime || fallbackMtime };
+    changed = true;
+    return { ...x, mtime: now };
+  });
+  const keep = new Set(list.filter((x) => x && x.id).map((x) => x.id));
+  for (const id of old.keys()) if (!keep.has(id)) { deleted[id] = now; changed = true; }
+  return { list, changed };
+}
+
+/** Liste -> { id: komut } (mtime'ı olmayan eski kayıt ayar bloğunun zamanını alır) */
+function snippetMap(list, blobMtime) {
+  const out = {};
+  for (const x of Array.isArray(list) ? list : []) if (x && x.id && !out[x.id]) out[x.id] = { ...x, mtime: x.mtime || blobMtime || 0 };
+  return out;
+}
+
 /**
  * İki kasayı birleştirir (değişme zamanı yeni olan kazanır). Aynı girdilerle her cihazda aynı sonucu verir.
  * Silme kaydı, kendinden sonra değişmemiş oturumu/anahtarı siler; daha yeni düzenleme silmeyi geçersiz kılar.
@@ -470,6 +512,8 @@ class Store {
 function mergeVaults(a, b, now = Date.now()) {
   const empty = { sessions: {}, deleted: {}, settings: { data: {}, mtime: 0 }, keys: {} };
   a = a || empty; b = b || empty;
+  // Eski kasa (komut haritası yok): ayar bloğundaki liste, bloğun zamanıyla
+  const snipsOf = (v) => (v.snippets && typeof v.snippets === 'object' ? v.snippets : snippetMap(v.settings && v.settings.data && v.settings.data.snippets, v.settings && v.settings.mtime));
   const mergeItems = (ma, mb) => {
     const out = {};
     ma = ma || {}; mb = mb || {};
@@ -483,19 +527,31 @@ function mergeVaults(a, b, now = Date.now()) {
   };
   const sessions = mergeItems(a.sessions, b.sessions);
   const keys = mergeItems(a.keys, b.keys);
+  const snippets = mergeItems(snipsOf(a), snipsOf(b));
   const deleted = {};
   for (const src of [a.deleted || {}, b.deleted || {}]) for (const [id, t] of Object.entries(src)) if (!(deleted[id] >= t)) deleted[id] = t;
   for (const [id, t] of Object.entries(deleted)) {
     let live = false;
-    for (const items of [sessions, keys]) {
+    for (const items of [sessions, keys, snippets]) {
       if (!items[id]) continue;
       if ((items[id].mtime || 0) <= t) delete items[id]; else live = true;
     }
     if (live || now - t > TOMBSTONE_TTL) delete deleted[id];
   }
   const sa = a.settings || empty.settings; const sb = b.settings || empty.settings;
-  const settings = sa.mtime !== sb.mtime ? (sa.mtime > sb.mtime ? sa : sb) : (sortedJson(sa) >= sortedJson(sb) ? sa : sb);
-  return { sessions, deleted, settings, keys };
+  let settings = sa.mtime !== sb.mtime ? (sa.mtime > sb.mtime ? sa : sb) : (sortedJson(sa) >= sortedJson(sb) ? sa : sb);
+  // Bloğun komut listesi birleşmiş haritadan yeniden kurulur (eski sürümler listeyi buradan okur).
+  // Sıra: kazanan bloğun sırası, sonra yeni gelenler (mtime, id)
+  const data = settings.data || {};
+  if (Object.keys(snippets).length || Array.isArray(data.snippets)) {
+    const seen = new Set();
+    const list = [];
+    for (const x of Array.isArray(data.snippets) ? data.snippets : []) if (x && snippets[x.id] && !seen.has(x.id)) { seen.add(x.id); list.push(snippets[x.id]); }
+    const rest = Object.keys(snippets).filter((id) => !seen.has(id)).sort((x, y) => (snippets[x].mtime || 0) - (snippets[y].mtime || 0) || (x < y ? -1 : x > y ? 1 : 0));
+    for (const id of rest) list.push(snippets[id]);
+    settings = { ...settings, data: { ...data, snippets: list } };
+  }
+  return { sessions, deleted, settings, keys, snippets };
 }
 
 module.exports = { Store, DEFAULT_SETTINGS, mergeVaults, sortedJson, encWithKey, decWithKey };

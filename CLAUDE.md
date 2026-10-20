@@ -53,13 +53,17 @@ src/main/updater.js      Güncelleme: imzalı latest.json (Forgejo generic paket
                          taşınabilir exe (cmd betiği), AppImage (yerine yaz), pacman (pkexec). Yayın: ci/publish-update.sh
 src/main/sync.js         Hesap eşitlemesi (AccountSync): giriş/kayıt/çıkış/parola değişimi, uçtan uca şifreli kasa,
                          syncNow() (al -> mergeVaults -> uygula -> 409'da yeniden dene). store.onChange ile tetiklenir.
-                         scanLan(): yerel ağda 3150 portu açık sunucu arama. İsteğe bağlı SSH anahtarı eşitlemesi
+                         scanLan(): yerel ağda 3150 portu açık sunucu arama. Kurtarma anahtarı: createRecovery/recover.
+                         Hazır komutlar kasada komut başına (snippets haritası; store.js stampSnippets/snippetMap). İsteğe bağlı SSH anahtarı eşitlemesi
                          (settings.syncKeys, cihaza özgü; kasada keys, oturumda keyFp; gelen anahtarlar store.keys). Sunucu: server/sync-server.js (bağımsız,
                          bağımlılıksız; server/Dockerfile + docker-compose.yml, Dokploy); kök adreste davet koduyla
                          girilen istatistik sayfası (HOME_PAGE, POST /api/stats). Ayrıntı ve güvenlik modeli: docs/senkron.md
-src/main/conncheck.js    Bağlantı denetimi: ayrı, sormayan SshManager ile oturumlara bağlanıp kimlik doğrulamayı dener ve
-                         sınıflandırır (ok/auth/input/unreachable/hostkey/error); arayüz src/renderer/conncheck.js
-                         (sonuç listesi, sorunluları seç, toplu sil). Bilinmeyen sunucu anahtarına yalnız seçilirse güvenir.
+src/main/conncheck.js    Toplu işler: ayrı, sormayan SshManager ile oturumlara bağlanır (runOne/runSessions), önce TCP yoklaması
+                         + gerekirse ping ile erişim teşhisi (reach: dns/ip/port/ssh), sonra iş: denetim (sınıflandırma
+                         ok/auth/input/unreachable/hostkey/error, need: düzeltmek için sorulacak alan), execTask (komut),
+                         statsTask (kaynak özeti). IPC check:start {kind}/check:one. Arayüz: src/renderer/conncheck.js
+                         (denetim, Düzelt, toplu sil) ve src/renderer/bulk.js (sunucularda komut, sunucu özeti).
+                         Bilinmeyen sunucu anahtarına yalnız seçilirse güvenir.
 src/main/termlog.js      Oturum kaydı: TermLogger (oturum adına göre klasör, dosya başına kabuk) + parçalı ANSI temizleyici
 src/main/keys.js         ~/.ssh anahtarlarını listeleme, ssh2 utils ile anahtar üretme (OpenSSH biçimi)
 src/main/socks.js        -D için minimal SOCKS5 (CONNECT, kimlik doğrulamasız)

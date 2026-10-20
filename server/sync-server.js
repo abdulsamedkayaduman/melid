@@ -77,6 +77,17 @@ function createSyncServer({ dataDir, invite = '', trustProxy = false }) {
     return { user: rec.user, hash: tokenHash(m[1]) };
   };
 
+  const recoverCheck = (req, b) => {
+    const u = String(b.user || '').toLowerCase();
+    const ip = clientIp(req);
+    if (limited(ip, 'u:' + u)) throw new HttpError(429, 'Çok fazla hatalı deneme, 15 dakika sonra tekrar deneyin');
+    const r = users[u] && users[u].recovery;
+    const good = r && B64(b.recAuth, 40, 64)
+      && crypto.timingSafeEqual(Buffer.from(verifier(b.recAuth, r.vsalt), 'base64'), Buffer.from(r.verifier, 'base64'));
+    if (!good) { fail(ip, 'u:' + u); counters.failedLogins++; throw new HttpError(401, 'Kullanıcı adı veya kurtarma anahtarı yanlış'); }
+    return true;
+  };
+
   const routes = {
     'GET /api/info': () => ({ app: 'SSHDeck', api: 1, register: !!invite }),
 
@@ -158,6 +169,48 @@ function createSyncServer({ dataDir, invite = '', trustProxy = false }) {
       return { ok: true };
     },
 
+    // Hesap bilgisi (kurtarma anahtarı var mı)
+    'GET /api/account': (req) => {
+      const a = auth(req);
+      const rec = users[a.user];
+      return { user: a.user, created: rec.created, recovery: rec.recovery ? rec.recovery.created : null };
+    },
+
+    // Kurtarma anahtarı koy / değiştir. Hesap parolasıyla doğrulanır (yalnız jetonla olmaz: çalınan jeton hesabı ele
+    // geçirmeye yetmesin). Sunucu kodun kendisini değil, ondan türetilen doğrulayıcıyı ve onunla sarılmış kasa anahtarını tutar.
+    'POST /api/recovery': (req, b) => {
+      const a = auth(req);
+      const rec = users[a.user];
+      if (limited('u:' + a.user)) throw new HttpError(429, 'Çok fazla hatalı deneme, 15 dakika sonra tekrar deneyin');
+      const good = B64(b.authKey, 40, 64)
+        && crypto.timingSafeEqual(Buffer.from(verifier(b.authKey, rec.vsalt), 'base64'), Buffer.from(rec.verifier, 'base64'));
+      if (!good) { fail('u:' + a.user); throw new HttpError(401, 'Hesap parolası yanlış'); }
+      if (b.remove === true) { delete rec.recovery; save('users.json', users); return { recovery: null }; }
+      need(B64(b.recAuth, 40, 64) && B64(b.recWrapped, 40, 200), 'Eksik veya hatalı alan');
+      const vsalt = crypto.randomBytes(16).toString('base64');
+      rec.recovery = { vsalt, verifier: verifier(b.recAuth, vsalt), wrapped: b.recWrapped, created: new Date().toISOString() };
+      save('users.json', users);
+      return { recovery: rec.recovery.created };
+    },
+
+    // Parolasını unutan kullanıcı: kurtarma anahtarıyla kasa anahtarını alır (begin), yeni parolayla yeniden sarıp kaydeder
+    // (finish). Deneme sınırı girişle aynı; başarılı kurtarmada tüm oturumlar kapanır.
+    'POST /api/recover/begin': (req, b) => recoverCheck(req, b) && { recWrapped: users[String(b.user).toLowerCase()].recovery.wrapped },
+    'POST /api/recover/finish': (req, b) => {
+      recoverCheck(req, b);
+      const u = String(b.user).toLowerCase();
+      const rec = users[u];
+      need(B64(b.newSalt, 16, 64) && B64(b.newAuthKey, 40, 64) && B64(b.wrappedKey, 40, 200), 'Eksik veya hatalı alan');
+      need(Number.isInteger(b.iter) && b.iter >= 100000 && b.iter <= 10000000, 'Hatalı KDF ayarı');
+      const vsalt = crypto.randomBytes(16).toString('base64');
+      Object.assign(rec, { salt: b.newSalt, iter: b.iter, vsalt, verifier: verifier(b.newAuthKey, vsalt), wrappedKey: b.wrappedKey });
+      save('users.json', users);
+      for (const [k, v] of Object.entries(tokens)) if (v.user === u) delete tokens[k];
+      save('tokens.json', tokens);
+      counters.logins++;
+      return { token: newToken(u, req), wrappedKey: rec.wrappedKey };
+    },
+
     // Ana sayfadaki istatistikler. Davet koduyla girilir; kod boşsa sayfa kapalıdır.
     // Kasa içerikleri şifreli olduğundan burada yalnız sayılar, boyutlar ve zamanlar görünür.
     'POST /api/stats': (req, b) => {
@@ -181,7 +234,7 @@ function createSyncServer({ dataDir, invite = '', trustProxy = false }) {
         const devs = (devices[u] || []).sort((x, y) => y.seen - x.seen);
         return {
           user: u, created: Date.parse(rec.created) || 0, version: v ? v.version : 0, updated: v && v.updated ? Date.parse(v.updated) : 0,
-          size, devices: devs, seen: devs.length ? devs[0].seen : 0,
+          size, devices: devs, seen: devs.length ? devs[0].seen : 0, recovery: !!rec.recovery,
         };
       }).sort((x, y) => (y.seen - x.seen) || x.user.localeCompare(y.user));
       const allDevs = Object.values(devices).flat();
@@ -310,7 +363,7 @@ td.devs { white-space: normal; min-width: 240px; }
     <div class="card">
       <h3>Hesaplar</h3>
       <div class="tbl"><table>
-        <thead><tr><th>Kullanıcı</th><th>Son görülme</th><th>Son değişiklik</th><th>Kasa sürümü</th><th>Kasa boyutu</th><th>Açılış</th><th>Cihazlar</th></tr></thead>
+        <thead><tr><th>Kullanıcı</th><th>Son görülme</th><th>Son değişiklik</th><th>Kasa sürümü</th><th>Kasa boyutu</th><th>Açılış</th><th>Kurtarma</th><th>Cihazlar</th></tr></thead>
         <tbody id="users"></tbody>
       </table></div>
     </div>
@@ -380,7 +433,7 @@ td.devs { white-space: normal; min-width: 240px; }
     var tb = $('users');
     tb.replaceChildren();
     if (!d.users.length) {
-      var tr0 = el('tr'); var td0 = el('td', 'Henüz hesap yok. Uygulamada bulut düğmesi → Hesap oluştur.', 'empty'); td0.colSpan = 7; tr0.append(td0); tb.append(tr0);
+      var tr0 = el('tr'); var td0 = el('td', 'Henüz hesap yok. Uygulamada bulut düğmesi → Hesap oluştur.', 'empty'); td0.colSpan = 8; tr0.append(td0); tb.append(tr0);
     }
     d.users.forEach(function (u) {
       var tr = el('tr');
@@ -390,7 +443,7 @@ td.devs { white-space: normal; min-width: 240px; }
       u.devices.forEach(function (x) {
         var r = el('div', null, 'dev'); r.append(el('b', x.client || 'bilinmeyen istemci'), el('span', ago(x.seen, now))); devs.append(r);
       });
-      tr.append(name, el('td', ago(u.seen, now)), el('td', ago(u.updated, now)), el('td', String(u.version)), el('td', bytes(u.size)), el('td', date(u.created)), devs);
+      tr.append(name, el('td', ago(u.seen, now)), el('td', ago(u.updated, now)), el('td', String(u.version)), el('td', bytes(u.size)), el('td', date(u.created)), el('td', u.recovery ? 'var' : 'yok'), devs);
       tb.append(tr);
     });
     $('foot').textContent = 'Sunucu kasaların içeriğini göremez: oturum adları, adresler ve parolalar burada hiçbir zaman görünmez. Güncelleme: ' + new Date(now).toLocaleTimeString('tr-TR');

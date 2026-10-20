@@ -253,24 +253,59 @@ public class Store implements SyncCore.Local {
 
     // ------------------------------------------------------------------ settings
     public synchronized void saveSettings(JSONObject patch) throws JSONException {
-        boolean synced = false;
+        boolean synced = false, snipChanged = false;
         JSONObject blob = settingsBlob();
+        // Hazır komutlar komut başına eşitlenir (mtime + silme kaydı); ayar bloğunun zamanını değiştirmez
+        if (patch.optJSONArray("snippets") != null) {
+            patch = new JSONObject(patch.toString());
+            snipChanged = stampSnippets(patch.getJSONArray("snippets"), blob.optLong("mtime"));
+        }
         for (Iterator<String> it = patch.keys(); it.hasNext(); ) {
             String k = it.next();
             Object v = patch.get(k);
             if (isSyncSetting(k) && !SyncCore.canon(v).equals(SyncCore.canon(settings.opt(k)))) {
                 blob.getJSONObject("data").put(k, v);
-                synced = true;
+                if (!k.equals("snippets")) synced = true;
             }
             settings.put(k, v);
         }
         save("settings.json", settings);
-        if (synced) {
-            blob.put("mtime", System.currentTimeMillis());
+        if (synced) blob.put("mtime", System.currentTimeMillis());
+        if (synced || snipChanged) {
             sync.put("settings", blob);
             save("sync.json", sync);
             changed();
         }
+    }
+
+    /** store.js stampSnippets: değişen/yeni komuta şimdiki zaman, silinene silme kaydı. Değişiklik oldu mu */
+    boolean stampSnippets(JSONArray list, long fallback) throws JSONException {
+        long now = System.currentTimeMillis();
+        JSONArray old = settings.optJSONArray("snippets");
+        java.util.Map<String, JSONObject> byId = new java.util.HashMap<>();
+        if (old != null) for (int i = 0; i < old.length(); i++) { JSONObject o = old.optJSONObject(i); if (o != null && !o.optString("id").isEmpty()) byId.put(o.optString("id"), o); }
+        boolean changed = false;
+        java.util.Set<String> keep = new java.util.HashSet<>();
+        for (int i = 0; i < list.length(); i++) {
+            JSONObject x = list.optJSONObject(i);
+            if (x == null || x.optString("id").isEmpty()) continue;
+            keep.add(x.optString("id"));
+            JSONObject o = byId.get(x.optString("id"));
+            if (o != null && snipBody(o).equals(snipBody(x))) {
+                long mt = o.optLong("mtime", 0);
+                if (mt == 0) mt = x.optLong("mtime", 0);
+                if (mt == 0) mt = fallback;
+                x.put("mtime", mt);
+            } else { x.put("mtime", now); changed = true; }
+        }
+        for (String id : byId.keySet()) if (!keep.contains(id)) { sync.getJSONObject("deleted").put(id, now); changed = true; }
+        return changed;
+    }
+
+    static String snipBody(JSONObject x) throws JSONException {
+        JSONObject c = new JSONObject(x.toString());
+        c.remove("mtime");
+        return SyncCore.canon(c);
     }
 
     static boolean isSyncSetting(String k) {
@@ -347,7 +382,9 @@ public class Store implements SyncCore.Local {
             o.put("mtime", s.optLong("mtime"));
             ss.put(s.getString("id"), o);
         }
-        JSONObject out = new JSONObject().put("sessions", ss).put("deleted", new JSONObject(sync.getJSONObject("deleted").toString())).put("settings", settingsBlob());
+        JSONObject blob = settingsBlob();
+        JSONObject out = new JSONObject().put("sessions", ss).put("deleted", new JSONObject(sync.getJSONObject("deleted").toString())).put("settings", blob)
+                .put("snippets", SyncCore.snippetMap(settings.optJSONArray("snippets"), blob.optLong("mtime")));
         if (syncKeys()) {
             JSONObject ks = new JSONObject();
             for (int i = 0; i < keys.length(); i++) {

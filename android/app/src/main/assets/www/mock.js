@@ -146,6 +146,11 @@ async function handle(id, m, a) {
     case 'lockSetBiometric': db.lock.bio = !!a.on; save(); return { enabled: true, locked: false, biometric: db.lock.bio, bioAvailable: true, timeout: db.lock.timeout };
     case 'lockTimeout': db.lock.timeout = a.sec; save(); return { enabled: true, locked: false, biometric: !!db.lock.bio, bioAvailable: true, timeout: a.sec };
     case 'lockNow': db.lockLocked = true; save(); setTimeout(() => emit('lock', {}), 0); return {};
+    case 'accountInfo': return { user: db.account?.user, created: '2026-10-01', recovery: db.recovery || null };
+    case 'accountRecoveryCreate': db.recovery = new Date().toISOString(); save(); return { code: 'ABCD-EFGH-IJKL-MNOP-QRST-UVWX-YZ23-4567', created: db.recovery, server: db.account?.server, user: db.account?.user };
+    case 'accountRecoveryRemove': delete db.recovery; save(); return null;
+    case 'accountRecover': db.account = { server: a.server, user: a.user }; save(); return { loggedIn: true, state: 'ok', version: 1, lastSync: Date.now(), ...db.account };
+    case 'saveTextDownload': return a.name;
     case 'accountSetKeys': db.syncKeys = !!a.on; save(); return db.account ? { loggedIn: true, state: 'ok', version: 3, lastSync: Date.now(), syncKeys: db.syncKeys, ...db.account } : { loggedIn: false, state: 'idle', syncKeys: db.syncKeys };
     case 'accountScan': await new Promise((r) => setTimeout(r, 1500)); return [{ server: 'http://192.168.1.50:3150', host: '192.168.1.50', register: true }];
     case 'accountLogin': case 'accountRegister': {

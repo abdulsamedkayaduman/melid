@@ -3,6 +3,7 @@
 import { h, icon } from './util.js';
 import { modal, toast, confirmBox } from './dialogs.js';
 import { cleanErr } from './filepane.js';
+import { execDialog } from './bulk.js';
 
 const api = window.api;
 
@@ -21,11 +22,14 @@ const CHIP_HINTS = {
   bad: 'Silmeye aday olanlar: ulaşılamayanlar ve girişi kabul edilmeyenler ("Sorunluları seç" bunları seçer)',
   ok: 'Bağlanıldı ve kayıtlı bilgilerle giriş yapıldı',
   auth: 'Sunucuya ulaşıldı ama kayıtlı bilgiler kabul edilmedi: parola değişmiş, kullanıcı silinmiş ya da anahtar yetkisiz',
-  unreachable: 'Sunucuya ulaşılamadı: kapalı, IP/ad değişmiş, port kapalı ya da zaman aşımı (VPN bağlı mı?)',
+  unreachable: "Sunucuya ulaşılamadı. Satırda nedeni yazar: IP'ye erişim yok (kapalı / VPN / adres değişmiş), port kapalı (sunucu ayakta ama SSH portu kapalı ya da değişmiş), ad çözülemedi (DNS) ya da port açık ama SSH yanıt vermiyor",
   input: 'Kayıtlı bilgi eksik: parola, kullanıcı adı ya da anahtar parolası kayıtlı değil veya 2FA gerekiyor. Elle bağlanınca sorulur',
   hostkey: 'Sunucu anahtarı değişmiş ya da henüz onaylanmamış. Yeni sunucular için "anahtarlarını kabul et" kutusunu işaretleyip yeniden denetleyin',
   error: 'Beklenmeyen hata (satırın üzerine gelince ayrıntı görünür)',
 };
+
+// Ulaşılamayanlarda nedenin kısa adı (ayrıntı mesajda)
+const REACH = { dns: 'Ad çözülemedi', ip: "IP'ye erişim yok", port: 'Port kapalı', ssh: 'SSH yanıt vermiyor' };
 
 // "Sorunlu" sayılanlar (silmeye aday): ulaşılamayan ve girişi kabul edilmeyenler
 const BAD = new Set(['unreachable', 'auth']);
@@ -71,10 +75,61 @@ export async function checkDialog(app, ids, title = 'Bağlantıları denetle') {
       return h('label.cc-row.s-' + r.state, null, chk,
         h('div.cc-name', null, h('b', null, s.name || s.host), s.group ? h('span.muted', null, s.group) : null),
         h('span.cc-host.mono', null, `${s.username ? s.username + '@' : ''}${s.host}${Number(s.port || 22) !== 22 ? ':' + s.port : ''}`),
-        h('div.cc-state', { title: r.message || '' }, icon(STATES[r.state].ic, 14), h('span', null, r.message || STATES[r.state].label)));
+        h('div.cc-state', { title: r.message || '' }, icon(STATES[r.state].ic, 14),
+          r.state === 'unreachable' && REACH[r.reach] ? h('b.cc-reach', null, REACH[r.reach]) : null,
+          h('span', null, r.message || STATES[r.state].label)),
+        fixButton(id, s, r));
     }) : [h('div.muted.cc-empty', null, 'Bu süzgeçte oturum yok')]));
     updBtns();
   };
+  // Düzelt: girişi kabul edilmeyen / bilgisi eksik oturumda bilgiyi sorup kaydeder ve hemen yeniden dener;
+  // onaylanmamış sunucu anahtarında anahtarı kabul edip dener
+  const fixButton = (id, s, r) => {
+    const can = (r.state === 'auth' || r.state === 'input') && r.need || (r.state === 'hostkey' && !r.changed);
+    if (!can || runId) return h('span');
+    return h('button.btn.sm.cc-fix', {
+      type: 'button',
+      title: r.state === 'hostkey' ? 'Sunucu anahtarını kabul et ve yeniden dene' : 'Bilgileri düzelt ve yeniden dene',
+      onclick: (e) => { e.preventDefault(); e.stopPropagation(); fix(id, s, r); },
+    }, r.state === 'hostkey' ? 'Kabul et' : 'Düzelt');
+  };
+  const retry = async (id, o = {}) => {
+    res.set(id, { state: 'running' });
+    render();
+    try { res.set(id, await api.check.one(id, o)); } catch (e) { res.set(id, { state: 'error', message: cleanErr(e) }); }
+    render();
+  };
+  const fix = async (id, s, r) => {
+    if (r.state === 'hostkey') { await retry(id, { acceptNew: true }); return; }
+    const user = h('input.input', { value: s.username || '', spellcheck: false });
+    const secret = h('input.input', { type: 'password', autofocus: r.need !== 'username' });
+    const isPass = r.need === 'passphrase';
+    const err = h('div.upd-err');
+    const ok = await modal({
+      title: `${s.name || s.host}: bilgileri düzelt`, width: 420,
+      body: h('div', null,
+        h('p.hint', { style: { marginTop: 0 } }, r.message),
+        isPass ? null : h('label.field', null, h('span', null, 'Kullanıcı adı'), user),
+        h('label.field', null, h('span', null, isPass ? 'Anahtar parolası' : 'Parola'), secret),
+        h('p.hint', null, 'Kaydedilip bu sunucu hemen yeniden denenir.'), err),
+      buttons: [{ label: 'Vazgeç', value: null }, { label: 'Kaydet ve dene', value: true, primary: true }],
+      onButton: (v) => {
+        if (!v) return;
+        if (!isPass && !user.value.trim()) { err.textContent = 'Kullanıcı adı gerekli'; return false; }
+        if (!secret.value && r.need !== 'username') { err.textContent = isPass ? 'Anahtar parolasını girin' : 'Parolayı girin'; return false; }
+      },
+    });
+    if (!ok) return;
+    const patch = { id };
+    if (!isPass) patch.username = user.value.trim();
+    if (secret.value) patch[isPass ? 'passphrase' : 'password'] = secret.value;
+    try {
+      await app.saveSession(patch);
+      byId.set(id, app.sessions.find((x) => x.id === id) || s);
+    } catch (e) { toast(cleanErr(e), 'err'); return; }
+    await retry(id);
+  };
+
   const updBtns = () => {
     delBtn.disabled = !sel.size || !!runId;
     delBtn.textContent = sel.size ? `Seçilenleri sil (${sel.size})` : 'Seçilenleri sil';
@@ -140,7 +195,9 @@ export async function checkDialog(app, ids, title = 'Bağlantıları denetle') {
     h('p.hint', null, 'Her oturuma kayıtlı bilgileriyle, hiçbir şey sormadan bağlanmayı dener ve hemen ayrılır (komut çalıştırılmaz). VPN gerekiyorsa önce bağlanın. Aynı anda 6 sunucu denenir.'),
     h('label.check', { title: 'Kapalıyken anahtarı bilinmeyen sunuculara parola gönderilmez' }, acceptNew, 'Yeni sunucuların anahtarlarını kabul et ve kaydet (ilk bağlantıdaki "Kabul et" gibi)'),
     chips, list,
-    h('div.cc-foot', null, pickBad, delBtn, h('span.spacer'), startBtn, h('button.btn', { type: 'button', onclick: () => close(null) }, 'Kapat')));
+    h('div.cc-foot', null, pickBad, delBtn, h('span.spacer'),
+      h('button.btn', { type: 'button', title: 'Denetimde çalışan sunucularda komut çalıştır', onclick: () => { const ok = [...res].filter(([, r]) => r.state === 'ok').map(([id]) => id); if (!ok.length) { toast('Önce denetleyin: çalışan sunucu yok', 'info'); return; } execDialog(app, ok, 'Çalışan sunucularda komut'); } }, 'Çalışanlarda komut…'),
+      startBtn, h('button.btn', { type: 'button', onclick: () => close(null) }, 'Kapat')));
   render();
   await modal({ title: `${title} (${ids.length})`, width: 860, body, buttons: [], bind: (c) => { close = c; }, cls: 'cc-modal' });
   if (runId) api.check.cancel(runId);

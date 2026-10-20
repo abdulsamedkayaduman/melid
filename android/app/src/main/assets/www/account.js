@@ -88,6 +88,7 @@ async function loginSheet(app, reauth, st0) {
   let busy = false;
   let res = null;
   let sh;
+  let forgot = false;
   const r = await sheet({
     title: 'Hesap ve eşitleme',
     onOpen: (_, m) => { sh = m; },
@@ -99,6 +100,7 @@ async function loginSheet(app, reauth, st0) {
       found,
       field('Kullanıcı adı', f.user),
       field('Hesap parolası', f.password),
+      h('div', { style: { margin: '-6px 0 12px', fontSize: '13px' } }, h('a', { href: '#', style: { color: 'var(--accent)' }, onclick: (e) => { e.preventDefault(); forgot = true; sh.close(null); } }, 'Hesap parolamı unuttum')),
       ...regOnly,
       reauth ? null : h('label.check', null, f.syncKeys, 'SSH anahtarlarını da eşitle'),
       reauth ? null : h('p.hint', { style: { margin: '-4px 0 12px 32px', fontSize: '12px' } }, 'Özel anahtarlar da hesaba (şifreli) yüklenir. Sonradan Hesap ve eşitleme menüsünden değiştirilebilir.'),
@@ -134,6 +136,7 @@ async function loginSheet(app, reauth, st0) {
       } finally { busy = false; sh.dismiss = undefined; }
     },
   });
+  if (forgot) { await recoverSheet(app, { server: f.server.value.trim() || lastServer, user: f.user.value.trim() || lastUser }); return; }
   if (r && res?.loggedIn) {
     app.setAccount(res);
     toast(mode === 'register' ? `Hesap oluşturuldu: ${res.user}` : `Giriş yapıldı: ${res.user}`, { type: 'ok' });
@@ -141,11 +144,15 @@ async function loginSheet(app, reauth, st0) {
 }
 
 async function manageSheet(app, st) {
+  let info = null;
+  try { info = await N.call('accountInfo'); } catch { /* sunucuya ulaşılamadı */ }
+  const recHint = !info ? '' : info.recovery ? 'var' : 'yok, oluşturun';
   const kv = (k, v) => h('div.kv-row', null, h('span', null, k), h('b', null, v));
   const act = await actionSheet('Hesap ve eşitleme', [
     st.state === 'auth' ? { icon: 'lock', label: 'Tekrar giriş yap', value: 'reauth' } : { icon: 'sync', label: 'Şimdi eşitle', value: 'sync' },
     { icon: 'key', label: st.syncKeys ? 'SSH anahtarı eşitlemesini kapat' : 'SSH anahtarlarını da eşitle', value: 'keys' },
     { icon: 'lock', label: 'Hesap parolasını değiştir', value: 'password' },
+    { icon: 'key', label: 'Kurtarma anahtarı', value: 'recovery', hint: recHint },
     '-',
     { icon: 'power', label: 'Çıkış yap', value: 'logout', danger: true },
   ], h('div', null,
@@ -162,6 +169,8 @@ async function manageSheet(app, st) {
       if (!await confirm({ title: on ? 'SSH anahtarlarını eşitle' : 'Anahtar eşitlemesini kapat', message: on ? KEYS_TEXT : 'Bu telefon artık anahtar göndermez ve almaz. Buradaki anahtarlar silinmez; hesaptaki anahtarlar da diğer cihazlarda kalır.', ok: on ? 'Eşitle' : 'Kapat' })) return;
       app.setAccount(await N.call('accountSetKeys', { on }));
       toast(on ? 'SSH anahtarları eşitlenecek' : 'Anahtar eşitlemesi kapatıldı', { type: 'ok' });
+    } else if (act === 'recovery') {
+      await recoveryFlow(info);
     } else if (act === 'reauth') {
       await loginSheet(app, st);
     } else if (act === 'password') {
@@ -180,4 +189,92 @@ async function manageSheet(app, st) {
       toast('Hesaptan çıkıldı', { type: 'ok' });
     }
   } catch (e) { toast(e.message, { type: 'err', ms: 6000 }); }
+}
+
+// ---------------------------------------------------------------- kurtarma anahtarı (masaüstüyle aynı biçim)
+const recText = (rc) => ['SSHDeck hesap kurtarma anahtarı', '', `Sunucu: ${rc.server}`, `Kullanıcı: ${rc.user}`, `Anahtar: ${rc.code}`,
+  `Oluşturulma: ${new Date(rc.created || Date.now()).toLocaleString('tr-TR')}`, '',
+  'Hesap parolanızı unutursanız SSHDeck giriş ekranında "Hesap parolamı unuttum" ile bu anahtarla yeni parola belirleyebilirsiniz;',
+  'bağlantılarınız ve parolalarınız korunur. Bu dosyayı güvenli bir yerde saklayın: anahtarı ele geçiren biri hesabınıza girebilir.', ''].join('\n');
+
+async function recoveryFlow(info) {
+  const has = !!info?.recovery;
+  const act = has ? await actionSheet('Kurtarma anahtarı', [
+    { icon: 'refresh', label: 'Yeni anahtar oluştur (eskisi geçersiz olur)', value: 'new' },
+    { icon: 'trash', label: 'Kaldır', value: 'remove', danger: true },
+  ], `Mevcut anahtar: ${new Date(info.recovery).toLocaleDateString('tr-TR')}`) : 'new';
+  if (!act) return;
+  const pw = await promptText({ title: 'Kurtarma anahtarı', label: 'Doğrulamak için hesap parolanız', type: 'password', ok: act === 'remove' ? 'Kaldır' : 'Oluştur' });
+  if (pw == null) return;
+  const t = toast('Doğrulanıyor…', { ms: 30000 });
+  try {
+    if (act === 'remove') { await N.call('accountRecoveryRemove', { password: pw }); toast('Kurtarma anahtarı kaldırıldı', { type: 'ok' }); return; }
+    const rc = await N.call('accountRecoveryCreate', { password: pw });
+    t.remove();
+    await sheet({
+      title: 'Kurtarma anahtarınız',
+      body: h('div', null,
+        h('p.hint', { style: { marginTop: 0 } }, 'Şimdi kaydedin: bir daha gösterilmez. Parola yöneticisine yazın ya da dosyaya kaydedip güvenli yerde saklayın.'),
+        h('div.rec-code.mono', null, rc.code),
+        h('div.btns-row', null,
+          h('button.btn', { type: 'button', onclick: async () => { await N.call('clipboardSet', { text: rc.code }); toast('Kopyalandı'); } }, icon('copy', 18), 'Kopyala'),
+          h('button.btn', { type: 'button', onclick: async () => { try { await N.call('saveTextDownload', { name: `sshdeck-kurtarma-${rc.user}.txt`, text: recText(rc) }); toast('İndirilenler/SSHDeck klasörüne kaydedildi', { type: 'ok' }); } catch (e) { toast(e.message, { type: 'err' }); } } }, icon('download', 18), 'Dosyaya kaydet')),
+        h('p.hint', { style: { color: 'var(--busy)' } }, 'Anahtarı ele geçiren biri hesap parolanızı değiştirip bağlantılarınıza erişebilir.')),
+      buttons: [{ label: 'Kaydettim', value: true, primary: true }],
+    });
+  } catch (e) { toast(e.message, { type: 'err', ms: 6000 }); } finally { t.remove(); }
+}
+
+/** Parolası unutulan hesap: kurtarma anahtarı (yazarak ya da dosyadan) + yeni parola */
+async function recoverSheet(app, pre = {}) {
+  const inp = (attrs) => h('input.input', { spellcheck: false, autocapitalize: 'off', autocomplete: 'off', ...attrs });
+  const f = {
+    server: inp({ value: pre.server || '', inputmode: 'url', placeholder: 'örn. 192.168.1.50 veya https://senkron.ornek.com' }),
+    user: inp({ value: pre.user || '' }),
+    code: inp({ placeholder: 'XXXX-XXXX-XXXX-…', autocapitalize: 'characters' }),
+    pw1: inp({ type: 'password' }),
+    pw2: inp({ type: 'password' }),
+  };
+  f.code.classList.add('mono');
+  const err = h('div.form-err');
+  const fromFile = h('button.btn.sm', { type: 'button', onclick: async () => {
+    try {
+      const file = await N.call('pickTextFile', { max: 64 << 10 });
+      if (!file) return;
+      const get = (k) => { const m = new RegExp('^' + k + ':\\s*(.+)$', 'mi').exec(file.text); return m ? m[1].trim() : ''; };
+      const code = get('Anahtar') || (/([A-Z2-7]{4}-){7}[A-Z2-7]{4}/.exec(file.text) || [''])[0];
+      if (!code) { err.textContent = 'Dosyada kurtarma anahtarı bulunamadı'; return; }
+      f.code.value = code;
+      if (get('Sunucu')) f.server.value = get('Sunucu');
+      if (get('Kullanıcı')) f.user.value = get('Kullanıcı');
+    } catch (e) { err.textContent = e.message; }
+  } }, icon('import', 16), 'Dosyadan yükle');
+  let busy = false; let res = null; let sh;
+  const r = await sheet({
+    title: 'Hesabı kurtar',
+    onOpen: (_, m) => { sh = m; },
+    body: h('div', null,
+      h('p.hint', { style: { marginTop: 0 } }, 'Kurtarma anahtarıyla yeni hesap parolası belirlenir. Bağlantılar ve parolalar korunur; diğer cihazlarda yeni parolayla tekrar giriş gerekir.'),
+      field('Sunucu', f.server), field('Kullanıcı adı', f.user),
+      field('Kurtarma anahtarı', f.code), h('div', { style: { margin: '-6px 0 14px' } }, fromFile),
+      field('Yeni hesap parolası (en az 10 karakter)', f.pw1), field('Yeni parola (tekrar)', f.pw2), err),
+    buttons: [{ label: 'Vazgeç', value: null }, { label: 'Kurtar', value: 'ok', primary: true }],
+    onButton: async (v) => {
+      if (busy) return false;
+      if (!v) return true;
+      err.textContent = '';
+      if (!f.server.value.trim() || !f.user.value.trim() || !f.code.value.trim()) { err.textContent = 'Sunucu, kullanıcı adı ve kurtarma anahtarı gerekli'; return false; }
+      if (f.pw1.value.length < 10) { err.textContent = 'Yeni parola en az 10 karakter olmalı'; return false; }
+      if (f.pw1.value !== f.pw2.value) { err.textContent = 'Parolalar eşleşmiyor'; return false; }
+      busy = true; sh.dismiss = false;
+      try {
+        res = await N.call('accountRecover', { server: f.server.value.trim(), user: f.user.value.trim(), code: f.code.value, password: f.pw1.value });
+        return true;
+      } catch (e) { err.textContent = e.message; return false; } finally { busy = false; sh.dismiss = undefined; }
+    },
+  });
+  if (r && res?.loggedIn) {
+    app.setAccount(res);
+    toast(`Hesap kurtarıldı: ${res.user}`, { type: 'ok' });
+  }
 }

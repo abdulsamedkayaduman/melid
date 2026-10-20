@@ -136,6 +136,7 @@ export function toast(msg, kind = 'info', ms = 3500) {
   const t = h('div.toast.' + kind, null, msg);
   host.append(t);
   setTimeout(() => { t.classList.add('out'); setTimeout(() => t.remove(), 300); }, ms);
+  return t; // erken kapatmak için: t.remove()
 }
 
 // ---------------------------------------------------------------- session editor

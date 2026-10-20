@@ -153,6 +153,14 @@ public class Bridge {
             // SSH anahtarlarını eşitleme seçimi (bu cihaza özgü); açılınca hemen eşitlenir
             case "accountSetKeys": app.store.setSyncKeys(a.optBoolean("on")); app.sync.syncAsync(); return app.sync.status();
             case "accountSync": return app.sync.run();
+            // kurtarma anahtarı: kod arayüze bir kez gider (gösterilip kaydedilsin diye)
+            case "accountInfo": return app.sync.client.info();
+            case "accountRecoveryCreate": return app.sync.client.createRecovery(a.getString("password"));
+            case "accountRecoveryRemove": app.sync.client.removeRecovery(a.getString("password")); return null;
+            case "accountRecover":
+                try { app.sync.client.recover(a.getString("server"), a.getString("user"), a.getString("code"), a.getString("password")); return app.sync.status(); }
+                finally { app.sync.afterLogin(); }
+            case "saveTextDownload": return saveToDownloads(a.getString("name"), "text/plain", a.getString("text").getBytes(StandardCharsets.UTF_8));
             case "accountPassword": app.sync.client.changePassword(a.getString("old"), a.getString("new")); return app.sync.status();
 
             // ---- ssh

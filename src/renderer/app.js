@@ -3,6 +3,7 @@ import { modal, promptText, confirmBox, hostKeyDialog, kbdDialog, contextMenu, t
 import { SessionTab } from './tab.js';
 import { cleanErr } from './filepane.js';
 import { checkDialog } from './conncheck.js';
+import { execDialog, statsDialog } from './bulk.js';
 import { snippetPalette, snippetsEditor, keysDialog, installKeyDialog } from './tools.js';
 import { updateDialog } from './update.js';
 import { accountDialog, STATE_TEXT, syncTimeText } from './account.js';
@@ -132,7 +133,7 @@ class App {
         { label: 'Tümünü genişlet', icon: 'expand', action: () => this.expandAll() },
         { label: 'Tümünü daralt', icon: 'collapse', action: () => this.collapseAll() },
         '-',
-        { label: 'Tüm bağlantıları denetle…', icon: 'check', action: () => checkDialog(this, this.sessions.map((s) => s.id)) },
+        ...this.bulkItems(this.sessions.map((s) => s.id)),
         '-',
         ...this.importItems(),
       ]);
@@ -143,7 +144,7 @@ class App {
         h('div.side-head-btns', null,
           h('button.icon-btn', { title: 'Tümünü genişlet', onclick: () => this.expandAll() }, icon('expand', 15)),
           h('button.icon-btn', { title: 'Tümünü daralt', onclick: () => this.collapseAll() }, icon('collapse', 15)),
-          h('button.icon-btn', { title: 'Bağlantıları denetle (hangileri çalışıyor?)', onclick: () => checkDialog(this, this.sessions.map((s) => s.id)) }, icon('check', 15)),
+          h('button.icon-btn', { title: 'Toplu işlemler: bağlantı denetimi, sunucularda komut, sunucu özeti', onclick: (e) => { const r = e.currentTarget.getBoundingClientRect(); contextMenu(r.left, r.bottom + 4, this.bulkItems(this.sessions.map((s) => s.id))); } }, icon('cpu', 15)),
           h('button.icon-btn', { title: 'Yeni oturum', onclick: () => this.newSession() }, icon('plus', 15)))),
       h('div.side-filter', null, this.filter), this.tree);
     const sideResize = h('div.side-resize');
@@ -438,7 +439,7 @@ class App {
     contextMenu(x, y, [
       { label: 'Bu gruba yeni oturum', icon: 'plus', action: () => this.newSession({ group: path }) },
       { label: 'Gruptaki tüm oturumlara bağlan', icon: 'play', action: () => { for (const s of this.sessions.filter((s) => s.group === path || (s.group || '').startsWith(path + '/'))) this.openSession(s.id); } },
-      { label: 'Gruptaki bağlantıları denetle…', icon: 'check', action: () => checkDialog(this, this.sessions.filter((s) => s.group === path || (s.group || '').startsWith(path + '/')).map((s) => s.id), `“${path}” denetimi`) },
+      ...this.bulkItems(this.sessions.filter((s) => s.group === path || (s.group || '').startsWith(path + '/')).map((s) => s.id), `“${path}”`),
       { label: 'Grubu yeniden adlandır…', icon: 'edit', action: async () => {
         const n = await promptText({ title: 'Grubu yeniden adlandır', label: 'Yeni ad (alt grup için / kullanın)', value: path });
         if (n && n.trim() && n.trim() !== path) { this.sessions = await api.sessions.renameGroup(path, n.trim().replace(/^\/+|\/+$/g, '')); this.renderSidebar(); }
@@ -506,6 +507,16 @@ class App {
       if (!r.found) toast('~/.ssh/config içinde host bulunamadı', 'info');
       else toast(r.added ? `${r.added} oturum “ssh config” grubuna eklendi` : 'Tüm hostlar zaten ekli', 'ok');
     } catch (e) { toast(cleanErr(e), 'err'); }
+  }
+
+  /** Toplu işlemler menüsü (ids: ilgili oturumlar; where: başlıkta grup adı) */
+  bulkItems(ids, where) {
+    const t = (x) => (where ? `${where}: ${x.toLocaleLowerCase('tr')}` : x);
+    return [
+      { label: where ? 'Gruptaki bağlantıları denetle…' : 'Bağlantıları denetle…', icon: 'check', action: () => checkDialog(this, ids, t('Bağlantı denetimi')) },
+      { label: where ? 'Gruptaki sunucularda komut çalıştır…' : 'Sunucularda komut çalıştır…', icon: 'terminal', action: () => execDialog(this, ids, t('Sunucularda komut')) },
+      { label: where ? 'Gruptaki sunucuların özeti…' : 'Sunucu özeti (CPU, bellek, disk)…', icon: 'cpu', action: () => statsDialog(this, ids, t('Sunucu özeti')) },
+    ];
   }
 
   importItems() {

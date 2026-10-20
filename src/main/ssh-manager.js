@@ -354,6 +354,9 @@ class SshManager extends EventEmitter {
     }
 
     const client = new Client();
+    // Bağlanırken iptal / zaman aşımı: _teardown bu yarım bağlantıyı da kapatsın (soket açık kalmasın)
+    const pconn = this.conns.get(id);
+    if (pconn) pconn.pending = { client, sock };
     client.on('banner', (msg) => this.emit('banner', id, msg));
 
     await new Promise((resolve, reject) => {
@@ -383,6 +386,7 @@ class SshManager extends EventEmitter {
   }
 
   _teardown(conn) {
+    if (conn.pending) { try { conn.pending.client.end(); } catch {} try { conn.pending.sock.destroy(); } catch {} conn.pending = null; }
     for (const [fid] of conn.forwards) { try { this._stopForwardRec(conn, fid); } catch {} }
     for (const t of conn.transfers.values()) { t.cancelled = true; try { t.sftp && t.sftp.end(); } catch {} }
     for (const c of [...conn.chain].reverse()) { try { c.end(); } catch {} }

@@ -197,6 +197,48 @@ const names = (st) => st.sessions.map((s) => s.name).sort().join(',');
   assert.deepEqual(km.deleted, { h: 5 });
   console.log('OK SSH anahtarı eşitlemesi');
 
+  // --- hazır komutlar komut başına birleşir: iki cihazda aynı anda eklenenler kaybolmaz, silme geçer ---
+  const snipNames = (st) => (st.settings.snippets || []).map((x) => x.name).sort().join(',');
+  await K1.sync.syncNow(); await K2.sync.syncNow();
+  const base = K1.st.settings.snippets || [];
+  K1.st.saveSettings({ snippets: [...base, { id: 'x1', name: 'bir', command: 'echo 1' }] });
+  K2.st.saveSettings({ snippets: [...(K2.st.settings.snippets || []), { id: 'x2', name: 'iki', command: 'echo 2' }], fontSize: 19 });
+  await K1.sync.syncNow(); await K2.sync.syncNow(); await K1.sync.syncNow();
+  assert(snipNames(K1.st).includes('bir') && snipNames(K1.st).includes('iki'), 'K1 iki komutu da görür: ' + snipNames(K1.st));
+  assert.equal(snipNames(K2.st), snipNames(K1.st), 'iki cihazda aynı liste');
+  assert.equal(K1.st.settings.fontSize, 19, 'diğer ayarlar bütün olarak eşitlenmeye devam eder');
+  K2.st.saveSettings({ snippets: K2.st.settings.snippets.filter((x) => x.id !== 'x1') });
+  K1.st.saveSettings({ snippets: K1.st.settings.snippets.map((x) => (x.id === 'x2' ? { ...x, command: 'echo iki' } : x)) });
+  await K2.sync.syncNow(); await K1.sync.syncNow(); await K2.sync.syncNow();
+  assert(!snipNames(K1.st).includes('bir'), 'silinen komut diğer cihazdan da kalktı');
+  assert.equal(K2.st.settings.snippets.find((x) => x.id === 'x2').command, 'echo iki', 'aynı anda yapılan düzenleme de geçti');
+  // eski kasa (komut haritası yok) okunabilir
+  const old = mergeVaults({ sessions: {}, deleted: {}, settings: { data: { snippets: [{ id: 'o', name: 'eski' }] }, mtime: 5 } }, null, 10);
+  assert.deepEqual(old.snippets, { o: { id: 'o', name: 'eski', mtime: 5 } });
+  console.log('OK hazır komutlar komut başına birleşir');
+
+  // --- kurtarma anahtarı: parolası unutulan hesap kod ile yeni parolaya geçer, kasa korunur ---
+  await assert.rejects(K1.sync.createRecovery('yanlis'), /Hesap parolası yanlış/);
+  const rc = await K1.sync.createRecovery('yeniParola');
+  assert.match(rc.code, /^([A-Z2-7]{4}-){7}[A-Z2-7]{4}$/);
+  assert.equal((await K1.sync.info()).recovery, rc.created);
+  const usersFile = fs.readFileSync(path.join(dataDir, 'users.json'), 'utf8');
+  assert(!usersFile.includes(rc.code.replace(/-/g, '')), 'sunucuda kod düz durmaz');
+  const R = { st: new Store(tmp('sshdeck-dev-'), noKeyring) }; R.sync = new AccountSync(R.st);
+  await assert.rejects(R.sync.recover({ server, user: 'samed', code: 'AAAA-AAAA-AAAA-AAAA-AAAA-AAAA-AAAA-AAAA', password: 'kurtarildi-1' }), /kurtarma anahtarı yanlış/);
+  await R.sync.recover({ server, user: 'samed', code: rc.code.toLowerCase().replace(/-/g, ' '), password: 'kurtarildi-1' });
+  assert(R.st.sessions.some((x) => x.name === 'anahtarli'), 'kurtarılan hesapta oturumlar yerinde');
+  await assert.rejects(K1.sync.syncNow(), /tekrar giriş/, 'kurtarmadan sonra eski oturumlar kapanır');
+  const R2 = device();
+  await assert.rejects(R2.sync.login({ server, user: 'samed', password: 'yeniParola' }), /parola yanlış/);
+  await R2.sync.login({ server, user: 'samed', password: 'kurtarildi-1' });
+  assert.equal((await R2.sync.info()).recovery, rc.created, 'kurtarma anahtarı geçerli kalır (kasa anahtarı aynı)');
+  const st2 = await (await stats('davet-123')).json();
+  assert.equal(st2.users[0].recovery, true);
+  await R2.sync.removeRecovery('kurtarildi-1');
+  assert.equal((await R2.sync.info()).recovery, null);
+  console.log('OK kurtarma anahtarı');
+
   // --- yerel ağ taraması: portu açık olan SSHDeck sunucusu bulunur, başka hizmet ve kapalı adres atlanır ---
   const port = srv.address().port;
   const other = http.createServer((q, s2) => s2.end('{"app":"baska"}'));

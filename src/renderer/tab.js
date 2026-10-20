@@ -29,6 +29,8 @@ const win32 = {
 };
 const shq = (s) => `'${s.replace(/'/g, `'\\''`)}'`;
 
+const ARCHIVE_RE = /\.(tar(\.(gz|xz|bz2|zst))?|tgz|txz|tbz2?|tzst|zip|gz)$/i;
+
 export class SessionTab {
   constructor(app, { sessionId, quick, title }) {
     this.app = app;
@@ -71,6 +73,7 @@ export class SessionTab {
     this.localBtn = h('button.icon-btn', { title: 'Yerel paneli göster/gizle', onclick: () => this.toggleLocal() }, icon('sidebar', 15));
     this.followBtn = h('button.icon-btn', { title: 'Terminaldeki dizini takip et', onclick: () => this.toggleFollow() }, icon('terminal', 15));
     this.syncBtn = h('button.icon-btn', { title: 'Klasörleri karşılaştır / eşitle', onclick: () => this.syncDialog() }, icon('sync', 15));
+    this.searchBtn = h('button.icon-btn', { title: 'Sunucuda dosya ara (bu klasör ve altı)', onclick: () => this.remoteSearch() }, icon('search', 15));
     this.remote = new FilePane({
       side: 'remote', api: this.api, settings: st,
       adapter: {
@@ -86,7 +89,7 @@ export class SessionTab {
         prepareDrag: (tid, items) => this.api.drag.prepare(cid(), tid, items),
         cancelDrag: (tid) => this.api.sftp.cancel(cid(), tid),
       },
-      extraTools: [this.syncBtn, this.followBtn, this.localBtn],
+      extraTools: [this.searchBtn, this.syncBtn, this.followBtn, this.localBtn],
       onTransfer: (from, items, dest) => this.transfer(from, items, dest),
       onColResize: (w) => this.saveColWidths(w),
       onColPrefs: (p) => this.saveColPrefs(p),
@@ -98,6 +101,10 @@ export class SessionTab {
           one && !one.isDir ? { label: 'Düzenle (varsayılan uygulamayla)', icon: 'edit', action: () => this.editRemote(one) } : null,
           { label: 'Terminalde bu dizine git', icon: 'terminal', action: () => this.cdInTerminal(one && one.isDir ? posix.join(this.remote.cwd, one.name) : this.remote.cwd) },
           one ? { label: 'İzinler (chmod)…', icon: 'key', action: () => this.chmod(one) } : null,
+          sel.length ? '-' : null,
+          sel.length ? { label: 'Sıkıştırıp indir (.tar.gz)', icon: 'archive', action: () => this.compressDownload(sel) } : null,
+          sel.length ? { label: 'Sunucuda sıkıştır (.tar.gz)', icon: 'archive', action: () => this.compressRemote(sel) } : null,
+          one && !one.isDir && ARCHIVE_RE.test(one.name) ? { label: 'Arşivi burada aç', icon: 'folder', action: () => this.extractRemote(one) } : null,
         ];
       },
     });
@@ -738,6 +745,80 @@ export class SessionTab {
     }
   }
 
+  // ---- SFTP ek işleri (ana süreçte sftp:search / compress / extract)
+  async compressDownload(sel) {
+    if (this.state !== 'connected') { toast('Önce bağlanın', 'err'); return; }
+    const dir = this.remote.cwd;
+    const names = sel.map((e) => e.name);
+    const t = toast(`Sunucuda sıkıştırılıyor: ${names.length === 1 ? names[0] : names.length + ' öğe'}…`, 'info', 600000);
+    let arc;
+    try { arc = await this.api.sftp.compress(this.connId, dir, names, { tmp: true }); } catch (e) { toast(cleanErr(e), 'err', 7000); return; } finally { t.remove?.(); }
+    const lp = this.lpath;
+    let dstName = arc.name;
+    const taken = new Set(this.local.entries.map((x) => x.name));
+    for (let i = 2; taken.has(dstName); i++) dstName = arc.name.replace(/\.tar\.gz$/, `-${i}.tar.gz`);
+    const tr = this.enqueue({
+      direction: 'download', dest: this.local.cwd, destSide: 'local', destPane: this.local,
+      label: dstName, items: [{ src: arc.path, dst: lp.join(this.local.cwd, dstName) }],
+    });
+    tr.cleanup = arc.path; // bitince / iptalde sunucudaki geçici arşiv silinir
+  }
+
+  async compressRemote(sel) {
+    const dir = this.remote.cwd;
+    const def = (sel.length === 1 ? sel[0].name : posix.basename(dir) || 'arsiv') + '.tar.gz';
+    const name = await promptText({ title: 'Sunucuda sıkıştır', label: `${sel.length} öğe → ${dir}`, value: def });
+    if (!name || !name.trim()) return;
+    const t = toast('Sıkıştırılıyor…', 'info', 600000);
+    try {
+      const r = await this.api.sftp.compress(this.connId, dir, sel.map((e) => e.name), { name: name.trim() });
+      await this.remote.refresh();
+      this.remote.sel = new Set([r.name]); this.remote.paintSel(); this.remote.scrollTo(r.name);
+      toast(`${r.name} oluşturuldu`, 'ok');
+    } catch (e) { toast(cleanErr(e), 'err', 7000); } finally { t.remove?.(); }
+  }
+
+  async extractRemote(e) {
+    const t = toast(`${e.name} açılıyor…`, 'info', 600000);
+    try {
+      await this.api.sftp.extract(this.connId, this.remote.cwd, e.name);
+      await this.remote.refresh();
+      toast(`${e.name} açıldı`, 'ok');
+    } catch (err) { toast(cleanErr(err), 'err', 7000); } finally { t.remove?.(); }
+  }
+
+  async remoteSearch() {
+    if (this.state !== 'connected' || !this.remote.cwd) { toast('Önce bağlanın', 'err'); return; }
+    const dir = this.remote.cwd;
+    const q = h('input.input', { placeholder: 'ad ya da desen: rapor, *.log, nginx*.conf', spellcheck: false, autofocus: true });
+    const info = h('div.hint');
+    const list = h('div.rs-list');
+    let close;
+    const go = async (it) => {
+      const parent = posix.dirname(it.path);
+      close?.(null);
+      await this.remote.cd(parent, posix.basename(it.path));
+    };
+    const run = async () => {
+      if (!q.value.trim()) return;
+      info.textContent = 'Aranıyor…'; list.replaceChildren();
+      try {
+        const r = await this.api.sftp.search(this.connId, dir, q.value);
+        info.textContent = r.items.length ? `${r.items.length}${r.truncated ? '+ (ilk 1000)' : ''} sonuç · çift tıklayınca klasörüne gider` : 'Sonuç yok';
+        list.replaceChildren(...r.items.map((it) => h('div.rs-item', { title: it.path, ondblclick: () => go(it) },
+          icon(it.isDir ? 'folder' : 'file', 14), h('span.rs-name', null, posix.basename(it.path)), h('span.rs-dir.mono', null, posix.dirname(it.path).slice(dir.length).replace(/^\//, '') || '.'),
+          h('button.btn.sm', { type: 'button', onclick: () => go(it) }, 'Git'))));
+      } catch (e) { info.textContent = cleanErr(e); }
+    };
+    q.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); run(); } });
+    await modal({
+      title: `Sunucuda ara: ${dir}`, width: 640, bind: (c) => { close = c; },
+      body: h('div.rs', null, h('div.row', null, q, h('button.btn.primary', { type: 'button', onclick: run }, icon('search', 14), 'Ara')),
+        h('p.hint', null, 'Bu klasör ve tüm alt klasörlerde ada göre arar (büyük/küçük harf fark etmez). Joker yoksa adın içinde geçenler bulunur.'), info, list),
+      buttons: [{ label: 'Kapat', value: null }],
+    });
+  }
+
   retryTransfer(t) {
     t.state = 'queued'; t.resume = true; t.error = null;
     this.renderTransfer(t);
@@ -774,6 +855,8 @@ export class SessionTab {
       else toast(`Geçici anahtar tam silinemedi: ${info.keys.detail}. Elle silin; anahtar en geç 30 dakikada kendiliğinden geçersiz olur.`, 'err', 20000);
     }
     if (['done', 'error', 'cancelled'].includes(info.state)) this.pump();
+    // Sıkıştırıp indir: sunucudaki geçici arşiv bitince / iptalde silinir (hatada yeniden denemek için kalır)
+    if (t.cleanup && (info.state === 'done' || info.state === 'cancelled')) { const p = t.cleanup; t.cleanup = null; this.api.sftp.remove(this.connId, p).catch(() => {}); }
   }
 
   renderTransfer(t) {

@@ -348,3 +348,7 @@ select.input { appearance: none; background-image: linear-gradient(45deg, transp
 .lock-box .input { text-align: center; font-size: 18px; }
 .lock-box .form-err:empty { display: none; }
 .lock-forgot { margin-top: 18px; color: var(--muted); font-size: 12px; line-height: 1.5; }
+
+/* kurtarma anahtarı */
+.rec-code { margin: 12px 0; padding: 14px 10px; text-align: center; font-size: 16px; letter-spacing: .5px; border: 1px dashed var(--accent); border-radius: 10px; background: var(--bg); user-select: all; -webkit-user-select: all; word-break: break-all; }
+.btns-row { display: flex; gap: 10px; flex-wrap: wrap; }

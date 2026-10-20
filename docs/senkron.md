@@ -15,6 +15,7 @@ PORT=3150 HOST=0.0.0.0 DATA_DIR=/var/lib/sshdeck-sync SSHDECK_SYNC_INVITE='uzun-
   Ana sayfadaki istatistiklere de bu kodla girilir; boşsa istatistik sayfası da kapanır.
   Herkese açık sunucuda hesaplarınızı açtıktan sonra boşaltmak iyi bir fikir.
 - `TRUST_PROXY=1`: ters vekil arkasında istemci IP'si `X-Forwarded-For`'un en sağındaki girdiden alınır.
+- 1.8 ile kurtarma anahtarı uçları (`/api/account`, `/api/recovery`, `/api/recover/*`) eklendi: sunucuyu güncelleyin.
 - `TLS_CERT` / `TLS_KEY`: verilirse HTTPS dinler. Alternatif: Caddy/nginx ters vekil ya da Tailscale.
 - Sürekli çalışması için örnek systemd birimi: `server/sshdeck-sync.service`.
 - Yedek: `DATA_DIR` klasörünü yedeklemek yeter (`users.json`, `tokens.json`, `vaults/`, `secret.json`).
@@ -94,10 +95,32 @@ Hesap ve eşitleme menüsü (giriş ekranında da sorulur). Varsayılan kapalı;
 - Kapalı cihaz kasadaki anahtarlara dokunmaz (gönderdiği kasaya olduğu gibi geri koyar). 1.6 öncesi sürümler `keys`
   bölümünü tanımaz ve silebilir; anahtar eşitlemesi açık bir cihaz eşitlenince geri yüklenir. Tüm cihazları güncelleyin.
 
+## Kurtarma anahtarı
+
+Hesap penceresi > Kurtarma anahtarı (Android: Hesap ve eşitleme > Kurtarma anahtarı). Hesap parolası sorulur; 20 rastgele
+bayttan oluşan kod `ABCD-EFGH-…` (base32, 32 harf) bir kez gösterilir, kopyalanabilir ya da metin dosyasına kaydedilebilir.
+
+```
+kod ──HKDF "sshdeck-recovery-auth"──► recAuth  ──► sunucu (scrypt özeti saklanır)
+kod ──HKDF "sshdeck-recovery-wrap"──► recWrap  ──► VK'yı sarar (recWrapped sunucuda)
+```
+
+- Oluşturma/kaldırma hesap parolasıyla doğrulanır (`POST /api/recovery`); yalnız jetonla olmaz, çalınan jeton yetmesin.
+- Parola unutulunca: giriş penceresinde "Hesap parolamı unuttum" -> sunucu, kullanıcı, kod (ya da dosya), yeni parola.
+  `POST /api/recover/begin` recWrapped'ı verir, istemci VK'yı çözüp yeni parolayla sarar, `POST /api/recover/finish` kaydeder.
+  Tüm oturumlar kapanır; kasa aynı kalır. Kod geçerli kalır (VK değişmez); yenisi oluşturulunca eskisi geçersizdir.
+- Deneme sınırı girişle aynı (kullanıcı ve IP başına 15 dakikada 10). Sunucu kodun kendisini hiç görmez.
+- Dosya biçimi (iki platform aynı): `Sunucu:`, `Kullanıcı:`, `Anahtar:` satırları olan düz metin.
+
 ## Birleştirme
 
 Kasa: `{ sessions: {id: {..., mtime}}, deleted: {id: zaman}, settings: {data, mtime}, keys: {parmak izi: {..., mtime}} }`.
 Anahtarlar oturumlarla aynı kuralla (yeni olan kazanır, silme kaydı `deleted`'da) birleşir.
+
+Hazır komutlar (1.8+) komut başına birleşir: kasada `snippets: {id: {..., mtime}}`, silinen komut `deleted`'a girer.
+Komut düzenlemesi ayar bloğunun zamanını değiştirmez. Eski sürümler için blokta `data.snippets` listesi de durur ve
+birleşmiş haritadan yeniden kurulur (sıra: kazanan bloğun sırası, sonra yeniler). Komut haritası olmayan eski kasada
+liste, bloğun zamanıyla haritaya çevrilir (`snippetMap`, Java'da `SyncCore.snippetMap`).
 `mergeVaults()` (store.js): her oturumda değişme zamanı yeni olan kazanır; silme kaydı kendinden sonra
 düzenlenmemiş oturumu siler; ayarlar bütün olarak yeni olan kazanır. Silme kayıtları 180 gün tutulur.
 Sunucu iyimser kilit kullanır (`baseVersion`); çakışırsa (409) istemci güncel kasayla yeniden birleştirir.

@@ -113,6 +113,41 @@ public final class SyncCore {
 
     static String b64(byte[] b) { return Base64.getEncoder().encodeToString(b); }
 
+    // ------------------------------------------------------------------ kurtarma anahtarı (sync.js ile aynı)
+    static final String B32 = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+
+    /** 20 rastgele bayt -> "ABCD-EFGH-…" (32 harf base32) */
+    public static String newRecoveryCode() {
+        byte[] b = random(20);
+        StringBuilder out = new StringBuilder();
+        int bits = 0, val = 0;
+        for (byte x : b) {
+            val = (val << 8) | (x & 255); bits += 8;
+            while (bits >= 5) { out.append(B32.charAt((val >>> (bits - 5)) & 31)); bits -= 5; }
+        }
+        StringBuilder g = new StringBuilder();
+        for (int i = 0; i < out.length(); i += 4) { if (i > 0) g.append('-'); g.append(out, i, i + 4); }
+        return g.toString();
+    }
+
+    static byte[] recoveryBytes(String code) throws Exception {
+        String c = (code == null ? "" : code).toUpperCase(Locale.ROOT).replaceAll("[^A-Z2-7]", "");
+        if (c.length() != 32) throw new Exception("Kurtarma anahtarı 32 karakter olmalı (ör. ABCD-EFGH-…; tireler önemli değil)");
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        int bits = 0, val = 0;
+        for (char ch : c.toCharArray()) {
+            val = (val << 5) | B32.indexOf(ch); bits += 5;
+            if (bits >= 8) { out.write((val >>> (bits - 8)) & 255); bits -= 8; }
+        }
+        return out.toByteArray();
+    }
+
+    /** [recAuth (base64), recWrap] */
+    static Object[] recoveryKeys(String code) throws Exception {
+        byte[] raw = recoveryBytes(code);
+        return new Object[]{b64(hkdf(raw, "sshdeck-recovery-auth")), hkdf(raw, "sshdeck-recovery-wrap")};
+    }
+
     static byte[] random(int n) { byte[] b = new byte[n]; RNG.nextBytes(b); return b; }
 
     // ------------------------------------------------------------------ birleştirme (store.js mergeVaults)
@@ -186,6 +221,7 @@ public final class SyncCore {
     public static JSONObject mergeVaults(JSONObject a, JSONObject b, long now) throws JSONException {
         JSONObject sessions = mergeItems(a, b, "sessions");
         JSONObject keys = mergeItems(a, b, "keys");
+        JSONObject snippets = mergeMaps(snipsOf(a), snipsOf(b));
         JSONObject deleted = new JSONObject();
         for (JSONObject src : new JSONObject[]{a == null ? null : a.optJSONObject("deleted"), b == null ? null : b.optJSONObject("deleted")}) {
             if (src == null) continue;
@@ -200,7 +236,7 @@ public final class SyncCore {
         for (String id : dids) {
             double t = num(deleted.opt(id));
             boolean live = false;
-            for (JSONObject items : new JSONObject[]{sessions, keys}) {
+            for (JSONObject items : new JSONObject[]{sessions, keys, snippets}) {
                 JSONObject s = items.optJSONObject(id);
                 if (s == null) continue;
                 if (num(s.opt("mtime")) <= t) items.remove(id); else live = true;
@@ -213,12 +249,65 @@ public final class SyncCore {
         if (eb == null) eb = empty;
         double ma = num(ea.opt("mtime")), mb = num(eb.opt("mtime"));
         JSONObject settings = ma != mb ? (ma > mb ? ea : eb) : (canon(ea).compareTo(canon(eb)) >= 0 ? ea : eb);
-        return new JSONObject().put("sessions", sessions).put("deleted", deleted).put("settings", settings).put("keys", keys);
+        // Bloğun komut listesi birleşmiş haritadan yeniden kurulur: kazanan bloğun sırası, sonra yeniler (mtime, id)
+        JSONObject data = settings.optJSONObject("data");
+        if (data == null) data = new JSONObject();
+        JSONArray arr = data.optJSONArray("snippets");
+        if (snippets.length() > 0 || arr != null) {
+            JSONArray list = new JSONArray();
+            Set<String> seen = new LinkedHashSet<>();
+            if (arr != null) for (int i = 0; i < arr.length(); i++) {
+                JSONObject x = arr.optJSONObject(i);
+                String id = x == null ? null : x.optString("id", null);
+                if (id != null && snippets.has(id) && seen.add(id)) list.put(snippets.get(id));
+            }
+            List<String> rest = new ArrayList<>();
+            for (Iterator<String> it = snippets.keys(); it.hasNext(); ) { String id = it.next(); if (!seen.contains(id)) rest.add(id); }
+            final JSONObject sm = snippets;
+            rest.sort((x, y) -> {
+                int c = Double.compare(num(sm.optJSONObject(x).opt("mtime")), num(sm.optJSONObject(y).opt("mtime")));
+                return c != 0 ? c : x.compareTo(y);
+            });
+            for (String id : rest) list.put(snippets.get(id));
+            settings = new JSONObject(settings.toString());
+            JSONObject nd = new JSONObject(data.toString()).put("snippets", list);
+            settings.put("data", nd);
+        }
+        return new JSONObject().put("sessions", sessions).put("deleted", deleted).put("settings", settings).put("keys", keys).put("snippets", snippets);
+    }
+
+    /** Kasanın komut haritası; eski kasada ayar bloğundaki liste (mtime'sız olan bloğun zamanını alır) */
+    static JSONObject snipsOf(JSONObject v) throws JSONException {
+        if (v == null) return new JSONObject();
+        JSONObject m = v.optJSONObject("snippets");
+        if (m != null) return m;
+        JSONObject st = v.optJSONObject("settings");
+        return snippetMap(st == null || st.optJSONObject("data") == null ? null : st.getJSONObject("data").optJSONArray("snippets"), st == null ? 0 : st.opt("mtime"));
+    }
+
+    /** Liste -> { id: komut } (store.js snippetMap ile aynı) */
+    public static JSONObject snippetMap(JSONArray list, Object blobMtime) throws JSONException {
+        JSONObject out = new JSONObject();
+        if (list == null) return out;
+        for (int i = 0; i < list.length(); i++) {
+            JSONObject x = list.optJSONObject(i);
+            if (x == null) continue;
+            String id = x.optString("id", "");
+            if (id.isEmpty() || out.has(id)) continue;
+            JSONObject o = new JSONObject(x.toString());
+            Object mt = x.opt("mtime");
+            if (mt == null || num(mt) == 0) o.put("mtime", blobMtime == null || num(blobMtime) == 0 ? 0 : blobMtime);
+            out.put(id, o);
+        }
+        return out;
     }
 
     /** Kimliğe göre birleştirme: değişme zamanı yeni olan, eşitse sıralı JSON'u büyük olan kazanır */
     static JSONObject mergeItems(JSONObject a, JSONObject b, String field) throws JSONException {
-        JSONObject sa = a == null ? null : a.optJSONObject(field), sb = b == null ? null : b.optJSONObject(field);
+        return mergeMaps(a == null ? null : a.optJSONObject(field), b == null ? null : b.optJSONObject(field));
+    }
+
+    static JSONObject mergeMaps(JSONObject sa, JSONObject sb) throws JSONException {
         if (sa == null) sa = new JSONObject();
         if (sb == null) sb = new JSONObject();
         JSONObject out = new JSONObject();
@@ -447,6 +536,61 @@ public final class SyncCore {
             JSONObject r = req(server, "POST", "/api/login", new JSONObject().put("user", user).put("authKey", k.authKey), null);
             byte[] vk;
             try { vk = Base64.getDecoder().decode(Backup.decrypt(r.getString("wrappedKey"), k.wrapKey)); } catch (Exception e) { throw new Exception("Kasa anahtarı çözülemedi"); }
+            local.setAccount(new JSONObject().put("server", server).put("user", user).put("version", 0).put("lastSync", 0), r.getString("token"), vk);
+            syncNow();
+            return status();
+        }
+
+        /** Sunucudaki hesap bilgisi: { user, created, recovery } */
+        public JSONObject info() throws Exception {
+            JSONObject a = local.account();
+            if (a == null) throw new Exception("Giriş yapılmamış");
+            return req(a.optString("server"), "GET", "/api/account", null, local.token());
+        }
+
+        /** Yeni kurtarma anahtarı (hesap parolası gerekir). Dönüş: { code, created, server, user } */
+        public synchronized JSONObject createRecovery(String password) throws Exception {
+            JSONObject a = local.account();
+            if (a == null) throw new Exception("Giriş yapılmamış");
+            byte[] vk = local.vk();
+            if (vk == null) throw new Exception("Kasa anahtarı okunamadı, tekrar giriş yapın");
+            String server = a.optString("server");
+            JSONObject pre = req(server, "GET", "/api/prelogin?user=" + URLEncoder.encode(a.optString("user"), "UTF-8"), null, null);
+            Keys k = deriveKeys(password, pre.getString("salt"), pre.getInt("iter"));
+            String code = newRecoveryCode();
+            Object[] rk = recoveryKeys(code);
+            JSONObject r;
+            try {
+                r = req(server, "POST", "/api/recovery", new JSONObject().put("authKey", k.authKey).put("recAuth", rk[0])
+                        .put("recWrapped", Backup.encrypt(b64(vk), (byte[]) rk[1])), local.token());
+            } catch (SyncException e) {
+                if (e.status == 401) throw new Exception("Hesap parolası yanlış");
+                throw e;
+            }
+            return new JSONObject().put("code", code).put("created", r.opt("recovery")).put("server", server).put("user", a.optString("user"));
+        }
+
+        public synchronized void removeRecovery(String password) throws Exception {
+            JSONObject a = local.account();
+            if (a == null) throw new Exception("Giriş yapılmamış");
+            String server = a.optString("server");
+            JSONObject pre = req(server, "GET", "/api/prelogin?user=" + URLEncoder.encode(a.optString("user"), "UTF-8"), null, null);
+            Keys k = deriveKeys(password, pre.getString("salt"), pre.getInt("iter"));
+            req(server, "POST", "/api/recovery", new JSONObject().put("authKey", k.authKey).put("remove", true), local.token());
+        }
+
+        /** Parolası unutulan hesap: kurtarma anahtarıyla yeni parola belirleyip giriş (kasa korunur) */
+        public synchronized JSONObject recover(String server, String user, String code, String password) throws Exception {
+            server = normServer(server);
+            user = user == null ? "" : user.trim().toLowerCase(Locale.ROOT);
+            Object[] rk = recoveryKeys(code);
+            JSONObject b = req(server, "POST", "/api/recover/begin", new JSONObject().put("user", user).put("recAuth", rk[0]), null);
+            byte[] vk;
+            try { vk = Base64.getDecoder().decode(Backup.decrypt(b.getString("recWrapped"), (byte[]) rk[1])); } catch (Exception e) { throw new Exception("Kurtarma anahtarı kasayı açamadı"); }
+            String salt = b64(random(16));
+            Keys nk = deriveKeys(password, salt, KDF_ITER);
+            JSONObject r = req(server, "POST", "/api/recover/finish", new JSONObject().put("user", user).put("recAuth", rk[0]).put("newSalt", salt)
+                    .put("iter", KDF_ITER).put("newAuthKey", nk.authKey).put("wrappedKey", Backup.encrypt(b64(vk), nk.wrapKey)), null);
             local.setAccount(new JSONObject().put("server", server).put("user", user).put("version", 0).put("lastSync", 0), r.getString("token"), vk);
             syncNow();
             return status();
