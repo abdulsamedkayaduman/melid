@@ -11,6 +11,10 @@ if [ ! -x "$sdkmanager" ]; then
     unzip -q /tmp/clt.zip -d "$ANDROID_HOME/cmdline-tools"
     mv "$ANDROID_HOME/cmdline-tools/cmdline-tools" "$ANDROID_HOME/cmdline-tools/latest"
 fi
+# Önbellekten gelen SDK'da paketler zaten varsa sdkmanager hiç çalışmasın (her çalışmada ağa çıkıp düşebiliyordu)
+missing=0
+for p in $ANDROID_SDK_PACKAGES; do [ -d "$ANDROID_HOME/${p//;//}" ] || missing=1; done
+if [ "$missing" = 0 ]; then echo "Android SDK paketleri önbellekte"; exit 0; fi
 yes | "$sdkmanager" --licenses > /dev/null || true
 # Ağ hatasında birkaç kez dene (indirmeler arada yarıda kesilebiliyor)
 for try in 1 2 3; do

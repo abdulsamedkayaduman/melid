@@ -8,7 +8,7 @@ cd "$(dirname "$0")"
 W=.work; L=.lib
 mkdir -p $W $L
 M=https://repo1.maven.org/maven2
-get() { [ -f "$L/$2" ] || curl -sfL -o "$L/$2" "$M/$1/$2"; }
+get() { [ -f "$L/$2" ] || curl -sfL --retry 5 --retry-all-errors --retry-delay 3 -o "$L/$2" "$M/$1/$2"; }
 get com/github/mwiede/jsch/2.28.7 jsch-2.28.7.jar
 get org/bouncycastle/bcprov-jdk18on/1.83 bcprov-jdk18on-1.83.jar
 get org/json/json/20240303 json-20240303.jar
