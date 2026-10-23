@@ -52,6 +52,7 @@ export class TermView {
     this.keysEl = h('div.xkeys');
     this.el = h('div.pane.term-pane', null, this.wrap, this.keysEl);
     if (s.extraKeys === false) this.keysEl.classList.add('hidden');
+    this.privateKb = s.privateKeyboard !== false;
     this.renderKeys();
 
     const theme = THEMES[s.theme] || THEMES['deck-dark'];
@@ -88,7 +89,8 @@ export class TermView {
     const ta = this.term.textarea;
     this.ta = ta;
     for (const [k, v] of Object.entries({ autocomplete: 'off', autocorrect: 'off', autocapitalize: 'off', spellcheck: 'false', enterkeyhint: 'enter' })) ta.setAttribute(k, v);
-    ta.addEventListener('focus', () => { N.termInput(true); this.resetInput(); });
+    // Gizli klavye: öneri/öğrenme yok, tuşlar tek tek gelir; kapalıysa klavye normal (öneri, kaydırarak yazma) açılır
+    ta.addEventListener('focus', () => { N.termInput(this.privateKb); this.resetInput(); });
     ta.addEventListener('blur', () => N.termInput(false));
     this.bindInput();
     this.bindTouch();
@@ -134,6 +136,8 @@ export class TermView {
     if (s.fontSize && s.fontSize !== this.term.options.fontSize) this.term.options.fontSize = s.fontSize;
     this.wrap.style.background = theme.background;
     this.keysEl.classList.toggle('hidden', s.extraKeys === false);
+    this.privateKb = s.privateKeyboard !== false;
+    if (this.ta && document.activeElement === this.ta) N.termInput(this.privateKb);
     this.scheduleFit();
   }
 

@@ -210,6 +210,7 @@ export function settingsView(app) {
             h('button.tb', { onclick: () => setFs(-1) }, icon('minus', 18)), fsVal, h('button.tb', { onclick: () => setFs(1) }, icon('plus', 18))))),
       h('div.set-card', { style: { marginTop: '-1px' } },
         toggle('keyboard', 'extraKeys', 'Ek tuş satırı', 'Esc, Ctrl, Alt, Tab, oklar…', true),
+        toggle(null, 'privateKeyboard', 'Gizli klavye', 'Öneri ve öğrenme kapalı, tuşlar tek tek gider. Kapalıyken klavye normal açılır (öneriler, kaydırarak yazma)', true),
         toggle(null, 'cursorBlink', 'Yanıp sönen imleç', null, true)),
       h('div.sec-title', null, 'Bağlantı'),
       h('div.set-card', null,
