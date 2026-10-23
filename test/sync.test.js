@@ -81,7 +81,9 @@ const names = (st) => st.sessions.map((s) => s.name).sort().join(',');
   A.st.saveSession({ name: 'a-yeni', host: 'a' });
   B.st.saveSession({ name: 'b-yeni', host: 'b' });
   await Promise.all([A.sync.syncNow(), B.sync.syncNow()]);
+  // Hangisinin önce yazacağı belli değil: 409 alan birleştirip yükler, önce yazan ötekinin değişikliğini sonraki eşitlemede alır
   await A.sync.syncNow();
+  await B.sync.syncNow();
   assert.equal(names(A.st), 'a-yeni,b-yeni,web-prod');
   assert.equal(names(B.st), 'a-yeni,b-yeni,web-prod');
   console.log('OK eşzamanlı değişiklik (sürüm çakışması) birleşir');
