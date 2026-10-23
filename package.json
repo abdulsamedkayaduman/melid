@@ -1,6 +1,6 @@
 {
   "name": "sshdeck",
-  "version": "1.8.2",
+  "version": "1.8.3",
   "description": "Linux ve Windows için Xshell/Xftp tarzı SSH terminali ve SFTP dosya yöneticisi",
   "main": "src/main/main.js",
   "scripts": {
