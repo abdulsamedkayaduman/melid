@@ -171,7 +171,8 @@ const wait = (ms) => new Promise((r) => setTimeout(r, ms));
   assert(tmpLine.includes(`'restrict,command="mkdir -p '${home}/ddst' && tar -C '${home}/ddst' -xf -",expiry-time="`), addCmd);
   assert(/expiry-time="\d{12}" ssh-ed25519 \S+ sshdeck-gecici-[0-9a-f]{12}'/.test(tmpLine), tmpLine);
   let ld = events[events.length - 1];
-  assert.deepEqual([ld.state, ld.via, ld.keys], ['done', 'doğrudan (geçici anahtar)', { ok: true }], JSON.stringify(ld));
+  const why = events.find((e) => e.tid === 'w1' && e.fallback)?.fallback;
+  assert.deepEqual([ld.state, ld.via, ld.keys], ['done', 'doğrudan (geçici anahtar)', { ok: true }], JSON.stringify(ld) + (why ? ` (doğrudan olmadı: ${why})` : ''));
   assert.equal(await md5(home + '/ddst/dsrc/deep/big.bin'), await md5(home + '/dsrc/deep/big.bin'));
   assert.equal((await m.exec('t9', 'cat ~/.ssh/authorized_keys')).stdout, akBefore, 'geçici anahtar silinmeli');
   assert.equal((await m.exec('t9', 'ls -d /tmp/sshdeck.* 2>/dev/null | wc -l')).stdout.trim(), '0', 'geçici klasör silinmeli');
@@ -334,4 +335,9 @@ const wait = (ms) => new Promise((r) => setTimeout(r, ms));
   echo.close();
   console.log('ALL OK');
   process.exit(0);
-})().catch((e) => { console.error('FAIL', e); console.error(statuses.join('\n')); process.exit(1); });
+})().catch((e) => {
+  console.error('FAIL', e); console.error(statuses.join('\n'));
+  // CI (ci/test-sshd.sh): sunucu tarafındaki sebep için sshd günlüğünün sonu
+  try { console.error('--- sshd günlüğü\n' + fs.readFileSync('/tmp/sshd_test.log', 'utf8').split('\n').slice(-40).join('\n')); } catch {}
+  process.exit(1);
+});

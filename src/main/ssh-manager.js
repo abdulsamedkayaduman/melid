@@ -789,6 +789,14 @@ class SshManager extends EventEmitter {
       }
       const via = 'bu bilgisayar üzerinden';
       emit({ state: 'running', done: 0, total, via, fallback });
+      // Doğrudan yöntem hedef klasörü `mkdir -p` ile açıyordu; geri dönüşte de üst klasörler oluşturulur
+      if (fallback) {
+        let cur = '';
+        for (const part of rpath.dirname(t.items[0].dst).split('/').filter(Boolean)) {
+          cur += '/' + part;
+          try { await p1((cb) => dst.mkdir(cur, cb)); } catch { /* var */ }
+        }
+      }
       for (const j of jobs) {
         if (rec.cancelled) throw new CancelError();
         if (j.dir) { try { await p1((cb) => dst.mkdir(j.dst, cb)); } catch { /* var */ } continue; }
