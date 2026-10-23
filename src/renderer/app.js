@@ -989,6 +989,8 @@ class App {
         '-',
         { label: 'Kapat', icon: 'x', action: () => this.closeTab(t) },
         { label: 'Bu taraftaki diğerlerini kapat', icon: 'x', disabled: this.tabsOf(t.group).length < 2, action: () => { for (const o of this.tabsOf(t.group)) if (o !== t) this.closeTab(o); } },
+        { label: 'Soldakileri kapat', icon: 'x', disabled: this.tabsOf(t.group)[0] === t, action: () => { const l = this.tabsOf(t.group); for (const o of l.slice(0, l.indexOf(t))) this.closeTab(o); } },
+        { label: 'Sağdakileri kapat', icon: 'x', disabled: this.tabsOf(t.group).at(-1) === t, action: () => { const l = this.tabsOf(t.group); for (const o of l.slice(l.indexOf(t) + 1)) this.closeTab(o); } },
       ]);
     };
     t._tabBtn = b;
