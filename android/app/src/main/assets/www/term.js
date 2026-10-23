@@ -78,7 +78,7 @@ export class TermView {
     this.term.onBinary((d) => this.opts.onData(d));
     this.term.onResize(({ cols, rows }) => this.opts.onResize(cols, rows));
     this.term.onScroll(() => this.updateScrollUi());
-    this.term.onWriteParsed(() => this.updateScrollUi());
+    this.term.onWriteParsed(() => { this.updateScrollUi(); this.checkPasswordPrompt(); });
     this.wrap.style.background = theme.background;
   }
 
@@ -90,7 +90,7 @@ export class TermView {
     this.ta = ta;
     for (const [k, v] of Object.entries({ autocomplete: 'off', autocorrect: 'off', autocapitalize: 'off', spellcheck: 'false', enterkeyhint: 'enter' })) ta.setAttribute(k, v);
     // Gizli klavye: öneri/öğrenme yok, tuşlar tek tek gelir; kapalıysa klavye normal (öneri, kaydırarak yazma) açılır
-    ta.addEventListener('focus', () => { N.termInput(this.privateKb); this.resetInput(); });
+    ta.addEventListener('focus', () => { N.termInput(this.privateKb || this.pwPrompt); this.resetInput(); });
     ta.addEventListener('blur', () => N.termInput(false));
     this.bindInput();
     this.bindTouch();
@@ -113,6 +113,17 @@ export class TermView {
   get rows() { return this.term.rows; }
 
   write(data) { this.term.write(data); }
+
+  // İmleç satırı parola istemiyse (sudo, ssh, passphrase…) klavye gizli kipe geçer: öneri/öğrenme parolayı görmesin.
+  // Gizli klavye ayarı kapalıyken anlamlı; Enter'dan sonra satır değişince ayardaki kipe döner.
+  checkPasswordPrompt() {
+    const buf = this.term.buffer.active;
+    const line = buf.getLine(buf.baseY + buf.cursorY)?.translateToString(true) || '';
+    const on = /(pass(word|phrase|code)?|parola|şifre|sifre|PIN)\b[^\n]{0,60}[:：]\s*$/i.test(line);
+    if (on === !!this.pwPrompt) return;
+    this.pwPrompt = on;
+    if (!this.privateKb && this.ta && document.activeElement === this.ta) N.termInput(on);
+  }
 
   focus() {
     if (!this.term.element) return;
@@ -137,7 +148,7 @@ export class TermView {
     this.wrap.style.background = theme.background;
     this.keysEl.classList.toggle('hidden', s.extraKeys === false);
     this.privateKb = s.privateKeyboard !== false;
-    if (this.ta && document.activeElement === this.ta) N.termInput(this.privateKb);
+    if (this.ta && document.activeElement === this.ta) N.termInput(this.privateKb || this.pwPrompt);
     this.scheduleFit();
   }
 
@@ -360,6 +371,8 @@ export class TermView {
       if (passthrough(e)) return;
       e.preventDefault();
       e.stopPropagation();
+      // Kayma sürerken ya da kaydırmanın hemen ardından dokunmak kaymayı durdurmak içindir, klavyeyi açmaz
+      const coasting = !!this.inertiaRaf || Date.now() - (this.scrollEnd || 0) < 350;
       this.stopInertia();
       if (e.touches.length >= 2) {
         if (st) clearTimeout(st.lp);
@@ -367,7 +380,7 @@ export class TermView {
         return;
       }
       const t = e.touches[0];
-      st = { x0: t.clientX, y0: t.clientY, t0: Date.now(), lastY: t.clientY, lastT: Date.now(), moved: false, acc: 0, vel: 0, mode: 'one' };
+      st = { x0: t.clientX, y0: t.clientY, t0: Date.now(), lastY: t.clientY, lastT: Date.now(), moved: false, acc: 0, vel: 0, mode: 'one', coasting };
       st.lp = setTimeout(() => {
         if (!st || st.moved || st.mode !== 'one') return;
         st.long = true;
@@ -411,8 +424,9 @@ export class TermView {
         return;
       }
       clearTimeout(st.lp);
-      if (e.type === 'touchend' && !st.moved && !st.long) this.tap(st.x0, st.y0);
+      if (e.type === 'touchend' && !st.moved && !st.long) { if (!st.coasting) this.tap(st.x0, st.y0); }
       else if (st.moved && Math.abs(st.vel) > 0.25) this.inertia(st.vel);
+      if (st.moved) this.scrollEnd = Date.now();
       st = null;
     };
     w.addEventListener('touchend', end, { capture: true, passive: false });
@@ -458,7 +472,7 @@ export class TermView {
       const dt = Math.min(48, now - last) / 16;
       last = now;
       v *= Math.pow(0.94, dt);
-      if (Math.abs(v) < 0.6) { this.inertiaRaf = null; return; }
+      if (Math.abs(v) < 0.6) { this.inertiaRaf = null; this.scrollEnd = Date.now(); return; }
       this.scrollPixels(v * dt, st);
       this.inertiaRaf = requestAnimationFrame(step);
     };
