@@ -362,7 +362,21 @@ export class TermView {
   bindTouch() {
     const w = this.wrap;
     this.maxH = window.innerHeight;
-    window.addEventListener('resize', () => { this.maxH = Math.max(this.maxH || 0, window.innerHeight); });
+    // Klavye kapatılınca (geri tuşu / klavyenin gizle oku) yazı alanı odakta kalıyordu; Android de odaklı alanda
+    // çıktı gelince ya da kaydırınca klavyeyi kendiliğinden geri açıyordu. Kapanınca odak bırakılır, klavye yalnız
+    // dokununca / klavye tuşuyla açılır. Kısa bekleme: parola isteminde kip değişirken klavye bir an kapanıp açılabilir.
+    let kbOpen = false;
+    window.addEventListener('resize', () => {
+      this.maxH = Math.max(this.maxH || 0, window.innerHeight);
+      const open = window.innerHeight < this.maxH * 0.85;
+      if (kbOpen && !open) {
+        clearTimeout(this.kbHideT);
+        this.kbHideT = setTimeout(() => {
+          if (window.innerHeight >= this.maxH * 0.85 && document.activeElement === this.ta) this.ta.blur();
+        }, 300);
+      }
+      kbOpen = open;
+    });
     let st = null; // { x0, y0, t0, lastY, lastT, moved, mode, d0, f0, acc, vel, lp, long }
     const passthrough = (e) => e.target.closest('.term-overlay .card, .jump-bottom');
     const dist = (t) => Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY);
