@@ -199,21 +199,27 @@ export class TermView {
   resetInput() {
     if (!this.ta) return;
     this.ta.value = SENT;
+    this.taVal = SENT;
     try { this.ta.setSelectionRange(SENT.length, SENT.length); } catch { /* yok */ }
   }
 
   bindInput() {
     const w = this.wrap;
     const stop = (e) => e.stopPropagation();
-    let composing = false;
+    this.composing = false;
+    // Yazı alanı her girdiden sonra boşaltılmaz: yeni metin bir önceki değerle karşılaştırılarak çıkarılır.
+    // Alanı klavyenin altından değiştirmek sesle yazmayı (Gboard) birkaç cümlede bir kesiyordu. Yalnız Enter'dan
+    // sonra, silme baştaki dolguya inince ya da alan çok uzayınca sıfırlanır.
     const flush = () => {
       const v = this.ta.value;
-      if (v === SENT) return;
+      const base = this.taVal ?? SENT;
+      if (v === base) return;
       let p = 0;
-      while (p < v.length && p < SENT.length && v[p] === SENT[p]) p++;
-      const del = SENT.length - p;
+      while (p < v.length && p < base.length && v[p] === base[p]) p++;
+      const del = base.length - p;
       const ins = v.slice(p).replace(/ /g, ' ').replace(/\r?\n/g, '\r');
-      this.resetInput();
+      this.taVal = v;
+      if (v.length < SENT.length || v.length > 4000 || ins.includes('\r')) this.resetInput();
       if (del > 0) { this.releaseMods(); this.opts.onData('\x7f'.repeat(del)); }
       if (ins) {
         if (ins.length === 1) this.sendTyped(ins);
@@ -227,7 +233,7 @@ export class TermView {
       const seq = this.keyFromEvent(e);
       if (seq === null) return;
       e.preventDefault();
-      if (seq) { this.term.scrollToBottom(); this.opts.onData(seq); }
+      if (seq) { this.resetInput(); this.term.scrollToBottom(); this.opts.onData(seq); }
     }, true);
     w.addEventListener('keypress', (e) => { if (e.target === this.ta) stop(e); }, true);
     w.addEventListener('keyup', (e) => { if (e.target === this.ta) stop(e); }, true);
@@ -235,14 +241,14 @@ export class TermView {
     w.addEventListener('input', (e) => {
       if (e.target !== this.ta) return;
       stop(e);
-      if (!composing) flush();
+      if (!this.composing) flush();
     }, true);
-    w.addEventListener('compositionstart', (e) => { if (e.target === this.ta) { stop(e); composing = true; } }, true);
+    w.addEventListener('compositionstart', (e) => { if (e.target === this.ta) { stop(e); this.composing = true; } }, true);
     w.addEventListener('compositionupdate', (e) => { if (e.target === this.ta) stop(e); }, true);
     w.addEventListener('compositionend', (e) => {
       if (e.target !== this.ta) return;
       stop(e);
-      composing = false;
+      this.composing = false;
       setTimeout(flush, 0);
     }, true);
     w.addEventListener('paste', (e) => {
@@ -348,7 +354,7 @@ export class TermView {
       default: break;
     }
     const seq = this.keySeq(k, { ctrl, alt });
-    if (seq) { this.releaseMods(); this.term.scrollToBottom(); this.opts.onData(seq); return; }
+    if (seq) { this.releaseMods(); this.resetInput(); this.term.scrollToBottom(); this.opts.onData(seq); return; }
     this.sendTyped(k); // '/', '|', '-', '~'
   }
 
@@ -372,7 +378,8 @@ export class TermView {
       if (kbOpen && !open) {
         clearTimeout(this.kbHideT);
         this.kbHideT = setTimeout(() => {
-          if (window.innerHeight >= this.maxH * 0.85 && document.activeElement === this.ta) this.ta.blur();
+          // klavye yazıyorken (ör. sesle yazmada küçük mikrofon çubuğu) odak bırakılmaz
+          if (window.innerHeight >= this.maxH * 0.85 && document.activeElement === this.ta && !this.composing) this.ta.blur();
         }, 300);
       }
       kbOpen = open;
