@@ -50,7 +50,13 @@ class App {
     this.setAccount(this.account);
     this.bindIpc();
     this.bindKeys();
-    if (this.settings.masterEnabled && !this.settings.masterUnlocked) this.promptUnlock();
+    if (this.settings.masterEnabled && !this.settings.masterUnlocked) this.promptUnlock().then(() => this.focusHome());
+    else this.focusHome();
+  }
+
+  // Ana ekranda (açık sekme yokken) odak arama kutusunda: yazınca doğrudan oturum aranır
+  focusHome() {
+    if (!this.tabs.length && !document.querySelector('.overlay')) this.filter.focus();
   }
 
   // Startup unlock: loops until the correct master password is entered, or the user skips.
@@ -895,6 +901,7 @@ class App {
     else { this.layoutGroups(); this.renderTabs(); }
     this.renderSidebar();
     this.updateBcCount();
+    this.focusHome();
   }
 
   // Sekmeyi çoğalt: yeni sekme terminalin, uzak ve yerel panelin bulunduğu dizinlerde açılır
@@ -1144,6 +1151,9 @@ class App {
   bindKeys() {
     window.addEventListener('keydown', (e) => {
       if (document.querySelector('.overlay')) return;
+      // Ana ekranda odak bir alanda değilken basılan harf aramaya gider
+      if (!this.tabs.length && e.key.length === 1 && !e.ctrlKey && !e.altKey && !e.metaKey
+        && !document.activeElement?.matches('input, textarea, select, [contenteditable]')) { this.filter.focus(); return; }
       if (!this.isAppShortcut(e)) return;
       const k = e.key.toLowerCase();
       e.preventDefault();

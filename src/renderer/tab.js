@@ -1,6 +1,6 @@
 import { h, icon, uid, formatSize, backForward } from './util.js';
 import { FilePane, cleanErr } from './filepane.js';
-import { contextMenu, modal, toast, promptText } from './dialogs.js';
+import { contextMenu, modal, toast, promptText, confirmBox } from './dialogs.js';
 import { TermPane } from './termpane.js';
 
 const posix = {
@@ -1042,8 +1042,18 @@ export class SessionTab {
           h('span.fw-src', null, f.saved ? 'oturum' : 'geçici'),
           st.state === 'error' ? h('span.fw-err', { title: st.msg }, st.msg) : null,
           on ? h('button.btn.sm', { onclick: () => this.api.ssh.forwardStop(this.connId, f.id) }, icon('stop', 12), 'Durdur')
-            : h('button.btn.sm.primary', { onclick: () => this.api.ssh.forwardStart(this.connId, f).catch(() => {}) }, icon('play', 12), 'Başlat'));
+            : h('button.btn.sm.primary', { onclick: () => this.api.ssh.forwardStart(this.connId, f).catch(() => {}) }, icon('play', 12), 'Başlat'),
+          h('button.icon-btn', { title: f.saved ? 'Sil (oturumdan da kaldırılır)' : 'Sil', onclick: () => remove(f) }, icon('trash', 14)));
       }) : [h('p.muted', null, 'Bu oturumda tanımlı tünel yok.')]));
+    };
+    const remove = async (f) => {
+      if (f.saved && !(await confirmBox({ title: 'Tüneli sil', message: 'Bu tünel oturumdan silinsin mi?', detail: fwLabel(f), ok: 'Sil', danger: true }))) return;
+      if (this.fwState.get(f.id)?.state === 'active') await this.api.ssh.forwardStop(this.connId, f.id).catch(() => {});
+      this.fwState.delete(f.id);
+      if (f.saved) { const s = this.session; if (s) await this.app.saveSession({ id: s.id, forwards: (s.forwards || []).filter((x) => x.id !== f.id) }); }
+      else this.adhocForwards = this.adhocForwards.filter((x) => x.id !== f.id);
+      render();
+      this.app.updateStatus();
     };
     this._fwRefresh = render;
     render();
