@@ -341,7 +341,7 @@ async function installUpdate() {
     await fsp.writeFile(cmd, [
       '@echo off', 'set n=0', ':dene', 'timeout /t 1 /nobreak >nul', 'set /a n+=1',
       `move /y "${dest}" "${target}" >nul 2>&1 || (if %n% lss 60 goto dene)`,
-      `start "" "${target}"`, '(goto) 2>nul & del "%~f0"', '',
+      `start "" "${target}" ${RELAUNCH_ARG}`, '(goto) 2>nul & del "%~f0"', '',
     ].join('\r\n'));
     spawn('cmd.exe', ['/c', cmd], { detached: true, stdio: 'ignore', windowsHide: true }).unref();
     quitForUpdate();
@@ -358,7 +358,7 @@ async function installUpdate() {
     }
     const env = { ...process.env };
     for (const k of ['APPIMAGE', 'APPDIR', 'ARGV0', 'OWD']) delete env[k];
-    spawn(target, [], { detached: true, stdio: 'ignore', env }).unref();
+    spawn(target, [RELAUNCH_ARG], { detached: true, stdio: 'ignore', env }).unref();
     quitForUpdate();
   } else if (st.kind === 'linux-pacman') {
     // pkexec yönetici parolasını grafik olarak sorar
@@ -371,7 +371,7 @@ async function installUpdate() {
     const code = await updater.installPacman(dest, { prefix: [pkexec], onProgress: ({ step, percent }) => installing(step, percent) });
     if (code === 126 || code === 127) throw new Error('Yönetici izni verilmedi');
     if (code !== 0) throw new Error(`pacman kurulumu başarısız oldu (çıkış kodu ${code}). Elle: sudo pacman -U "${dest}"`);
-    app.relaunch();
+    app.relaunch({ args: [...process.argv.slice(1).filter((a) => a !== RELAUNCH_ARG), RELAUNCH_ARG] });
     quitForUpdate();
   }
   return true;
@@ -845,7 +845,27 @@ function createWindow() {
   win.on('closed', () => { win = null; });
 }
 
-app.whenReady().then(() => {
+// Tek kopya: ikinci kez açılınca yeni pencere açılmaz, açık olan öne getirilir.
+// Güncelleme sonrası yeniden başlatılan kopya (RELAUNCH_ARG) eski kopya kapanana kadar kilidi bekler.
+const RELAUNCH_ARG = '--sshdeck-relaunch';
+async function singleInstance() {
+  const relaunched = process.argv.includes(RELAUNCH_ARG);
+  for (let i = 0; ; i++) {
+    if (app.requestSingleInstanceLock()) return true;
+    if (!relaunched || i >= 60) return false;
+    await new Promise((r) => setTimeout(r, 250));
+  }
+}
+const gotLock = singleInstance();
+app.on('second-instance', () => {
+  if (!win) return;
+  if (win.isMinimized()) win.restore();
+  if (!win.isVisible()) win.show();
+  win.focus();
+});
+
+app.whenReady().then(async () => {
+  if (!(await gotLock)) { app.quit(); return; }
   fsp.rm(DRAG_ROOT, { recursive: true, force: true }).catch(() => {});
   store = new Store(path.join(app.getPath('userData')), {
     available: () => { try { return safeStorage.isEncryptionAvailable() && safeStorage.getSelectedStorageBackend?.() !== 'basic_text'; } catch { return false; } },

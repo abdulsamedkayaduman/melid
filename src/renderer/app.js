@@ -1068,12 +1068,18 @@ class App {
     if (!st) { this.sbStats.replaceChildren(); return; }
     const gb = (n) => (n / 1073741824).toFixed(n >= 10737418240 ? 0 : 1);
     const pct = (a, b) => (b ? Math.round((a / b) * 100) : 0);
-    const lvl = (p) => (p >= 90 ? '.crit' : p >= 75 ? '.warn' : '');
+    // Renk: yeşil < %70, sarı %70-89, kırmızı ≥ %90 (yük için çekirdek başına 0.7 / 1.0)
+    const lvl = (p) => (p >= 90 ? '.crit' : p >= 70 ? '.warn' : '.ok');
     const up = st.uptime; const d = Math.floor(up / 86400); const hh = Math.floor((up % 86400) / 3600); const mm = Math.floor((up % 3600) / 60);
     const upText = d ? `${d}g ${hh}sa` : hh ? `${hh}sa ${mm}dk` : `${mm}dk`;
     const cpu = st.cpu == null ? null : Math.round(st.cpu);
     const mem = pct(st.memUsed, st.memTotal); const disk = pct(st.diskUsed, st.diskTotal);
-    const item = (cls, label, val) => h('span.st' + cls, null, h('b', null, label), ' ', val);
+    const load1 = parseFloat(st.load) || 0;
+    const loadPct = st.cores ? Math.round((100 * load1) / st.cores) : null;
+    const meter = (p) => h('span.meter', null, h('i', { style: { width: Math.min(100, Math.max(0, p)) + '%' } }));
+    const item = (cls, label, val, p) => h('span.st' + cls, null, h('b', null, label), p == null ? null : meter(p), h('em', null, val));
+    const levels = [cpu, mem, disk, loadPct].filter((x) => x != null);
+    const worst = levels.length ? Math.max(...levels) : 0;
     this.sbStats.title = [
       `Yük ortalaması: ${st.load}${st.cores ? ` (${st.cores} çekirdek)` : ''}`,
       `Bellek: ${formatSize(st.memUsed)} / ${formatSize(st.memTotal)}`,
@@ -1083,13 +1089,14 @@ class App {
       st.sessions ? `Açık oturumlar (${st.sessions.length}):\n${st.sessions.map((x) => `  ${x.user}  ${x.tty}${x.from ? `  ${x.from}` : ''}`).join('\n')}` : null,
     ].filter(Boolean).join('\n');
     this.sbStats.replaceChildren(...[
-      icon('cpu', 12),
-      cpu == null ? null : item(lvl(cpu), 'CPU', `${cpu}%`),
-      item(lvl(mem), 'RAM', `${gb(st.memUsed)}/${gb(st.memTotal)} GB`),
-      st.diskTotal ? item(lvl(disk), 'Disk', `${disk}%`) : null,
-      st.rxRate == null ? null : h('span.st', null, `↓${formatSize(Math.round(st.rxRate))}/s ↑${formatSize(Math.round(st.txRate))}/s`),
-      st.sessions ? item('', 'Oturum', String(st.sessions.length)) : null,
-      h('span.st', null, `⏱ ${upText}`)].filter(Boolean));
+      h('span.health' + lvl(worst), { title: 'Genel durum: en yüksek kullanım' }),
+      cpu == null ? null : item(lvl(cpu), 'CPU', `${cpu}%`, cpu),
+      loadPct == null ? null : item(lvl(loadPct >= 100 ? 90 : loadPct >= 70 ? 70 : 0), 'Yük', load1.toFixed(2)),
+      item(lvl(mem), 'RAM', `${gb(st.memUsed)}/${gb(st.memTotal)} GB`, mem),
+      st.diskTotal ? item(lvl(disk), 'Disk', `${disk}%`, disk) : null,
+      st.rxRate == null ? null : h('span.st.net', null, h('span.rx', null, `↓${formatSize(Math.round(st.rxRate))}/s`), ' ', h('span.tx', null, `↑${formatSize(Math.round(st.txRate))}/s`)),
+      st.sessions ? item('.info', 'Oturum', String(st.sessions.length)) : null,
+      h('span.st.up', null, `⏱ ${upText}`)].filter(Boolean));
   }
 
   tabByConn(connId) { return this.tabs.find((t) => t.connId === connId); }
