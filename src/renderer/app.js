@@ -684,9 +684,8 @@ class App {
     this.saveSettings({ recent: [{ id, t: Date.now() }, ...(this.settings.recent || []).filter((r) => r.id !== id)].slice(0, 20) }).catch(() => {});
     this.renderRecent();
     const tab = new SessionTab(this, { sessionId: id, title: s.name });
-    if (opts.sftpOnly) { tab.sftpVisible = true; tab.sftpOnly = true; }
+    if (opts.sftpOnly) { tab.sftpVisible = true; tab.sftpOnly = true; tab.applySftpLayout(); }
     this.addTab(tab, opts.group);
-    if (opts.sftpOnly) tab.el.classList.add('sftp-only');
     tab.connect();
   }
 
@@ -917,10 +916,9 @@ class App {
       ? new SessionTab(this, { sessionId: tab.sessionId, title: tab.title })
       : new SessionTab(this, { quick: { ...tab.quick }, title: tab.title });
     t.startDirs = dirs;
-    if (tab.sftpOnly) { t.sftpVisible = true; t.sftpOnly = true; }
+    if (tab.sftpOnly) { t.sftpVisible = true; t.sftpOnly = true; t.applySftpLayout(); }
     else if (t.sftpVisible !== tab.sftpVisible) { t.sftpVisible = tab.sftpVisible; t.applySftpLayout(); }
     this.addTab(t, tab.group);
-    if (t.sftpOnly) t.el.classList.add('sftp-only');
     t.connect();
   }
 

@@ -74,6 +74,7 @@ export class SessionTab {
     this.followBtn = h('button.icon-btn', { title: 'Terminaldeki dizini takip et', onclick: () => this.toggleFollow() }, icon('terminal', 15));
     this.syncBtn = h('button.icon-btn', { title: 'Klasörleri karşılaştır / eşitle', onclick: () => this.syncDialog() }, icon('sync', 15));
     this.searchBtn = h('button.icon-btn', { title: 'Sunucuda dosya ara (bu klasör ve altı)', onclick: () => this.remoteSearch() }, icon('search', 15));
+    this.maxSftpBtn = h('button.icon-btn', { title: 'Dosya panelini tam ekran yap', onclick: () => this.toggleSftpMax() }, icon('collapse', 15));
     this.remote = new FilePane({
       side: 'remote', api: this.api, settings: st,
       adapter: {
@@ -89,7 +90,7 @@ export class SessionTab {
         prepareDrag: (tid, items) => this.api.drag.prepare(cid(), tid, items),
         cancelDrag: (tid) => this.api.sftp.cancel(cid(), tid),
       },
-      extraTools: [this.searchBtn, this.syncBtn, this.followBtn, this.localBtn],
+      extraTools: [this.searchBtn, this.syncBtn, this.followBtn, this.localBtn, this.maxSftpBtn],
       onTransfer: (from, items, dest) => this.transfer(from, items, dest),
       onColResize: (w) => this.saveColWidths(w),
       onColPrefs: (p) => this.saveColPrefs(p),
@@ -147,10 +148,10 @@ export class SessionTab {
     this.xferSplit = h('div.xsplit', { title: 'Sürükleyerek boyutlandır' });
     this.xfers = h('div.xfers.empty', null, this.xferSplit, this.xferHead, this.xferList);
 
-    this.paneSplit = h('div.vsplit');
+    this.paneSplit = h('div.vsplit', { title: 'Sürükleyerek boyutlandır, çift tıkla eşitle' });
     this.paneBox = h('div.panes', null, this.local.el, this.paneSplit, this.remote.el);
     this.sftp = h('div.sftp', null, this.paneBox, this.xfers);
-    this.splitter = h('div.hsplit', { title: 'Sürükleyerek boyutlandır' });
+    this.splitter = h('div.hsplit', { title: 'Sürükleyerek boyutlandır, çift tıkla sıfırla' });
     this.el = h('div.tab-view', null, this.termWrap, this.splitter, this.sftp);
     this.applySftpLayout();
     this.initSplitters();
@@ -162,13 +163,24 @@ export class SessionTab {
       e.preventDefault();
       const rect = this.el.getBoundingClientRect();
       const move = (ev) => {
-        const pct = Math.min(80, Math.max(15, ((rect.bottom - ev.clientY) / rect.height) * 100));
+        const pct = Math.round(Math.min(90, Math.max(10, ((rect.bottom - ev.clientY) / rect.height) * 100)) * 10) / 10;
         this.app.settings.sftpHeight = pct;
-        this.applySftpLayout();
+        for (const t of this.app.tabs) t.applySftpLayout();
       };
-      const up = () => { document.removeEventListener('mousemove', move); document.removeEventListener('mouseup', up); document.body.classList.remove('resizing-v'); this.app.saveSettings({ sftpHeight: this.app.settings.sftpHeight }); };
+      const up = () => {
+        document.removeEventListener('mousemove', move); document.removeEventListener('mouseup', up);
+        document.body.classList.remove('resizing-v');
+        this.app.fitAll();
+        this.app.saveSettings({ sftpHeight: this.app.settings.sftpHeight });
+      };
       document.body.classList.add('resizing-v');
       document.addEventListener('mousemove', move); document.addEventListener('mouseup', up);
+    });
+    this.splitter.addEventListener('dblclick', () => {
+      this.app.settings.sftpHeight = 38;
+      for (const t of this.app.tabs) t.applySftpLayout();
+      this.app.fitAll();
+      this.app.saveSettings({ sftpHeight: 38 });
     });
     this.paneSplit.addEventListener('mousedown', (e) => {
       e.preventDefault();
@@ -176,19 +188,19 @@ export class SessionTab {
       const move = (ev) => {
         const pct = Math.min(80, Math.max(20, ((ev.clientX - rect.left) / rect.width) * 100));
         this.app.settings.paneSplit = Math.round(pct * 10) / 10;
-        this.applySftpLayout();
+        for (const t of this.app.tabs) t.applySftpLayout();
       };
       const up = () => { document.removeEventListener('mousemove', move); document.removeEventListener('mouseup', up); document.body.classList.remove('resizing-h'); this.app.saveSettings({ paneSplit: this.app.settings.paneSplit }); };
       document.body.classList.add('resizing-h');
       document.addEventListener('mousemove', move); document.addEventListener('mouseup', up);
     });
-    this.paneSplit.addEventListener('dblclick', () => { this.app.settings.paneSplit = 50; this.applySftpLayout(); this.app.saveSettings({ paneSplit: 50 }); });
+    this.paneSplit.addEventListener('dblclick', () => { this.app.settings.paneSplit = 50; for (const t of this.app.tabs) t.applySftpLayout(); this.app.saveSettings({ paneSplit: 50 }); });
     this.xferSplit.addEventListener('mousedown', (e) => {
       e.preventDefault();
       const rect = this.sftp.getBoundingClientRect();
       const move = (ev) => {
         this.app.settings.xferHeight = Math.round(Math.min(rect.height - 90, Math.max(50, rect.bottom - ev.clientY)));
-        this.applySftpLayout();
+        for (const t of this.app.tabs) t.applySftpLayout();
       };
       const up = () => { document.removeEventListener('mousemove', move); document.removeEventListener('mouseup', up); document.body.classList.remove('resizing-v'); this.app.saveSettings({ xferHeight: this.app.settings.xferHeight }); };
       document.body.classList.add('resizing-v');
@@ -208,7 +220,8 @@ export class SessionTab {
 
   applySftpLayout() {
     this.sftp.style.display = this.sftpVisible ? '' : 'none';
-    this.splitter.style.display = this.sftpVisible ? '' : 'none';
+    this.splitter.style.display = this.sftpVisible && !this.sftpOnly ? '' : 'none';
+    this.el.classList.toggle('sftp-only', !!this.sftpOnly && this.sftpVisible);
     this.sftp.style.height = (this.app.settings.sftpHeight || 38) + '%';
     this.local.el.style.flexBasis = (this.app.settings.paneSplit || 50) + '%';
     const xh = this.app.settings.xferHeight;
@@ -217,6 +230,20 @@ export class SessionTab {
     this.local.el.style.display = this.paneSplit.style.display = this.localVisible ? '' : 'none';
     this.localBtn.classList.toggle('on', this.localVisible);
     this.followBtn.classList.toggle('on', this.followTerm);
+    if (this.maxSftpBtn) {
+      this.maxSftpBtn.classList.toggle('on', !!this.sftpOnly);
+      this.maxSftpBtn.replaceChildren(icon(this.sftpOnly ? 'expand' : 'collapse', 15));
+      this.maxSftpBtn.title = this.sftpOnly ? 'Terminali göster (bölünmüş görünüm)' : 'Dosya panelini tam ekran yap';
+    }
+  }
+
+  toggleSftpMax(v) {
+    this.sftpOnly = v === undefined ? !this.sftpOnly : v;
+    if (this.sftpOnly) this.sftpVisible = true;
+    this.applySftpLayout();
+    this.app.syncToolbar();
+    this.scheduleFit();
+    if (!this.sftpOnly) this.activePane.focus();
   }
 
   toggleLocal() {
@@ -267,6 +294,7 @@ export class SessionTab {
 
   toggleSftp(v) {
     this.sftpVisible = v === undefined ? !this.sftpVisible : v;
+    if (!this.sftpVisible) this.sftpOnly = false;
     this.applySftpLayout();
     if (this.sftpVisible && this.state === 'connected' && !this.remote.cwd) this.initRemotePane();
     this.scheduleFit();

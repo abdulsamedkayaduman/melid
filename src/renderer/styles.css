@@ -223,21 +223,21 @@ kbd { font-family: var(--mono); font-size: 11px; padding: 2px 6px; border-radius
 .group-drop { display: none; position: absolute; top: 0; bottom: 0; pointer-events: none; z-index: 20; background: color-mix(in srgb, var(--accent) 14%, transparent); box-shadow: inset 0 0 0 2px var(--accent); border-radius: 4px; }
 .tab-view { position: absolute; inset: 0; display: none; flex-direction: column; }
 .tab-view.on { display: flex; }
-.term-wrap { flex: 1; min-height: 60px; position: relative; display: flex; }
+.term-wrap { flex: 1; min-height: 60px; position: relative; display: flex; overflow: hidden; }
 .term-wrap > * { flex: 1; min-width: 0; min-height: 0; }
 /* bölünmüş terminal */
-.term-pane { position: relative; min-width: 0; min-height: 0; flex: 1; }
+.term-pane { position: relative; min-width: 0; min-height: 0; flex: 1; overflow: hidden; }
 .term-pane.active::after { content: ''; position: absolute; inset: 0; pointer-events: none; box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 55%, transparent); z-index: 4; }
 .tsplit { display: flex; min-width: 0; min-height: 0; }
 .tsplit.v { flex-direction: column; }
 .tsplit-cell { display: flex; min-width: 0; min-height: 0; overflow: hidden; }
 .tsplit-cell > * { flex: 1; }
-.tsplit-gutter { flex: none; background: var(--border); }
+.tsplit-gutter { flex: none; background: var(--border); position: relative; z-index: 6; }
 .tsplit.h > .tsplit-gutter { width: 4px; cursor: col-resize; }
 .tsplit.v > .tsplit-gutter { height: 4px; cursor: row-resize; }
 .tsplit-gutter:hover { background: var(--accent2); }
-.term-host { position: absolute; inset: 0; padding: 6px 0 2px 8px; }
-.term-host .xterm { height: 100%; }
+.term-host { position: absolute; inset: 0; overflow: hidden; }
+.term-host .xterm { height: 100%; padding: 6px 0 2px 8px; }
 .term-host .xterm-viewport { scrollbar-width: thin; }
 /* xterm satırları taşanı kesiyor: satır yüksekliği aşağı yuvarlanınca alt çizgi (_) tümüyle kayboluyordu */
 .xterm .xterm-rows > div { overflow: visible !important; }
@@ -248,12 +248,18 @@ kbd { font-family: var(--mono); font-size: 11px; padding: 2px 6px; border-radius
 .tab-view.sftp-only .sftp { height: 100% !important; border-top: 0; }
 
 /* ---------------- sftp panel */
-.hsplit { height: 5px; flex: none; cursor: row-resize; background: var(--border); border-top: 2px solid var(--bg); }
-.hsplit:hover { background: var(--accent2); }
-.sftp { flex: none; display: flex; flex-direction: column; min-height: 120px; background: var(--bg2); }
+.hsplit { height: 6px; flex: none; position: relative; z-index: 6; cursor: row-resize; background: var(--border); border-top: 1px solid var(--bg); transition: background .12s; }
+.hsplit::before { content: ''; position: absolute; left: 0; right: 0; top: -4px; bottom: -4px; }
+.hsplit::after { content: ''; position: absolute; left: 50%; top: 50%; width: 36px; height: 2px; transform: translate(-50%, -50%); border-radius: 2px; background: var(--muted); opacity: .65; transition: background .12s, opacity .12s; }
+.hsplit:hover, body.resizing-v .hsplit { background: var(--accent2); }
+.hsplit:hover::after, body.resizing-v .hsplit::after { background: #fff; opacity: 1; }
+.sftp { flex: none; display: flex; flex-direction: column; min-height: 80px; background: var(--bg2); }
 .panes { flex: 1; display: flex; min-height: 0; }
-.vsplit { width: 5px; flex: none; cursor: col-resize; background: var(--border); border-left: 2px solid var(--bg2); }
+.vsplit { width: 6px; flex: none; position: relative; z-index: 6; cursor: col-resize; background: var(--border); border-left: 1px solid var(--bg2); transition: background .12s; }
+.vsplit::before { content: ''; position: absolute; top: 0; bottom: 0; left: -4px; right: -4px; }
+.vsplit::after { content: ''; position: absolute; left: 50%; top: 50%; width: 2px; height: 36px; transform: translate(-50%, -50%); border-radius: 2px; background: var(--muted); opacity: .65; transition: background .12s, opacity .12s; }
 .vsplit:hover { background: var(--accent2); }
+.vsplit:hover::after { background: #fff; opacity: 1; }
 .pane { flex: 1 1 50%; display: flex; flex-direction: column; min-width: 0; }
 .pane[data-side=local] { flex: 0 0 50%; }
 .pane.loading .pane-body { opacity: .55; }
