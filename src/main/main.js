@@ -15,6 +15,7 @@ const updater = require('./updater');
 const { AccountSync, scanLan } = require('./sync');
 const { runSessions, runOne, execTask, statsTask } = require('./conncheck');
 const { spawn } = require('child_process');
+const { fileURLToPath } = require('url');
 
 app.setName('SSHDeck');
 let win = null;
@@ -700,6 +701,15 @@ function registerIpc() {
     return true;
   });
 
+  // Aynı sunucuda kopya (dosya panelinde Ctrl+C / Ctrl+V). pairs: [[kaynak, hedef], ...] mutlak yollar
+  h('sftp:copy', async (connId, pairs) => {
+    const list = (pairs || []).filter(([s, d]) => typeof s === 'string' && typeof d === 'string' && s.startsWith('/') && d.startsWith('/'));
+    if (!list.length) throw new Error('Kopyalanacak öğe yok');
+    const r = await manager.exec(connId, list.map(([s, d]) => `cp -a -- ${shq(s)} ${shq(d)}`).join(' && '), { timeout: 600000 });
+    if (r.code !== 0) throw new Error(`Kopyalanamadı: ${(r.stderr || '').trim().split('\n').slice(-2).join(' ') || 'çıkış kodu ' + r.code}`);
+    return true;
+  });
+
   h('ssh:installKey', async (connId, ref) => {
     const k = allKeys().find((x) => x.pubPath === ref || x.fingerprint === ref);
     if (!k) throw new Error('Açık anahtar bulunamadı');
@@ -749,6 +759,10 @@ function registerIpc() {
   h('local:rename', (a, b) => fsp.rename(a, b));
   h('local:remove', (p) => shell.trashItem(p).catch(() => fsp.rm(p, { recursive: true, force: true })));
   h('local:exists', (p) => fsp.access(p).then(() => true, () => false));
+  h('local:copy', async (pairs) => {
+    for (const [s, d] of pairs || []) await fsp.cp(s, d, { recursive: true, errorOnExist: true, force: false, preserveTimestamps: true, verbatimSymlinks: true });
+    return true;
+  });
   h('local:open', (p) => shell.openPath(p));
   h('local:reveal', (p) => shell.showItemInFolder(p));
   h('local:resolve', (p) => {
@@ -761,8 +775,27 @@ function registerIpc() {
   h('local:preview', (p) => preview(localRead, p));
 
   // misc
-  h('clipboard:read', () => clipboard.readText());
+  // Pano okumaları bazı biçimlerde (X11) hiç yanıt vermeyebiliyor; yapıştırma kilitlenmesin diye süre sınırı var
+  const clipLimit = (p, fallback) => Promise.race([p, new Promise((r) => setTimeout(() => r(fallback), 1500))]);
+  h('clipboard:read', () => clipLimit(clipboard.readText(), ''));
   h('clipboard:write', (t) => clipboard.writeText(t));
+  // Dosya yöneticisinde Ctrl+C ile kopyalanan dosyalar -> yerel yollar
+  const fileUrls = (raw) => String(raw).split(/\r?\n/).map((l) => l.trim()).filter((l) => l.startsWith('file://'))
+    .map((u) => { try { return fileURLToPath(u); } catch { return null; } }).filter(Boolean);
+  h('clipboard:readFiles', async () => {
+    const [item] = await clipLimit(clipboard.read(), []);
+    const types = item?.types || [];
+    const blobOf = (re) => { const t = types.find((x) => re.test(x)); return t ? clipLimit(item.getType(t).catch(() => null), null) : null; };
+    // Windows Gezgini: kopyalanan ilk dosya (UTF-16)
+    const win = process.platform === 'win32' ? await blobOf(/FileNameW/i) : null;
+    if (win) { const p = Buffer.from(await win.arrayBuffer()).toString('ucs2').replace(/\0+$/, ''); if (p) return [p]; }
+    for (const re of [/text\/uri-list/i, /x-special\/gnome-copied-files/i, /public\.file-url/i]) {
+      const blob = await blobOf(re);
+      const files = blob ? fileUrls(await blob.text()) : [];
+      if (files.length) return files;
+    }
+    return fileUrls(await clipLimit(clipboard.readText(), ''));
+  });
   h('dialog:openFile', async (opts) => {
     const r = await dialog.showOpenDialog(win, { properties: ['openFile', 'showHiddenFiles'], defaultPath: expandHome(opts && opts.defaultPath) || path.join(os.homedir(), '.ssh') });
     return r.canceled ? null : r.filePaths[0];

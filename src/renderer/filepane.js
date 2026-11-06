@@ -14,6 +14,9 @@ document.addEventListener('dragend', () => { inDrag = null; });
 // OS yalnız dosya yolu taşır; uygulamaya geri bırakılırsa asıl öğeler buradan bulunur. Fare bırakılınca temizlenir.
 let outDrag = null;
 document.addEventListener('mousemove', (e) => { if (!e.buttons) outDrag = null; }, true);
+// Uygulama içi dosya panosu (Ctrl+C / Ctrl+V): { pane, items, text }. Sistem panosuna da öğelerin yolları
+// yazılır; yapıştırırken pano hâlâ o metni taşıyorsa bu öğeler, yoksa dosya yöneticisinden kopyalananlar kullanılır.
+let fileClip = null;
 const fileUrl = (p) => 'file://' + (p.startsWith('/') ? '' : '/') + p.replace(/\\/g, '/').split('/').map(encodeURIComponent).join('/').replace(/^\/([A-Za-z])%3A/, '/$1:');
 
 /**
@@ -563,6 +566,8 @@ export class FilePane {
     else if (k === 'F5') { e.preventDefault(); this.refresh(); }
     else if (k === 'F2') { e.preventDefault(); const s = this.selected(); if (s.length === 1) this.rename(s[0]); }
     else if (k === 'Delete') { e.preventDefault(); this.remove(this.selected()); }
+    else if (k.toLowerCase() === 'c' && e.ctrlKey && !e.shiftKey && !e.altKey) { e.preventDefault(); this.copySelection(); }
+    else if (k.toLowerCase() === 'v' && e.ctrlKey && !e.shiftKey && !e.altKey) { e.preventDefault(); this.paste(); }
     else if (k === 'a' && e.ctrlKey) { e.preventDefault(); this.sel = new Set(names); this.paintSel(); }
     else if (k === 'l' && e.ctrlKey) { e.preventDefault(); this.pathInput.focus(); }
     else if (k === 'f' && e.ctrlKey && !e.shiftKey) { e.preventDefault(); this.filterInput.focus(); this.filterInput.select(); }
@@ -615,6 +620,53 @@ export class FilePane {
     if (s.length) this.onTransfer(this.side, this.itemsFor(s), null);
   }
 
+  copySelection() {
+    const s = this.selected();
+    if (!s.length) return;
+    const items = this.itemsFor(s);
+    const text = items.map((it) => it.path).join('\n');
+    fileClip = { pane: this, items, text };
+    this.api.clipboard.write(text);
+    toast(`${s.length === 1 ? `“${s[0].name}”` : `${s.length} öğe`} kopyalandı · hedef klasörde Ctrl+V`);
+  }
+
+  async paste() {
+    if (!this.cwd) return;
+    const text = await this.api.clipboard.read().catch(() => '');
+    const clip = fileClip && fileClip.text === text ? fileClip : null;
+    if (clip) {
+      const src = clip.pane;
+      // Aynı dosya sistemi (aynı panel, iki yerel panel ya da aynı sekmenin uzak paneli): orada kopya oluştur
+      const same = src === this || (src.side === 'local' && this.side === 'local') || (src.side === 'remote' && this.side === 'remote' && src.tab === this.tab);
+      return same ? this.copyHere(clip.items) : this.onDropFrom(src, clip.items, this.cwd);
+    }
+    const files = await this.api.clipboard.readFiles().catch(() => []);
+    if (!files.length) { toast('Panoda kopyalanmış dosya yok', 'info'); return; }
+    const items = files.map((p) => ({ path: p, name: p.split(/[\\/]/).pop() }));
+    return this.side === 'remote' ? this.onTransfer('local', items, this.cwd) : this.copyHere(items);
+  }
+
+  // Bu klasöre kopya: aynı ad varsa "ad (kopya).uzantı", "ad (kopya 2).uzantı" …
+  async copyHere(items) {
+    if (!this.ad.copy || !items.length) return;
+    const taken = new Set(this.entries.map((e) => e.name));
+    const pairs = []; const names = [];
+    for (const it of items) {
+      let name = it.name;
+      if (taken.has(name)) {
+        const dot = it.isDir ? -1 : name.lastIndexOf('.');
+        const [base, ext] = dot > 0 ? [name.slice(0, dot), name.slice(dot)] : [name, ''];
+        for (let i = 1; taken.has(name); i++) name = `${base} (kopya${i > 1 ? ' ' + i : ''})${ext}`;
+      }
+      taken.add(name); names.push(name);
+      pairs.push([it.path, this.ad.join(this.cwd, name)]);
+    }
+    const t = toast(`Kopyalanıyor: ${names.length === 1 ? names[0] : names.length + ' öğe'}…`, 'info', 600000);
+    try { await this.ad.copy(pairs); } catch (e) { toast(cleanErr(e), 'err', 7000); return; } finally { t.remove(); }
+    await this.refresh();
+    this.sel = new Set(names); this.anchor = names[0]; this.paintSel(); this.scrollTo(names[0]);
+  }
+
   async newFolder() {
     const name = await promptText({ title: 'Yeni klasör', label: `${this.cwd} içinde`, value: 'yeni-klasor' });
     if (!name) return;
@@ -654,6 +706,9 @@ export class FilePane {
       one && !one.isDir && this.ad.preview ? { label: 'Önizle', icon: 'eye', hint: 'Boşluk', action: () => this.preview(one) } : null,
       ...(this.onExtraMenu ? this.onExtraMenu(sel) : []),
       sel.length ? '-' : null,
+      sel.length ? { label: 'Kopyala', icon: 'copy', hint: 'Ctrl+C', action: () => this.copySelection() } : null,
+      { label: 'Yapıştır', icon: 'copy', hint: 'Ctrl+V', action: () => this.paste() },
+      '-',
       one ? { label: 'Yeniden adlandır', icon: 'edit', hint: 'F2', action: () => this.rename(one) } : null,
       sel.length ? { label: 'Sil', icon: 'trash', hint: 'Del', danger: true, action: () => this.remove(sel) } : null,
       one ? { label: 'Yolu kopyala', icon: 'file', action: () => this.api.clipboard.write(this.ad.join(this.cwd, one.name)) } : { label: 'Bu dizinin yolunu kopyala', icon: 'file', action: () => this.api.clipboard.write(this.cwd) },

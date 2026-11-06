@@ -224,7 +224,7 @@ class App {
         h('div.w-keys', null,
           ...[['Ctrl+Shift+N', 'Yeni oturum'], ['Ctrl+Shift+T', 'Sekmeyi çoğalt'], ['Ctrl+Shift+W', 'Bölmeyi / sekmeyi kapat'], ['Ctrl+Tab', 'Sonraki sekme'],
             ['Ctrl+Shift+D / S', 'Sağa / aşağı böl'], ['Ctrl+Shift+M', 'Sekmeyi yana ayır'], ['Ctrl+Shift+PgUp / PgDn', 'Sekmeyi sola / sağa al'], ['Alt+Shift+Oklar', 'Bölmeler arası geç'], ['Ctrl+Shift+K', 'Hazır komutlar'],
-            ['Ctrl+Shift+E', 'SFTP paneli'], ['Ctrl+Shift+F', 'Terminalde ara'], ['Ctrl+Shift+C / V', 'Kopyala / yapıştır'], ['Ctrl + / −', 'Yazı boyutu'], ['Alt+Enter', 'Odak modu']]
+            ['Ctrl+Shift+E', 'SFTP paneli'], ['Ctrl+Shift+F', 'Terminalde ara'], ['Ctrl+Shift+C / V', 'Kopyala / yapıştır'], ['Ctrl+C / V', 'Dosya kopyala / yapıştır (SFTP)'], ['Ctrl + / −', 'Yazı boyutu'], ['Alt+Enter', 'Odak modu']]
             .map(([k, v]) => h('div.w-key', null, h('kbd', null, k), h('span', null, v))))));
   }
 
