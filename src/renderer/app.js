@@ -1,4 +1,4 @@
-import { h, icon, parseConnText, debounce, formatSize } from './util.js';
+import { h, icon, parseConnText, debounce, formatSize, IS_MAC, modKey, keyLabel } from './util.js';
 import { modal, promptText, confirmBox, hostKeyDialog, kbdDialog, contextMenu, toast, sessionEditor, settingsDialog, applyUiTheme } from './dialogs.js';
 import { SessionTab } from './tab.js';
 import { cleanErr } from './filepane.js';
@@ -225,7 +225,7 @@ class App {
           ...[['Ctrl+Shift+N', 'Yeni oturum'], ['Ctrl+Shift+T', 'Sekmeyi çoğalt'], ['Ctrl+Shift+W', 'Bölmeyi / sekmeyi kapat'], ['Ctrl+Tab', 'Sonraki sekme'],
             ['Ctrl+Shift+D / S', 'Sağa / aşağı böl'], ['Ctrl+Shift+M', 'Sekmeyi yana ayır'], ['Ctrl+Shift+PgUp / PgDn', 'Sekmeyi sola / sağa al'], ['Alt+Shift+Oklar', 'Bölmeler arası geç'], ['Ctrl+Shift+K', 'Hazır komutlar'],
             ['Ctrl+Shift+E', 'SFTP paneli'], ['Ctrl+Shift+F', 'Terminalde ara'], ['Ctrl+Shift+C / V', 'Kopyala / yapıştır'], ['Ctrl+C / V', 'Dosya kopyala / yapıştır (SFTP)'], ['Ctrl + / −', 'Yazı boyutu'], ['Alt+Enter', 'Odak modu']]
-            .map(([k, v]) => h('div.w-key', null, h('kbd', null, k), h('span', null, v))))));
+            .map(([k, v]) => h('div.w-key', null, h('kbd', null, keyLabel(k)), h('span', null, v))))));
   }
 
   // Açılış ekranındaki son bağlantılar: tek tıkla bağlanır
@@ -271,7 +271,7 @@ class App {
   toggleFocus(v) {
     this.focus = v === undefined ? !this.focus : v;
     this.applyFocusClasses();
-    if (this.focus && !this._focusHinted) { this._focusHinted = true; toast('Odak modu açık — çıkmak için Alt+Enter', 'info', 4000); }
+    if (this.focus && !this._focusHinted) { this._focusHinted = true; toast(keyLabel('Odak modu açık — çıkmak için Alt+Enter'), 'info', 4000); }
     this.fitAll();
     this.active?.focus();
   }
@@ -1144,11 +1144,14 @@ class App {
 
   isAppShortcut(e) {
     const k = e.key.toLowerCase();
-    if (e.ctrlKey && e.shiftKey && ['n', 't', 'w', 'e', 'b', 'r', 'l', 'd', 's', 'k', 'm'].includes(k)) return true;
+    const mod = modKey(e);
+    if (mod && e.shiftKey && ['n', 't', 'w', 'e', 'b', 'r', 'l', 'd', 's', 'k', 'm'].includes(k)) return true;
     if (e.altKey && e.shiftKey && !e.ctrlKey && ['arrowleft', 'arrowright', 'arrowup', 'arrowdown'].includes(k)) return true;
-    if (e.ctrlKey && (k === 'tab' || k === 'pageup' || k === 'pagedown')) return true;
-    if (e.ctrlKey && !e.shiftKey && (k === '=' || k === '+' || k === '-' || k === '0')) return true;
-    if (e.altKey && !e.ctrlKey && /^[1-9]$/.test(k)) return true;
+    if (e.ctrlKey && k === 'tab') return true;
+    if (mod && (k === 'pageup' || k === 'pagedown')) return true;
+    if (mod && !e.shiftKey && (k === '=' || k === '+' || k === '-' || k === '0')) return true;
+    // macOS'ta Option+rakam özel karakter yazar: sekme geçişi Cmd+rakam
+    if ((IS_MAC ? mod : e.altKey && !e.ctrlKey) && /^[1-9]$/.test(k)) return true;
     if (e.altKey && !e.ctrlKey && !e.shiftKey && k === 'enter') return true; // odak modu
     return false;
   }
@@ -1165,7 +1168,12 @@ class App {
       // Sekmeler arası geçiş etkin grubun içinde
       const list = this.tabsOf(this.curGroup());
       const i = list.indexOf(this.active);
-      if (e.ctrlKey && e.shiftKey) {
+      const mod = modKey(e);
+      if (e.ctrlKey && k === 'tab') {
+        if (list.length) this.activate(list[(i + (e.shiftKey ? -1 : 1) + list.length) % list.length]);
+        return;
+      }
+      if (mod && e.shiftKey) {
         if (k === 'n') this.newSession();
         else if (k === 't') this.duplicateTab(this.active);
         else if (k === 'w') { if (this.active && !this.active.closePane()) this.closeTab(this.active); }
@@ -1177,7 +1185,6 @@ class App {
         else if (k === 'r') this.active?.connect();
         else if (k === 'l') this.quickInput.focus();
         else if (k === 'm') this.moveActiveSide();
-        else if (k === 'tab' && list.length) this.activate(list[(i - 1 + list.length) % list.length]);
         else if (k === 'pageup' || k === 'pagedown') this.shiftTab(this.active, k === 'pageup' ? -1 : 1);
         return;
       }
@@ -1190,13 +1197,13 @@ class App {
         }
         return;
       }
-      if (e.ctrlKey && (k === 'tab' || k === 'pagedown') && list.length) this.activate(list[(i + 1) % list.length]);
-      else if (e.ctrlKey && k === 'pageup' && list.length) this.activate(list[(i - 1 + list.length) % list.length]);
-      else if (e.ctrlKey && ['=', '+', '-', '0'].includes(k)) {
+      if (mod && k === 'pagedown' && list.length) this.activate(list[(i + 1) % list.length]);
+      else if (mod && k === 'pageup' && list.length) this.activate(list[(i - 1 + list.length) % list.length]);
+      else if (mod && ['=', '+', '-', '0'].includes(k)) {
         const size = k === '0' ? 14 : Math.min(32, Math.max(8, this.settings.fontSize + (k === '-' ? -1 : 1)));
         this.saveSettings({ fontSize: size });
         for (const t of this.tabs) t.applySettings();
-      } else if (e.altKey && /^[1-9]$/.test(k)) { const t = list[Number(k) - 1]; if (t) this.activate(t); }
+      } else if (/^[1-9]$/.test(k)) { const t = list[Number(k) - 1]; if (t) this.activate(t); }
       else if (e.altKey && k === 'enter') this.toggleFocus();
     });
     window.addEventListener('resize', () => this.fitAll());

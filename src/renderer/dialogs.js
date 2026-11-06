@@ -1,4 +1,4 @@
-import { h, icon, uid } from './util.js';
+import { h, icon, uid, keyLabel } from './util.js';
 
 // ---------------------------------------------------------------- modal core
 // bind(close): pencereyi dışarıdan kapatmak için (ör. listeden seçim yapılınca)
@@ -113,7 +113,7 @@ export function contextMenu(x, y, items) {
     : h('div.ctx-item' + (it.disabled ? '.disabled' : '') + (it.danger ? '.danger' : ''), {
       onmousedown: (e) => e.preventDefault(),
       onclick: () => { if (it.disabled) return; closeMenu(); it.action(); },
-    }, it.icon ? icon(it.icon, 14) : h('span.ic-space'), h('span.ctx-label', null, it.label), it.hint ? h('span.ctx-hint', null, it.hint) : null)));
+    }, it.icon ? icon(it.icon, 14) : h('span.ic-space'), h('span.ctx-label', null, it.label), it.hint ? h('span.ctx-hint', null, keyLabel(it.hint)) : null)));
   document.body.append(menu);
   const r = menu.getBoundingClientRect();
   menu.style.left = Math.min(x, window.innerWidth - r.width - 6) + 'px';
@@ -203,7 +203,7 @@ export async function sessionEditor({ session, sessions, groups, secrets, api })
   const pwBox = h('div', null,
     field('Parola', f.password),
     s.has_password ? h('label.check', null, f.clearPassword, 'Kayıtlı parolayı sil') : null,
-    secrets === 'plain' ? h('p.hint.warn', null, 'Sistem anahtarlığı (KWallet / GNOME Keyring) bulunamadı; parolalar yalnızca base64 ile saklanır.') : null);
+    secrets === 'plain' ? h('p.hint.warn', null, 'Sistem anahtarlığı (KWallet / GNOME Keyring / macOS Anahtar Zinciri) bulunamadı; parolalar yalnızca base64 ile saklanır.') : null);
   const keyBox = h('div', null,
     field('Anahtar dosyası', h('div.row', null, f.keyPath, h('button.btn', { type: 'button', onclick: async () => { const p = await api.openFileDialog({ defaultPath: '~/.ssh' }); if (p) f.keyPath.value = p; } }, 'Gözat…'))),
     field('Anahtar parolası', f.passphrase));
@@ -361,7 +361,7 @@ export async function settingsDialog(settings, ctx = {}) {
       h('label.field', null, h('span', null, 'Kayıt klasörü'), h('div.row', null, f.logDir, logBrowse)),
       h('div.settings-sep'),
       h('div.field-row', null,
-        h('div', null, h('b', null, 'Hazır komutlar'), h('div.hint', null, 'Sık kullanılan komutlar; Ctrl+Shift+K ile gönderilir.')),
+        h('div', null, h('b', null, 'Hazır komutlar'), h('div.hint', null, keyLabel('Sık kullanılan komutlar; Ctrl+Shift+K ile gönderilir.'))),
         h('button.btn.sm', { type: 'button', onclick: () => ctx.onSnippets && ctx.onSnippets() }, icon('snippet', 14), 'Düzenle…')),
       h('div.field-row', null,
         h('div', null, h('b', null, 'SSH anahtarları'), h('div.hint', null, 'Anahtar oluştur, açık anahtarı kopyala veya sunucuya yükle.')),

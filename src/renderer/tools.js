@@ -1,4 +1,4 @@
-import { h, icon, uid } from './util.js';
+import { h, icon, uid, keyLabel } from './util.js';
 import { modal, toast, confirmBox } from './dialogs.js';
 import { cleanErr } from './filepane.js';
 
@@ -68,7 +68,7 @@ export async function snippetsEditor(app) {
       h('button.icon-btn', { title: 'Yukarı', disabled: i === 0, onclick: () => { [list[i - 1], list[i]] = [list[i], list[i - 1]]; render(); } }, icon('up', 13)),
       h('button.icon-btn', { title: 'Düzenle', onclick: () => { editing = s.id; name.value = s.name; cmd.value = s.command; run.checked = s.run !== false; saveBtn.lastChild.textContent = 'Güncelle'; cancelBtn.style.display = ''; render(); name.focus(); } }, icon('edit', 13)),
       h('button.icon-btn', { title: 'Sil', onclick: () => { list = list.filter((x) => x !== s); if (editing === s.id) resetForm(); render(); } }, icon('trash', 13))))
-      : [h('p.muted', null, 'Sık kullandığınız komutları ekleyin; Ctrl+Shift+K ile hızlıca gönderin.')]));
+      : [h('p.muted', null, keyLabel('Sık kullandığınız komutları ekleyin; Ctrl+Shift+K ile hızlıca gönderin.'))]));
   };
   saveBtn.onclick = () => {
     const n = name.value.trim(); const c = cmd.value.replace(/\s+$/, '');

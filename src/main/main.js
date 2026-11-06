@@ -1,5 +1,5 @@
 'use strict';
-const { app, BrowserWindow, ipcMain, dialog, shell, clipboard, safeStorage, nativeTheme, nativeImage, powerMonitor, Notification } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, shell, clipboard, safeStorage, nativeTheme, nativeImage, powerMonitor, Notification, Menu } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const fsp = require('fs/promises');
@@ -828,6 +828,29 @@ function applyNativeTheme() {
   if (win) win.setBackgroundColor(UI_BG[t] || UI_BG.dark);
 }
 
+// macOS: kısayollar ve Kes/Kopyala/Yapıştır menü üzerinden çalışır; Electron'un varsayılan menüsü (yeniden yükle vb.) kalmasın.
+// Cmd+W bilerek yok: pencere yerine bölme/sekme kapatan Cmd+Shift+W var, yanlışlıkla tüm oturumlar kapanmasın.
+function setMacMenu() {
+  if (process.platform !== 'darwin') return;
+  const sep = { type: 'separator' };
+  Menu.setApplicationMenu(Menu.buildFromTemplate([
+    { label: 'SSHDeck', submenu: [
+      { role: 'about', label: 'SSHDeck Hakkında' }, sep,
+      { role: 'services', label: 'Servisler' }, sep,
+      { role: 'hide', label: 'SSHDeck\'i Gizle' }, { role: 'hideOthers', label: 'Diğerlerini Gizle' }, { role: 'unhide', label: 'Tümünü Göster' }, sep,
+      { role: 'quit', label: 'SSHDeck\'ten Çık' },
+    ] },
+    { label: 'Düzen', submenu: [
+      { role: 'undo', label: 'Geri Al' }, { role: 'redo', label: 'Yinele' }, sep,
+      { role: 'cut', label: 'Kes' }, { role: 'copy', label: 'Kopyala' }, { role: 'paste', label: 'Yapıştır' }, { role: 'selectAll', label: 'Tümünü Seç' },
+    ] },
+    { label: 'Pencere', role: 'windowMenu', submenu: [
+      { role: 'minimize', label: 'Küçült' }, { role: 'zoom', label: 'Büyüt' }, { role: 'togglefullscreen', label: 'Tam Ekran' }, sep,
+      { role: 'front', label: 'Tümünü Öne Getir' },
+    ] },
+  ]));
+}
+
 function createWindow() {
   win = new BrowserWindow({
     width: 1400,
@@ -846,7 +869,7 @@ function createWindow() {
       spellcheck: false,
     },
   });
-  win.setMenu(null);
+  if (process.platform !== 'darwin') win.setMenu(null);
   win.loadFile(path.join(__dirname, '..', 'renderer', 'index.html'));
   win.webContents.setWindowOpenHandler(({ url }) => { if (/^https?:/.test(url)) shell.openExternal(url); return { action: 'deny' }; });
   win.webContents.on('will-navigate', (e) => e.preventDefault());
@@ -866,6 +889,7 @@ function createWindow() {
         checkboxLabel: 'Bir daha sorma (Ayarlar\'dan tekrar açılabilir)',
       }).then(({ response, checkboxChecked }) => {
         closeAsking = false;
+        if (response !== 0) quitting = false; // Cmd+Q'dan vazgeçildi
         if (response !== 0 || !win) return;
         if (checkboxChecked) store.saveSettings({ confirmClose: false });
         closingConfirmed = true;
@@ -891,11 +915,18 @@ async function singleInstance() {
 }
 const gotLock = singleInstance();
 app.on('second-instance', () => {
-  if (!win) return;
+  if (!win) { if (process.platform === 'darwin' && account) openMainWindow(); return; }
   if (win.isMinimized()) win.restore();
   if (!win.isVisible()) win.show();
   win.focus();
 });
+
+function openMainWindow() {
+  createWindow();
+  win.webContents.once('did-finish-load', () => account.start());
+  // Pencereye dönünce (başka cihazda değişmiş olabilir) en fazla 30 sn'de bir eşitle
+  win.on('focus', () => { const a = account.status(); if (a.loggedIn && Date.now() - a.lastSync > 30000) account.syncNow().catch(() => {}); });
+}
 
 app.whenReady().then(async () => {
   if (!(await gotLock)) { app.quit(); return; }
@@ -920,19 +951,27 @@ app.whenReady().then(async () => {
       send('sessions:updated', store.publicSessions(), err);
     },
   });
-  account = new AccountSync(store, { client: `SSHDeck ${app.getVersion()} ${process.platform === 'win32' ? 'Windows' : 'Linux'}` });
+  account = new AccountSync(store, { client: `SSHDeck ${app.getVersion()} ${{ win32: 'Windows', darwin: 'macOS' }[process.platform] || 'Linux'}` });
   account.on('status', (st) => send('account:status', st));
   account.on('changed', () => { applyNativeTheme(); send('account:changed', { sessions: store.publicSessions(), settings: store.publicSettings() }); });
   registerIpc();
   applyNativeTheme();
-  createWindow();
-  win.webContents.once('did-finish-load', () => account.start());
-  // Pencereye dönünce (başka cihazda değişmiş olabilir) en fazla 30 sn'de bir eşitle
-  win.on('focus', () => { const a = account.status(); if (a.loggedIn && Date.now() - a.lastSync > 30000) account.syncNow().catch(() => {}); });
+  setMacMenu();
+  openMainWindow();
   scheduleUpdateChecks();
   // Uykudan uyanınca: renderer kopmuş bağlantıları hemen yeniden denesin
   powerMonitor.on('resume', () => { send('app:resume'); setTimeout(() => account.syncNow().catch(() => {}), 5000); });
 });
 
-app.on('window-all-closed', () => { if (account) account.stop(); if (manager) manager.closeAll(); logger.closeAll(); app.quit(); });
+// macOS: pencere kapanınca uygulama Dock'ta kalır (bağlantılar kapanır, eşitleme sürer); Dock'a tıklayınca yeni pencere açılır
+let quitting = false;
+app.on('before-quit', () => { quitting = true; });
+app.on('window-all-closed', () => {
+  if (manager) manager.closeAll();
+  logger.closeAll();
+  if (process.platform === 'darwin' && !quitting) return;
+  if (account) account.stop();
+  app.quit();
+});
+app.on('activate', () => { if (!win && account) openMainWindow(); });
 app.on('will-quit', () => { try { fs.rmSync(DRAG_ROOT, { recursive: true, force: true }); } catch {} });

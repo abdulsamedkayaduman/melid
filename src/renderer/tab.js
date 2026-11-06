@@ -1,4 +1,4 @@
-import { h, icon, uid, formatSize, backForward } from './util.js';
+import { h, icon, uid, formatSize, backForward, modKey } from './util.js';
 import { FilePane, cleanErr } from './filepane.js';
 import { contextMenu, modal, toast, promptText, confirmBox } from './dialogs.js';
 import { TermPane } from './termpane.js';
@@ -457,10 +457,10 @@ export class SessionTab {
   onTermKey(pane, e) {
     if (e.type !== 'keydown') return true;
     const k = e.key.toLowerCase();
-    if (e.ctrlKey && e.shiftKey && k === 'c') { if (pane.term.hasSelection()) this.api.clipboard.write(pane.term.getSelection()); return false; }
+    if (modKey(e) && e.shiftKey && k === 'c') { if (pane.term.hasSelection()) this.api.clipboard.write(pane.term.getSelection()); return false; }
     // preventDefault: yoksa Chromium da 'paste' olayı üretir ve xterm ikinci kez yapıştırır
-    if (e.ctrlKey && e.shiftKey && k === 'v') { e.preventDefault(); pane.paste(); return false; }
-    if (e.ctrlKey && e.shiftKey && k === 'f') { pane.toggleSearch(true); return false; }
+    if (modKey(e) && e.shiftKey && k === 'v') { e.preventDefault(); pane.paste(); return false; }
+    if (modKey(e) && e.shiftKey && k === 'f') { pane.toggleSearch(true); return false; }
     if (e.shiftKey && e.key === 'Insert') { e.preventDefault(); pane.paste(); return false; }
     if (this.app.isAppShortcut(e)) return false;
     return true;

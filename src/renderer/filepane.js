@@ -1,4 +1,4 @@
-import { h, icon, formatSize, formatDate, permString, uid, backForward } from './util.js';
+import { h, icon, formatSize, formatDate, permString, uid, backForward, modKey, keyLabel } from './util.js';
 import { contextMenu, promptText, confirmBox, toast, modal } from './dialogs.js';
 
 // Sütunlar: varsayılan genişlikler (px) ve "Ad" sütununun en az genişliği
@@ -519,7 +519,7 @@ export class FilePane {
     const names = this.vis.map((e) => e.name);
     if (ev.shiftKey && this.anchor && names.includes(this.anchor)) {
       const [a, b] = [names.indexOf(this.anchor), names.indexOf(name)].sort((x, y) => x - y);
-      if (!ev.ctrlKey) this.sel.clear();
+      if (!ev.ctrlKey && !ev.metaKey) this.sel.clear();
       for (let i = a; i <= b; i++) this.sel.add(names[i]);
     } else if (ev.ctrlKey || ev.metaKey) {
       if (this.sel.has(name)) this.sel.delete(name); else this.sel.add(name);
@@ -560,17 +560,18 @@ export class FilePane {
     else if (k === 'PageDown') { e.preventDefault(); move(cur + 15); }
     else if (k === 'PageUp') { e.preventDefault(); move(cur - 15); }
     else if (k === 'Enter') { e.preventDefault(); const s = this.selected(); if (s.length === 1) this.activate(s[0]); else if (s.length) this.transferSelection(); }
+    else if (k === 'Backspace' && e.metaKey) { e.preventDefault(); this.remove(this.selected()); } // macOS'ta Delete tuşu yok
     else if (k === 'Backspace') { e.preventDefault(); this.up(); }
     else if (k === 'ArrowLeft' && e.altKey) { e.preventDefault(); this.goBack(); }
     else if (k === 'ArrowRight' && e.altKey) { e.preventDefault(); this.goForward(); }
     else if (k === 'F5') { e.preventDefault(); this.refresh(); }
     else if (k === 'F2') { e.preventDefault(); const s = this.selected(); if (s.length === 1) this.rename(s[0]); }
     else if (k === 'Delete') { e.preventDefault(); this.remove(this.selected()); }
-    else if (k.toLowerCase() === 'c' && e.ctrlKey && !e.shiftKey && !e.altKey) { e.preventDefault(); this.copySelection(); }
-    else if (k.toLowerCase() === 'v' && e.ctrlKey && !e.shiftKey && !e.altKey) { e.preventDefault(); this.paste(); }
-    else if (k === 'a' && e.ctrlKey) { e.preventDefault(); this.sel = new Set(names); this.paintSel(); }
-    else if (k === 'l' && e.ctrlKey) { e.preventDefault(); this.pathInput.focus(); }
-    else if (k === 'f' && e.ctrlKey && !e.shiftKey) { e.preventDefault(); this.filterInput.focus(); this.filterInput.select(); }
+    else if (k.toLowerCase() === 'c' && modKey(e) && !e.shiftKey && !e.altKey) { e.preventDefault(); this.copySelection(); }
+    else if (k.toLowerCase() === 'v' && modKey(e) && !e.shiftKey && !e.altKey) { e.preventDefault(); this.paste(); }
+    else if (k === 'a' && modKey(e)) { e.preventDefault(); this.sel = new Set(names); this.paintSel(); }
+    else if (k === 'l' && modKey(e)) { e.preventDefault(); this.pathInput.focus(); }
+    else if (k === 'f' && modKey(e) && !e.shiftKey) { e.preventDefault(); this.filterInput.focus(); this.filterInput.select(); }
     else if (k === 'Escape' && this.filter) { e.preventDefault(); this.setFilter(''); }
     else if (k === ' ' && !this._ta && !e.ctrlKey) { e.preventDefault(); const s = this.selected(); if (s.length === 1 && !s[0].isDir) this.preview(s[0]); }
     else if (k.length === 1 && !e.ctrlKey && !e.altKey && !e.metaKey) {
@@ -627,7 +628,7 @@ export class FilePane {
     const text = items.map((it) => it.path).join('\n');
     fileClip = { pane: this, items, text };
     this.api.clipboard.write(text);
-    toast(`${s.length === 1 ? `“${s[0].name}”` : `${s.length} öğe`} kopyalandı · hedef klasörde Ctrl+V`);
+    toast(`${s.length === 1 ? `“${s[0].name}”` : `${s.length} öğe`} kopyalandı · hedef klasörde ${keyLabel('Ctrl+V')}`);
   }
 
   async paste() {

@@ -1,6 +1,8 @@
 # SSHDeck
 
-Xshell + Xftp tarzı, Linux için SSH terminali ve SFTP dosya yöneticisi (Electron + xterm.js + ssh2).
+Xshell + Xftp tarzı, Linux, Windows ve macOS için SSH terminali ve SFTP dosya yöneticisi (Electron + xterm.js + ssh2).
+
+macOS'ta kısayollarda Ctrl yerine Cmd kullanılır. Paket imzasızdır; ilk kurulum için bkz. `docs/ci.md` > macOS paketi.
 
 ## Kurulum (CachyOS / Arch)
 

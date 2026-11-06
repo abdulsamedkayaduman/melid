@@ -26,7 +26,7 @@ export async function updateDialog(app, { check = false } = {}) {
     st.notes ? h('pre.upd-notes', null, st.notes) : null,
     h('div.hint', null, st.canInstall
       ? `${st.kindLabel} indirilecek (${formatSize(st.size)}). Kurulumdan sonra SSHDeck yeniden açılır; açık bağlantılar kapanır.`
-      : 'Bu kurulum kendiliğinden güncellenemiyor (geliştirme sürümü ya da tanınmayan paket). Yeni sürümü elle indirip kurun.'),
+      : 'Bu kurulum kendiliğinden güncellenemiyor (geliştirme sürümü, macOS ya da tanınmayan paket). Yeni sürümü elle indirip kurun.'),
     prog, err);
 
   let busy = false;

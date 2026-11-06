@@ -1,7 +1,7 @@
 {
   "name": "sshdeck",
   "version": "1.8.11",
-  "description": "Linux ve Windows için Xshell/Xftp tarzı SSH terminali ve SFTP dosya yöneticisi",
+  "description": "Linux, Windows ve macOS için Xshell/Xftp tarzı SSH terminali ve SFTP dosya yöneticisi",
   "main": "src/main/main.js",
   "scripts": {
     "start": "electron .",
@@ -9,7 +9,8 @@
     "dist": "electron-builder --linux AppImage pacman",
     "dist:appimage": "electron-builder --linux AppImage",
     "test": "bash test/run.sh",
-    "dist:win": "electron-builder --win"
+    "dist:win": "electron-builder --win",
+    "dist:mac": "electron-builder --mac"
   },
   "author": {
     "name": "Abdulsamed Kayaduman",
@@ -78,6 +79,21 @@
         {
           "target": "portable",
           "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "mac": {
+      "icon": "build/icon.png",
+      "category": "public.app-category.developer-tools",
+      "identity": null,
+      "artifactName": "SSHDeck-${version}-mac-${arch}.${ext}",
+      "target": [
+        {
+          "target": "tar.gz",
+          "arch": [
+            "arm64",
             "x64"
           ]
         }

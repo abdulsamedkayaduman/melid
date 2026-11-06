@@ -1,6 +1,6 @@
 // Toplu işler: birden çok sunucuda komut çalıştırıp çıktıları toplama ve sunucu kaynak özeti.
 // Ana süreçte conncheck.js (sessiz bağlanır, işi yapar, ayrılır); olaylar check:progress / check:done.
-import { h, icon, formatSize } from './util.js';
+import { h, icon, formatSize, keyLabel } from './util.js';
 import { modal, toast, confirmBox } from './dialogs.js';
 import { cleanErr } from './filepane.js';
 
@@ -130,7 +130,7 @@ export async function execDialog(app, ids, title = 'Sunucularda komut çalışt�
   const body = h('div.bk', null,
     h('div.bk-top', null,
       h('div.bk-left', null,
-        h('label.field', null, h('span', null, 'Komut (Ctrl+Enter ile çalıştır)'), cmd),
+        h('label.field', null, h('span', null, keyLabel('Komut (Ctrl+Enter ile çalıştır)')), cmd),
         h('div.row', null, snipSel, h('span.muted', null, 'Zaman aşımı'), timeoutSel)),
       picker.el),
     h('div.bk-res-head', null, summary, h('span.spacer'), copyBtn, runBtn),

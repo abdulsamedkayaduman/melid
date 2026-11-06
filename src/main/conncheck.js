@@ -20,7 +20,9 @@ const { SshManager } = require('./ssh-manager');
 /** ping ile IP'ye erişim (ICMP kapalı sunucularda yanıltıcı olabilir; yalnız TCP yanıt vermeyince ek bilgi) */
 function ping(host, timeoutMs = 2500) {
   return new Promise((resolve) => {
-    const args = process.platform === 'win32' ? ['-n', '1', '-w', String(timeoutMs), host] : ['-c', '1', '-W', String(Math.ceil(timeoutMs / 1000)), host];
+    const sec = String(Math.ceil(timeoutMs / 1000));
+    // macOS: -W milisaniye, saniye sınırı -t
+    const args = process.platform === 'win32' ? ['-n', '1', '-w', String(timeoutMs), host] : process.platform === 'darwin' ? ['-c', '1', '-t', sec, host] : ['-c', '1', '-W', sec, host];
     let p;
     try { p = spawn('ping', args, { stdio: 'ignore', windowsHide: true }); } catch { resolve(null); return; }
     const t = setTimeout(() => { try { p.kill(); } catch {} resolve(false); }, timeoutMs + 1500);

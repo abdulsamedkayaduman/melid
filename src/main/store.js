@@ -32,7 +32,7 @@ function decWithKey(b64, key) {
 const MASTER_CHECK = 'sshdeck-master-ok';
 
 const DEFAULT_SETTINGS = {
-  fontFamily: "'JetBrains Mono', 'Fira Code', 'DejaVu Sans Mono', monospace",
+  fontFamily: "'JetBrains Mono', 'Fira Code', 'DejaVu Sans Mono', Menlo, monospace",
   fontSize: 14,
   theme: 'deck-dark',
   copyOnSelect: true,

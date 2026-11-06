@@ -9,10 +9,11 @@ Forgejo: `http://192.168.1.50:3001/abdulsamed.kayaduman/ssh-deck`. İş akışı
 | `test` | `node:22-bookworm` | birim testleri + `test/core.test.js` (Docker yerine `ci/test-sshd.sh` container içinde sshd açar) |
 | `linux` | `node:22-bookworm` | `SSHDeck-<sürüm>.AppImage`, `sshdeck-<sürüm>.pacman` |
 | `windows` | `electronuserland/builder:22-wine-05.26` | `SSHDeck-<sürüm>-kurulum.exe`, `SSHDeck-<sürüm>-tasinabilir.exe` (NSIS kaldırıcısı için wine gerekir) |
+| `mac` | `node:22-bookworm` | `SSHDeck-<sürüm>-mac-arm64.tar.gz`, `SSHDeck-<sürüm>-mac-x64.tar.gz` (imzasız; ayrıntı aşağıda) |
 | `android` | `node:22-bookworm` + JDK 17 | SSH çekirdeği testleri (`android/coretest`), lint, imzalı `SSHDeck-<sürüm>.apk` |
 | `yayinla` | `node:22-bookworm` | Forgejo sürümü (Releases) + `SHA256SUMS.txt` |
 
-`linux`, `windows`, `android` paralel çalışır; hepsi `test`'i bekler.
+`linux`, `windows`, `mac`, `android` paralel çalışır; hepsi `test`'i bekler.
 
 ## Nasıl başlatılır
 
@@ -57,6 +58,24 @@ http://192.168.1.50:3001/api/packages/abdulsamed.kayaduman/generic/sshdeck/lates
 - Deneme için masaüstünde `SSHDECK_UPDATE_URL`, Android'de `updateUrl` ayarı başka kaynak gösterebilir
   (imza yine aynı anahtarla doğrulanır).
 
+## macOS paketi
+
+Paket Linux'ta üretilir, Mac runner gerekmez. `.zip` kullanılmaz: Linux'ta sembolik bağlar kopyaya dönüşür, Electron çatısı
+üç kez yer kaplar ve paket yapısı bozulur. `.dmg` için Mac gerekir.
+
+İmza ve notarize yok (Apple Developer hesabı gerekir), bu yüzden tarayıcıyla indirilen paketi macOS ilk açılışta engeller.
+İlk kurulum:
+
+```
+tar xzf SSHDeck-<sürüm>-mac-arm64.tar.gz     # Intel Mac için -x64
+mv SSHDeck.app /Applications/
+xattr -cr /Applications/SSHDeck.app
+codesign --force --deep --sign - /Applications/SSHDeck.app
+```
+
+Uygulama içi güncelleme macOS'ta kurulum yapmaz: yeni sürüm bildirilir, paket Sürümler sayfasından elle indirilir
+(`installKind()` `null` döner, `ci/publish-update.sh` Mac paketlerini `latest.json`'a eklemez).
+
 ## Bir kez yapılacak kurulum
 
 1. Depo ayarlarında **Actions** açık olmalı (Ayarlar > Birimler).
@@ -82,5 +101,5 @@ http://192.168.1.50:3001/api/packages/abdulsamed.kayaduman/generic/sshdeck/lates
 ## Yerel karşılıkları
 
 - `npm test` (Docker/Podman ile), `npx electron-builder --linux AppImage pacman`, `npx electron-builder --win`
-  (Linux'ta wine gerekir).
+  (Linux'ta wine gerekir), `npm run dist:mac`.
 - `cd android && ./gradlew assembleRelease lintRelease`, `bash android/coretest/run.sh`.

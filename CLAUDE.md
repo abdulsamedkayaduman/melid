@@ -1,6 +1,6 @@
 # SSHDeck — Claude Code notları
 
-Linux için Xshell + Xftp tarzı SSH terminali ve SFTP istemcisi. Electron 44, `ssh2`, `@xterm/xterm` 6.
+Linux, Windows ve macOS için Xshell + Xftp tarzı SSH terminali ve SFTP istemcisi. Electron 44, `ssh2`, `@xterm/xterm` 6.
 Arayüz dili Türkçe; kullanıcıya görünen tüm metinler Türkçe kalmalı.
 
 Bekleyen işler için `YAPILACAKLAR.md` (otomatik güncelleme, AUR paketi, electron-updater vb.).
@@ -23,7 +23,10 @@ Bekleyen işler için `YAPILACAKLAR.md` (otomatik güncelleme, AUR paketi, elect
   Linux'ta NSIS kurulumu için `wine` gerekir; wine'sız yalnız `npx electron-builder --win portable zip` çalışır.
   İmzasız: SmartScreen ilk açılışta uyarır ("Ek bilgi" -> "Yine de çalıştır")
 
-CI: `.forgejo/workflows/derle.yml` (Forgejo Actions; elle başlatma veya `vX.Y.Z` etiketi) testler + Linux + Windows +
+- `npm run dist:mac` — macOS arm64 + x64: `SSHDeck-<sürüm>-mac-<mimari>.tar.gz`. Linux'ta üretilir; `.zip` sembolik bağları bozar,
+  `.dmg` için Mac gerekir. İmzasız: ilk kurulum adımları `docs/ci.md`
+
+CI: `.forgejo/workflows/derle.yml` (Forgejo Actions; elle başlatma veya `vX.Y.Z` etiketi) testler + Linux + Windows + macOS +
 imzalı APK üretir, Forgejo sürümüne yükler. Ayrıntılar ve gereken secret'lar: `docs/ci.md`. Sürüm tek yerde: `package.json`.
 
 Değişiklikten sonra en az `npm test` çalıştır. Arayüz değişikliklerini uygulamayı açıp elle kontrol et.
@@ -99,12 +102,24 @@ src/renderer/util.js     h() DOM yardımcısı, biçimlendirme, SVG ikon seti
 Renderer'da bundler yok: ES modülleri doğrudan yüklenir, xterm UMD dosyaları `index.html` içinde
 `../../node_modules/...` yolundan gelir (paketli sürümde de asar içinde çalışır).
 
+## Pano
+
+Electron 44'te `clipboard` asenkrondur (`read()` -> `ClipboardItem[]`, `availableFormats`/`readBuffer` yok) ve bazı biçimlerin okunması
+X11'de hiç dönmeyebilir: okumalar `clipLimit` süre sınırından geçmeli. Dosya panelinde Ctrl+C/V: `filepane.js` `copySelection`/`paste`.
+
 ## Windows notları
 
 - Yerel panel yolları `C:\...`; renderer'da `tab.js` `win32` yardımcıları (`app.platform === 'win32'`). Sürücü kökünün
   üstü sanal `Bu Bilgisayar` listesi (`main.js` `DRIVES`, `listDrives()`).
 - ssh-agent: `SSH_AUTH_SOCK` yoksa `\\.\pipe\openssh-ssh-agent`, o da yoksa Pageant (`findAgent()`);
   Pageant için `pagent.exe` `asarUnpack` ile asar dışında.
+
+## macOS notları
+
+- Uygulama kısayolları Ctrl yerine Cmd: kod `util.js` `modKey(e)` kullanmalı, Ctrl terminale kalır. Ctrl+Tab iki platformda aynı;
+  sekme geçişi Cmd+1..9 (Option+rakam özel karakter yazar). Kısayol metinleri `keyLabel()` ile `⌘⇧N` olur (`h()` `title`'da kendisi uygular).
+- Terminalde Cmd+C/V, `setMacMenu()` menü rolleriyle çalışır. Pencere kapanınca uygulama Dock'ta kalır; Cmd+W bilerek yok.
+- Otomatik güncelleme kurulumu yok (`installKind()` null): yalnız bildirim.
 
 ## Android sürümü (`android/`)
 

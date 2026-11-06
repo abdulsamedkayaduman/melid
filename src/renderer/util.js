@@ -1,4 +1,13 @@
 // Small DOM + formatting helpers.
+// macOS'ta uygulama kısayolları Ctrl yerine Cmd ile; Ctrl tuşu terminale (Ctrl+C, Ctrl+R ...) bırakılır
+export const IS_MAC = /^Mac/.test(navigator.platform);
+export const modKey = (e) => (IS_MAC ? e.metaKey && !e.ctrlKey : e.ctrlKey);
+/** Kısayol metni: macOS'ta "Ctrl+Shift+N" -> "⌘⇧N". Ctrl+Tab iki platformda da aynı. */
+export function keyLabel(s) {
+  if (!IS_MAC) return s;
+  return String(s).replace(/Ctrl \+/g, '⌘ +').replace(/Alt\+1\.\.9/g, '⌘1..9').replace(/Ctrl\+(?!Tab)/g, '⌘').replace(/Alt\+/g, '⌥').replace(/Shift\+/g, '⇧');
+}
+
 export function h(tag, attrs, ...children) {
   const [name, ...classes] = tag.split('.');
   const e = document.createElement(name || 'div');
@@ -10,6 +19,7 @@ export function h(tag, attrs, ...children) {
       else if (k === 'style' && typeof v === 'object') Object.assign(e.style, v);
       else if (k.startsWith('on') && typeof v === 'function') e.addEventListener(k.slice(2).toLowerCase(), v);
       else if (k === 'dataset') Object.assign(e.dataset, v);
+      else if (k === 'title') e.title = keyLabel(v);
       else if (k in e && typeof v !== 'string') e[k] = v;
       else e.setAttribute(k, v === true ? '' : v);
     }
