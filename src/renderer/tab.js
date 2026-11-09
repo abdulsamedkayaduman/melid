@@ -513,6 +513,7 @@ export class SessionTab {
     this.fwState.clear();
     for (const p of this.panes) p.shellOpen = false;
     this._userClosed = false;
+    for (const p of this.panes) p.resetModes();
     this.setState('connecting', 'Bağlanılıyor…');
     const s = this.session;
     const label = s ? `${s.username ? s.username + '@' : ''}${s.host}:${s.port || 22}` : `${this.quick.username ? this.quick.username + '@' : ''}${this.quick.host}:${this.quick.port}`;
@@ -588,7 +589,7 @@ export class SessionTab {
   onStatus(state, msg) {
     if (state === 'connected' || state === 'connecting') return; // handled by connect()
     if (this.state === 'connected') {
-      for (const p of this.panes) p.shellOpen = false;
+      for (const p of this.panes) { p.shellOpen = false; p.resetModes(); }
       this.stats = null;
       this.setState(state, msg);
       this.info(`● ${msg}`, state === 'error' ? '31' : '33');
