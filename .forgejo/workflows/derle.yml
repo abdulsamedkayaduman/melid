@@ -218,6 +218,8 @@ jobs:
           FORGEJO_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PACKAGE_TOKEN: ${{ secrets.PACKAGE_TOKEN }}
           UPDATE_SIGNING_KEY: ${{ secrets.UPDATE_SIGNING_KEY }}
+          # latest.json'daki indirme adresleri: eşitleme sunucusu bunları paket deposundan aktarır (server/sync-server.js)
+          PUBLIC_DOWNLOAD_BASE: https://sshdeck.abdulsamed.net/indir
         run: |
           VERSION=$(node -p 'require("./package.json").version')
           cd dist && sha256sum * > SHA256SUMS.txt && cat SHA256SUMS.txt && cd ..

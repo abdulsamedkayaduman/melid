@@ -31,15 +31,20 @@ export async function accountSheet(app) {
   return st.loggedIn ? manageSheet(app, st) : loginSheet(app, null, st);
 }
 
+// Hesap penceresinde hazır gelen genel eşitleme sunucusu (masaüstünde src/main/sync.js DEFAULT_SERVER)
+const DEFAULT_SERVER = 'sshdeck.abdulsamed.net';
+
 async function loginSheet(app, reauth, st0) {
   let mode = 'login';
   let lastServer = ''; let lastUser = '';
   try { lastServer = localStorage.getItem('syncServer') || ''; lastUser = localStorage.getItem('syncUser') || ''; } catch {}
   if (reauth) { lastServer = reauth.server; lastUser = reauth.user; }
+  if (!lastServer) lastServer = DEFAULT_SERVER;
   const inp = (attrs) => h('input.input', { spellcheck: false, autocapitalize: 'off', autocomplete: 'off', ...attrs });
   const f = {
-    server: inp({ value: lastServer, placeholder: 'örn. 192.168.1.50 veya https://senkron.ornek.com', inputmode: 'url' }),
+    server: inp({ value: lastServer, placeholder: 'örn. sshdeck.abdulsamed.net veya 192.168.1.50', inputmode: 'url' }),
     user: inp({ value: lastUser }),
+    email: inp({ type: 'email', inputmode: 'email', placeholder: 'ornek@eposta.com' }),
     password: inp({ type: 'password' }),
     password2: inp({ type: 'password' }),
     invite: inp({}),
@@ -68,7 +73,11 @@ async function loginSheet(app, reauth, st0) {
     } finally { scanBtn.disabled = false; }
   };
 
-  const regOnly = [field('Parola (tekrar)', f.password2), field('Davet kodu', f.invite, 'Sunucudaki SSHDECK_SYNC_INVITE')];
+  // Davet kodu yalnız sunucu isterse görünür (genel sunucuda herkes hesap açabilir)
+  const inviteField = field('Davet kodu', f.invite, 'Sunucu yöneticisinden alın');
+  let needInvite = false;
+  const emailField = field('E-posta', f.email, 'Yalnız hesabınızla ilgili size ulaşmak için saklanır');
+  const regOnly = [field('Parola (tekrar)', f.password2), inviteField];
   const modeBtns = {
     login: h('button.seg', { type: 'button', onclick: () => setMode('login') }, 'Giriş yap'),
     register: h('button.seg', { type: 'button', onclick: () => setMode('register') }, 'Hesap oluştur'),
@@ -76,7 +85,8 @@ async function loginSheet(app, reauth, st0) {
   const setMode = (m) => {
     mode = m;
     for (const [k, b] of Object.entries(modeBtns)) b.classList.toggle('on', k === m);
-    for (const el of regOnly) el.hidden = m !== 'register';
+    for (const el of [...regOnly, emailField]) el.hidden = m !== 'register';
+    inviteField.hidden = m !== 'register' || !needInvite;
     intro.textContent = m === 'register'
       ? 'Hesap parolası bağlantılarınızı şifreler ve hiçbir zaman sunucuya gönderilmez. Unutursanız sunucudaki veriler kurtarılamaz.'
       : reauth ? 'Hesap parolası başka bir cihazda değiştirildi; yeni parolayla tekrar giriş yapın.'
@@ -99,6 +109,7 @@ async function loginSheet(app, reauth, st0) {
       reauth ? null : h('div', { style: { margin: '-6px 0 14px' } }, scanBtn),
       found,
       field('Kullanıcı adı', f.user),
+      emailField,
       field('Hesap parolası', f.password),
       h('div', { style: { margin: '-6px 0 12px', fontSize: '13px' } }, h('a', { href: '#', style: { color: 'var(--accent)' }, onclick: (e) => { e.preventDefault(); forgot = true; sh.close(null); } }, 'Hesap parolamı unuttum')),
       ...regOnly,
@@ -115,8 +126,10 @@ async function loginSheet(app, reauth, st0) {
       if (mode === 'register') {
         if (o.password.length < 10) { err.textContent = 'Hesap parolası en az 10 karakter olmalı'; return false; }
         if (o.password !== f.password2.value) { err.textContent = 'Parolalar eşleşmiyor'; return false; }
+        o.email = f.email.value.trim();
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(o.email)) { err.textContent = 'Geçerli bir e-posta adresi girin'; return false; }
         o.invite = f.invite.value.trim();
-        if (!o.invite) { err.textContent = 'Davet kodu gerekli (sunucudaki SSHDECK_SYNC_INVITE)'; return false; }
+        if (needInvite && !o.invite) { err.textContent = 'Bu sunucu davet kodu istiyor'; return false; }
       }
       busy = true;
       sh.dismiss = false; // sürerken dışarı dokunmak / geri tuşu pencereyi kapatmasın
@@ -127,6 +140,7 @@ async function loginSheet(app, reauth, st0) {
         try { localStorage.setItem('syncServer', o.server); localStorage.setItem('syncUser', o.user); } catch {}
         return true;
       } catch (e) {
+        if (mode === 'register' && /davet kodu/i.test(e.message)) needInvite = true;
         setMode(mode);
         err.textContent = e.message;
         // ilk eşitleme hata verse de hesap kaydedilmiş olabilir
@@ -153,8 +167,10 @@ async function manageSheet(app, st) {
     { icon: 'key', label: st.syncKeys ? 'SSH anahtarı eşitlemesini kapat' : 'SSH anahtarlarını da eşitle', value: 'keys' },
     { icon: 'lock', label: 'Hesap parolasını değiştir', value: 'password' },
     { icon: 'key', label: 'Kurtarma anahtarı', value: 'recovery', hint: recHint },
+    { icon: 'edit', label: 'E-postayı değiştir', value: 'email', hint: info ? (info.email || 'yok') : '' },
     '-',
     { icon: 'power', label: 'Çıkış yap', value: 'logout', danger: true },
+    { icon: 'trash', label: 'Hesabı sil', value: 'delete', danger: true },
   ], h('div', null,
     kv('Hesap', st.user), kv('Sunucu', st.server.replace(/^https?:\/\//, '')),
     kv('Durum', STATE_TEXT[st.state] || st.state), kv('Son eşitleme', syncTimeText(st.lastSync)),
@@ -183,6 +199,19 @@ async function manageSheet(app, st) {
       const t = toast('Parola değiştiriliyor…', { ms: 20000 });
       try { await N.call('accountPassword', { old: oldP, new: n1 }); } finally { t.remove(); }
       toast('Hesap parolası değiştirildi. Diğer cihazlarda yeni parolayla tekrar giriş gerekecek.', { type: 'ok', ms: 6000 });
+    } else if (act === 'email') {
+      const v = await promptText({ title: 'E-posta', label: 'Hesabınızın e-posta adresi', value: info?.email || '', type: 'email', ok: 'Kaydet',
+        validate: (x) => /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(x.trim()) ? null : 'Geçerli bir e-posta adresi girin' });
+      if (v == null) return;
+      await N.call('accountEmail', { email: v.trim() });
+      toast('E-posta kaydedildi', { type: 'ok' });
+    } else if (act === 'delete') {
+      if (!await confirm({ title: 'Hesabı sil', message: `${st.user} hesabı ve sunucudaki şifreli kasası kalıcı olarak silinecek; geri alınamaz. Bu telefondaki oturumlar silinmez, yalnız eşitleme durur.`, ok: 'Devam', danger: true })) return;
+      const pw = await promptText({ title: 'Hesabı sil', label: 'Onaylamak için hesap parolanız', type: 'password', ok: 'Kalıcı olarak sil' });
+      if (pw == null) return;
+      const t = toast('Hesap siliniyor…', { ms: 30000 });
+      try { app.setAccount(await N.call('accountDelete', { password: pw })); } finally { t.remove(); }
+      toast('Hesap silindi. Bu telefondaki oturumlar yerinde.', { type: 'ok', ms: 6000 });
     } else if (act === 'logout') {
       if (!await confirm({ title: 'Çıkış yap', message: 'Bu telefon hesaptan çıkarılsın mı? Buradaki oturumlar silinmez, yalnız eşitleme durur.', ok: 'Çıkış yap', danger: true })) return;
       app.setAccount(await N.call('accountLogout'));
@@ -229,7 +258,7 @@ async function recoveryFlow(info) {
 async function recoverSheet(app, pre = {}) {
   const inp = (attrs) => h('input.input', { spellcheck: false, autocapitalize: 'off', autocomplete: 'off', ...attrs });
   const f = {
-    server: inp({ value: pre.server || '', inputmode: 'url', placeholder: 'örn. 192.168.1.50 veya https://senkron.ornek.com' }),
+    server: inp({ value: pre.server || '', inputmode: 'url', placeholder: 'örn. sshdeck.abdulsamed.net veya 192.168.1.50' }),
     user: inp({ value: pre.user || '' }),
     code: inp({ placeholder: 'XXXX-XXXX-XXXX-…', autocapitalize: 'characters' }),
     pw1: inp({ type: 'password' }),

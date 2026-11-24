@@ -110,6 +110,10 @@ public class SyncTest {
 
         ok(SyncCore.normServer("192.168.1.50").equals("http://192.168.1.50:3150"), "portsuz adrese 3150");
         ok(SyncCore.normServer("https://Senkron.Ornek.com/").equals("https://senkron.ornek.com"), "https adresi");
+        ok(SyncCore.normServer("sshdeck.abdulsamed.net").equals("https://sshdeck.abdulsamed.net"), "alan adı: https");
+        ok(SyncCore.normServer("senkron.ornek.com:8443").equals("https://senkron.ornek.com:8443"), "alan adı + port");
+        ok(SyncCore.normServer("nas").equals("http://nas:3150"), "tek parçalı ad yerel");
+        ok(SyncCore.normServer("nas.lan:4000").equals("http://nas.lan:4000"), ".lan yerel");
 
         MemLocal L = new MemLocal();
         L.settings.put("fontSize", 11).put("uiTheme", "mint");
@@ -145,8 +149,12 @@ public class SyncTest {
                 .put("public", gk.getString("public")).put("private", gk.getString("private")).put("mtime", System.currentTimeMillis()));
         L2.saveSession(new JSONObject().put("id", "t1").put("name", "telefondan").put("host", "t").put("authType", "key").put("keyFp", gk.getString("fingerprint")));
         SyncCore.Client c2 = new SyncCore.Client(L2, "SSHDeck test Android");
-        ok(expectError(() -> c2.register(server, "telefon", "telefonParola1", "yanlis")).contains("Davet kodu yanlış"), "yanlış davet kodu");
-        c2.register(server, "telefon", "telefonParola1", "davet");
+        ok(expectError(() -> c2.register(server, "telefon", "telefonParola1", "tel@ornek.com", "yanlis")).contains("Davet kodu yanlış"), "yanlış davet kodu");
+        ok(expectError(() -> c2.register(server, "telefon", "telefonParola1", "", "davet")).contains("E-posta"), "e-posta zorunlu");
+        c2.register(server, "telefon", "telefonParola1", "tel@ornek.com", "davet");
+        ok("tel@ornek.com".equals(c2.info().optString("email")), "e-posta kaydedildi");
+        c2.setEmail("yeni@ornek.com");
+        ok("yeni@ornek.com".equals(c2.info().optString("email")), "e-posta değişti");
         ok(c2.status().optLong("version") == 1, "Android'den hesap açma");
 
         // Kurtarma anahtarı: yanlış parola reddedilir; anahtarla aynı/yeni parolaya geçilir, kasa korunur
@@ -169,6 +177,15 @@ public class SyncTest {
         ok(!c2.status().optBoolean("loggedIn") && L2.byName("telefondan") != null, "çıkış (yerel oturumlar kalır)");
         L2.setAccount(new JSONObject().put("server", server).put("user", "telefon").put("version", 1), tok, new byte[32]);
         ok(expectError(c2::syncNow).contains("tekrar giriş") && c2.state.equals("auth"), "iptal edilen jeton: tekrar giriş istenir");
+
+        // Hesap silme: ayrı bir hesapla (telefon hesabını masaüstü betiği sonra kullanır); yerel oturumlar kalır
+        L2.setAccount(null, null, null);
+        c2.register(server, "silinecek", "silinecekParola1", "sil@ornek.com", "davet");
+        ok(expectError(() -> c2.deleteAccount("yanlisParola1")).contains("parolası yanlış"), "hesap silme: yanlış parola");
+        c2.deleteAccount("silinecekParola1");
+        ok(!c2.status().optBoolean("loggedIn") && L2.byName("telefondan") != null, "hesap silindi (yerel oturumlar kalır)");
+        ok(expectError(() -> c2.login(server, "silinecek", "silinecekParola1")).contains("parola yanlış"), "silinen hesaba giriş yapılamaz");
+        L2.setAccount(new JSONObject().put("server", server).put("user", "telefon").put("version", 1), tok, new byte[32]);
 
         System.out.println("\n" + passed + " eşitleme testi geçti");
         System.exit(0);

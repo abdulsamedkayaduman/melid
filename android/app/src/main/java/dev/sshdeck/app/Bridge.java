@@ -144,7 +144,7 @@ public class Bridge {
             case "accountScan": return dev.sshdeck.core.SyncCore.scan(dev.sshdeck.core.SyncCore.lanTargets(), dev.sshdeck.core.SyncCore.DEFAULT_PORT, 900);
             // ilk eşitleme hata verse de hesap kaydedilmiştir: zamanlayıcı yine başlar
             case "accountRegister":
-                try { app.sync.client.register(a.getString("server"), a.getString("user"), a.getString("password"), a.getString("invite")); return app.sync.status(); }
+                try { app.sync.client.register(a.getString("server"), a.getString("user"), a.getString("password"), a.optString("email"), a.optString("invite")); return app.sync.status(); }
                 finally { app.sync.afterLogin(); }
             case "accountLogin":
                 try { app.sync.client.login(a.getString("server"), a.getString("user"), a.getString("password")); return app.sync.status(); }
@@ -155,6 +155,8 @@ public class Bridge {
             case "accountSync": return app.sync.run();
             // kurtarma anahtarı: kod arayüze bir kez gider (gösterilip kaydedilsin diye)
             case "accountInfo": return app.sync.client.info();
+            case "accountEmail": return app.sync.client.setEmail(a.getString("email"));
+            case "accountDelete": { JSONObject r = app.sync.client.deleteAccount(a.getString("password")); app.sync.stop(); return r; }
             case "accountRecoveryCreate": return app.sync.client.createRecovery(a.getString("password"));
             case "accountRecoveryRemove": app.sync.client.removeRecovery(a.getString("password")); return null;
             case "accountRecover":

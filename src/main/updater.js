@@ -1,6 +1,7 @@
 'use strict';
 // Güncelleme denetimi ve indirme (Electron'dan bağımsız; test/updater.test.js düz Node ile test eder).
-// Kaynak: CI'ın her vX.Y.Z sürümünde Forgejo generic paket deposuna koyduğu latest.json:
+// Kaynak: CI'ın her vX.Y.Z sürümünde Forgejo generic paket deposuna koyduğu latest.json; dışarıya eşitleme sunucusu
+// (server/sync-server.js, UPDATE_UPSTREAM) /guncelleme/latest.json ve /indir/<sürüm>/<dosya> olarak aktarır:
 //   { "payload": base64(JSON), "sig": base64(Ed25519 imzası, payload baytları üzerinde) }
 //   JSON = { app, version, date, notes, files: { <tür>: { name, url, sha256, size } } }
 // İmza CI secret'ı UPDATE_SIGNING_KEY ile atılır; açık anahtar aşağıda gömülü. Dosyalar sha256 ile doğrulanır.
@@ -9,7 +10,7 @@ const fs = require('fs');
 const fsp = require('fs/promises');
 
 // SSHDECK_UPDATE_URL: deneme için başka bir kaynak (imza yine gömülü anahtarla doğrulanır)
-const FEED_URL = process.env.SSHDECK_UPDATE_URL || 'http://192.168.1.50:3001/api/packages/abdulsamed.kayaduman/generic/sshdeck/latest/latest.json';
+const FEED_URL = process.env.SSHDECK_UPDATE_URL || 'https://sshdeck.abdulsamed.net/guncelleme/latest.json';
 // Ed25519 açık anahtarı (ham 32 bayt, base64) — Android'de de aynısı (Updater.java)
 const PUBLIC_KEY = 'JZZUOZm0s+7S9kpAprN5IKx+6fMm07tbSeq5jkCy2Fo=';
 
@@ -61,7 +62,7 @@ function signFeed(info, privateKeyPem) {
 function friendlyNetError(e) {
   const c = e?.cause?.code || e?.cause?.errors?.[0]?.code || e?.code || '';
   if (e?.name === 'TimeoutError' || c === 'UND_ERR_CONNECT_TIMEOUT' || c === 'ETIMEDOUT') return 'Güncelleme sunucusu yanıt vermedi';
-  if (c === 'ECONNREFUSED' || c === 'EHOSTUNREACH' || c === 'ENETUNREACH' || c === 'ENOTFOUND' || c === 'EAI_AGAIN') return 'Güncelleme sunucusuna ulaşılamadı (ev ağında mısınız?)';
+  if (c === 'ECONNREFUSED' || c === 'EHOSTUNREACH' || c === 'ENETUNREACH' || c === 'ENOTFOUND' || c === 'EAI_AGAIN') return 'Güncelleme sunucusuna ulaşılamadı (internet bağlantınızı denetleyin)';
   return e?.message || String(e);
 }
 

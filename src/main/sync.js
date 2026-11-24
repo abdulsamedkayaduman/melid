@@ -43,12 +43,19 @@ function recoveryKeys(code) {
 }
 
 const DEFAULT_PORT = 3150;
+/** Hesap penceresinde hazır gelen genel eşitleme sunucusu */
+const DEFAULT_SERVER = 'sshdeck.abdulsamed.net';
+// Şemasız yazıldığında yerel sayılan adlar: IP, tek parçalı ad (nas), .local/.lan/.home/.internal
+const LOCAL_NAME = /^(\[.*\]|\d+\.\d+\.\d+\.\d+|localhost|[^.]+|.*\.(local|lan|home|internal))$/i;
 
 const normServer = (s) => {
   let u = String(s || '').trim();
   if (!u) throw new Error('Sunucu adresi gerekli');
-  // Şemasız ve portsuz adres (ör. 192.168.1.50): varsayılan sunucu portu
-  if (!/^https?:\/\//i.test(u)) u = 'http://' + u.replace(/^(\[[^\]]+\]|[^:/[]+)(?=\/|$)/, '$1:' + DEFAULT_PORT);
+  if (!/^https?:\/\//i.test(u)) {
+    const host = (/^(\[[^\]]+\]|[^:/[]+)/.exec(u) || [''])[0];
+    // Yerel adres (ör. 192.168.1.50): http + varsayılan sunucu portu. Alan adı (ör. sshdeck.ornek.com): https
+    u = LOCAL_NAME.test(host) ? 'http://' + u.replace(/^(\[[^\]]+\]|[^:/[]+)(?=\/|$)/, '$1:' + DEFAULT_PORT) : 'https://' + u;
+  }
   try { u = new URL(u).origin; } catch { throw new Error('Sunucu adresi geçersiz'); }
   return u;
 };
@@ -156,7 +163,7 @@ class AccountSync extends EventEmitter {
   }
 
   // ---- hesap ----
-  async register({ server, user, password, invite }) {
+  async register({ server, user, password, email, invite }) {
     server = normServer(server);
     user = String(user || '').trim().toLowerCase();
     const info = await this._req('GET', '/api/info', null, null, server);
@@ -165,7 +172,7 @@ class AccountSync extends EventEmitter {
     const { authKey, wrapKey } = await deriveKeys(password, salt, KDF_ITER);
     const vk = crypto.randomBytes(32);
     const wrappedKey = encWithKey(vk.toString('base64'), wrapKey);
-    const r = await this._req('POST', '/api/register', { user, invite, salt, iter: KDF_ITER, authKey, wrappedKey }, null, server);
+    const r = await this._req('POST', '/api/register', { user, email: String(email || '').trim(), invite: invite || undefined, salt, iter: KDF_ITER, authKey, wrappedKey }, null, server);
     // İlk cihaz: buradaki ayarlar hesabın ayarları olur
     if (!this.store.sync.settingsMtime) this.store.sync.settingsMtime = Date.now();
     this._saveAccount({ server, user, token: r.token, version: 0 }, vk);
@@ -208,8 +215,23 @@ class AccountSync extends EventEmitter {
     }, this._token());
   }
 
-  /** Sunucudaki hesap bilgisi: { user, created, recovery: oluşturulma zamanı | null } */
+  /** Sunucudaki hesap bilgisi: { user, email, created, recovery: oluşturulma zamanı | null } */
   info() { return this._req('GET', '/api/account', null, this._token()); }
+
+  setEmail(email) { return this._req('POST', '/api/email', { email: String(email || '').trim() }, this._token()); }
+
+  /** Hesabı ve sunucudaki kasayı siler (hesap parolasıyla). Bu cihazdaki oturumlar kalır, eşitleme durur. */
+  async deleteAccount(password) {
+    const a = this.account;
+    if (!a) throw new Error('Giriş yapılmamış');
+    const pre = await this._req('GET', '/api/prelogin?user=' + encodeURIComponent(a.user));
+    const { authKey } = await deriveKeys(password, pre.salt, pre.iter);
+    await this._req('POST', '/api/account/delete', { authKey }, this._token());
+    this.store.setAccount(null);
+    this.vk = null;
+    this.stop();
+    this._set('idle');
+  }
 
   /** Yeni kurtarma anahtarı (eskisi geçersiz olur). Hesap parolası gerekir. Dönüş: { code, created } */
   async createRecovery(password) {
@@ -335,4 +357,4 @@ class AccountSync extends EventEmitter {
   }
 }
 
-module.exports = { AccountSync, deriveKeys, normServer, scanLan, lanTargets, KDF_ITER, newRecoveryCode, recoveryKeys };
+module.exports = { AccountSync, DEFAULT_SERVER, deriveKeys, normServer, scanLan, lanTargets, KDF_ITER, newRecoveryCode, recoveryKeys };

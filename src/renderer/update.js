@@ -3,6 +3,7 @@ import { h, icon, formatSize } from './util.js';
 import { modal, toast } from './dialogs.js';
 
 const api = window.api;
+const DOWNLOAD_PAGE = 'https://sshdeck.abdulsamed.net/#indir';
 
 /** check: önce sunucuya sor (Ayarlar > "Şimdi denetle"); yoksa son bilinen durumu göster. */
 export async function updateDialog(app, { check = false } = {}) {
@@ -26,7 +27,7 @@ export async function updateDialog(app, { check = false } = {}) {
     st.notes ? h('pre.upd-notes', null, st.notes) : null,
     h('div.hint', null, st.canInstall
       ? `${st.kindLabel} indirilecek (${formatSize(st.size)}). Kurulumdan sonra SSHDeck yeniden açılır; açık bağlantılar kapanır.`
-      : 'Bu kurulum kendiliğinden güncellenemiyor (geliştirme sürümü, macOS ya da tanınmayan paket). Yeni sürümü elle indirip kurun.'),
+      : 'Bu kurulum kendiliğinden güncellenemiyor (geliştirme sürümü, macOS ya da tanınmayan paket). Yeni sürümü indirme sayfasından alıp kurun.'),
     prog, err);
 
   let busy = false;
@@ -52,10 +53,11 @@ export async function updateDialog(app, { check = false } = {}) {
     buttons: [
       { label: 'Bu sürümü atla', value: 'skip' },
       { label: 'Sonra', value: null },
-      st.canInstall ? { label: 'İndir ve kur', value: 'install', primary: true } : null,
+      st.canInstall ? { label: 'İndir ve kur', value: 'install', primary: true } : { label: 'İndirme sayfasını aç', value: 'page', primary: true },
     ].filter(Boolean),
     onButton: async (v) => {
       if (v === 'skip') { app.setUpdate(await api.update.skip(st.version)); toast(`v${st.version} atlandı; sonraki sürümde yine haber verilir`); return; }
+      if (v === 'page') { api.openExternal(DOWNLOAD_PAGE); return; }
       if (v !== 'install') return;
       if (busy) return false;
       setBusy(true); prog.hidden = false; err.textContent = ''; bar.style.width = '0%'; stat.textContent = 'İndirme başlıyor…';

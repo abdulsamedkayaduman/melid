@@ -12,7 +12,7 @@ const importers = require('./importers');
 const { TermLogger } = require('./termlog');
 const keys = require('./keys');
 const updater = require('./updater');
-const { AccountSync, scanLan } = require('./sync');
+const { AccountSync, DEFAULT_SERVER, scanLan } = require('./sync');
 const { runSessions, runOne, execTask, statsTask } = require('./conncheck');
 const { spawn } = require('child_process');
 const { fileURLToPath } = require('url');
@@ -559,6 +559,9 @@ function registerIpc() {
   });
   // kurtarma anahtarı (sync.js): kod kullanıcıya bir kez gösterilir, istenirse metin dosyasına kaydedilir
   h('account:info', () => account.info());
+  h('account:setEmail', (email) => account.setEmail(email));
+  h('account:delete', async (pw) => { await account.deleteAccount(pw); return account.status(); });
+  h('account:defaultServer', () => DEFAULT_SERVER);
   h('account:recoveryCreate', async (pw) => {
     if (!(await ensureUnlocked())) throw new Error('Ana parola girilmedi');
     return account.createRecovery(pw);

@@ -331,14 +331,22 @@ public final class SyncCore {
     /** Yerel ağ / Tailscale adresi mi (düz http yalnız bunlara izinli) */
     public static boolean privateHost(String host) { return PRIVATE_HOST.matcher(host).find(); }
 
-    /** "192.168.1.50" -> "http://192.168.1.50:3150"; şema verilmişse portu dokunulmaz. Sonuç: origin. */
+    // Şemasız yazıldığında yerel sayılan adlar: IP, tek parçalı ad (nas), .local/.lan/.home/.internal (sync.js LOCAL_NAME)
+    static final Pattern LOCAL_NAME = Pattern.compile("^(\\[.*\\]|\\d+\\.\\d+\\.\\d+\\.\\d+|localhost|[^.]+|.*\\.(local|lan|home|internal))$", Pattern.CASE_INSENSITIVE);
+
+    /** "192.168.1.50" -> "http://192.168.1.50:3150", "sshdeck.ornek.com" -> "https://sshdeck.ornek.com";
+     *  şema verilmişse portu dokunulmaz. Sonuç: origin. */
     public static String normServer(String s) throws Exception {
         String u = s == null ? "" : s.trim();
         if (u.isEmpty()) throw new Exception("Sunucu adresi gerekli");
         if (!u.matches("(?i)^https?://.*")) {
-            Matcher m = Pattern.compile("^(\\[[^\\]]+\\]|[^:/\\[]+)(?=/|$)").matcher(u);
-            if (m.find()) u = m.group(1) + ":" + DEFAULT_PORT + u.substring(m.end());
-            u = "http://" + u;
+            Matcher h = Pattern.compile("^(\\[[^\\]]+\\]|[^:/\\[]+)").matcher(u);
+            String host = h.find() ? h.group(1) : "";
+            if (LOCAL_NAME.matcher(host).matches()) {
+                Matcher m = Pattern.compile("^(\\[[^\\]]+\\]|[^:/\\[]+)(?=/|$)").matcher(u);
+                if (m.find()) u = m.group(1) + ":" + DEFAULT_PORT + u.substring(m.end());
+                u = "http://" + u;
+            } else u = "https://" + u;
         }
         try {
             URL url = new URL(u);
@@ -511,7 +519,7 @@ public final class SyncCore {
         String server() { JSONObject a = local.account(); return a == null ? null : a.optString("server"); }
 
         // ---- hesap
-        public synchronized JSONObject register(String server, String user, String password, String invite) throws Exception {
+        public synchronized JSONObject register(String server, String user, String password, String email, String invite) throws Exception {
             server = normServer(server);
             user = user == null ? "" : user.trim().toLowerCase(Locale.ROOT);
             JSONObject info = req(server, "GET", "/api/info", null, null);
@@ -520,7 +528,8 @@ public final class SyncCore {
             Keys k = deriveKeys(password, salt, KDF_ITER);
             byte[] vk = random(32);
             String wrapped = Backup.encrypt(b64(vk), k.wrapKey);
-            JSONObject r = req(server, "POST", "/api/register", new JSONObject().put("user", user).put("invite", invite).put("salt", salt)
+            JSONObject r = req(server, "POST", "/api/register", new JSONObject().put("user", user).put("email", email == null ? "" : email.trim())
+                    .put("invite", invite == null || invite.isEmpty() ? null : invite).put("salt", salt)
                     .put("iter", KDF_ITER).put("authKey", k.authKey).put("wrappedKey", wrapped), null);
             local.firstDevice();
             local.setAccount(new JSONObject().put("server", server).put("user", user).put("version", 0).put("lastSync", 0), r.getString("token"), vk);
@@ -593,6 +602,25 @@ public final class SyncCore {
                     .put("iter", KDF_ITER).put("newAuthKey", nk.authKey).put("wrappedKey", Backup.encrypt(b64(vk), nk.wrapKey)), null);
             local.setAccount(new JSONObject().put("server", server).put("user", user).put("version", 0).put("lastSync", 0), r.getString("token"), vk);
             syncNow();
+            return status();
+        }
+
+        public JSONObject setEmail(String email) throws Exception {
+            JSONObject a = local.account();
+            if (a == null) throw new Exception("Giriş yapılmamış");
+            return req(a.optString("server"), "POST", "/api/email", new JSONObject().put("email", email == null ? "" : email.trim()), local.token());
+        }
+
+        /** Hesabı ve sunucudaki kasayı siler (hesap parolasıyla). Bu cihazdaki oturumlar kalır. */
+        public synchronized JSONObject deleteAccount(String password) throws Exception {
+            JSONObject a = local.account();
+            if (a == null) throw new Exception("Giriş yapılmamış");
+            String server = a.optString("server");
+            JSONObject pre = req(server, "GET", "/api/prelogin?user=" + URLEncoder.encode(a.optString("user"), "UTF-8"), null, null);
+            Keys k = deriveKeys(password, pre.getString("salt"), pre.getInt("iter"));
+            req(server, "POST", "/api/account/delete", new JSONObject().put("authKey", k.authKey), local.token());
+            local.setAccount(null, null, null);
+            set("idle", null);
             return status();
         }
 

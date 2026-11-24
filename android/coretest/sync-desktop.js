@@ -28,7 +28,7 @@ const names = (st) => st.sessions.map((s) => s.name).sort().join(',');
     st.saveSession({ name: 'masaüstü', host: 'web.example', username: 'root', password: 'gizli-ğ', keyPath: '/home/x/.ssh/id_ed25519', localDir: '/home/x' });
     st.saveSession({ name: 'anahtarlı', host: 'k.example', authType: 'key', keyPath: gk.privatePath });
     st.saveSettings({ snippets: [{ id: 's1', name: 'disk', command: 'df -h', run: true }], fontFamily: 'Masaüstü Fontu', fontSize: 15 });
-    await sync.register({ server, user: 'samed', password: 'hesapParolası-ş', invite: 'davet' });
+    await sync.register({ server, user: 'samed', email: 'samed@ornek.com', password: 'hesapParolası-ş', invite: 'davet' });
     // Java'nın canon/mergeVaults'u JS ile aynı sonucu vermeli (eşit zamanda aynı taraf seçilmeli)
     const a = { sessions: { x: { id: 'x', name: 'Ç"\\/\n\u0001😀', mtime: 5, n: 1.5, arr: [1, null, true] }, y: { id: 'y', name: 'b', mtime: 2 } }, deleted: { z: 1, y: 3, 'SHA256:k2': 4 }, settings: { data: { b: 1, a: 'ş' }, mtime: 7 },
       keys: { 'SHA256:k1': { name: 'a', private: 'p1', mtime: 3 }, 'SHA256:k2': { name: 'b', mtime: 2 } },

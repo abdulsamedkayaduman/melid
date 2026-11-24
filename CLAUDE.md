@@ -59,8 +59,10 @@ src/main/sync.js         Hesap eşitlemesi (AccountSync): giriş/kayıt/çıkı�
                          scanLan(): yerel ağda 3150 portu açık sunucu arama. Kurtarma anahtarı: createRecovery/recover.
                          Hazır komutlar kasada komut başına (snippets haritası; store.js stampSnippets/snippetMap). İsteğe bağlı SSH anahtarı eşitlemesi
                          (settings.syncKeys, cihaza özgü; kasada keys, oturumda keyFp; gelen anahtarlar store.keys). Sunucu: server/sync-server.js (bağımsız,
-                         bağımlılıksız; server/Dockerfile + docker-compose.yml, Dokploy); kök adreste davet koduyla
-                         girilen istatistik sayfası (HOME_PAGE, POST /api/stats). Ayrıntı ve güvenlik modeli: docs/senkron.md
+                         bağımlılıksız; server/Dockerfile + docker-compose.yml, Dokploy). Kayıt herkese açık (SSHDECK_REGISTER),
+                         e-posta zorunlu; / tanıtım+indirme (server/pages/home.html), /admin yönetici (SSHDECK_ADMIN_IPS +
+                         SSHDECK_ADMIN_KEY), /guncelleme ve /indir: UPDATE_UPSTREAM'den sürüm dosyaları. Genel sunucu
+                         sshdeck.abdulsamed.net (DEFAULT_SERVER; Dokploy main'e push'ta yeniden dağıtır). Ayrıntı: docs/senkron.md
 src/main/conncheck.js    Toplu işler: ayrı, sormayan SshManager ile oturumlara bağlanır (runOne/runSessions), önce TCP yoklaması
                          + gerekirse ping ile erişim teşhisi (reach: dns/ip/port/ssh), sonra iş: denetim (sınıflandırma
                          ok/auth/input/unreachable/hostkey/error, need: düzeltmek için sorulacak alan), execTask (komut),

@@ -1,0 +1,182 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>SSHDeck Yönetim</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect width='24' height='24' rx='5' fill='%234f9dff'/%3E%3Cpath d='M6 8l4 4-4 4M12 16h6' stroke='white' stroke-width='2' fill='none' stroke-linecap='round'/%3E%3C/svg%3E">
+<style>
+:root { --bg: #0f1115; --bg2: #171a20; --line: #262a33; --fg: #d7dae0; --dim: #8b919c; --acc: #4f9dff; --ok: #57c785; --err: #e5534b; color-scheme: dark; }
+@media (prefers-color-scheme: light) { :root { --bg: #f4f5f7; --bg2: #ffffff; --line: #e1e4e9; --fg: #1d2129; --dim: #646b77; --acc: #2f7de0; --ok: #2a9a6d; --err: #d0453d; color-scheme: light; } }
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--fg); font: 14px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+main { max-width: 1040px; margin: 0 auto; padding: 32px 16px 48px; }
+header { display: flex; align-items: center; gap: 12px; margin-bottom: 24px; }
+header h1 { font-size: 20px; margin: 0; font-weight: 600; }
+header .sp { flex: 1; }
+.logo { width: 32px; height: 32px; border-radius: 8px; background: var(--acc); display: grid; place-items: center; }
+.card { background: var(--bg2); border: 1px solid var(--line); border-radius: 10px; }
+.login { max-width: 380px; margin: 10vh auto 0; padding: 24px; }
+.login h2 { margin: 0 0 4px; font-size: 18px; }
+.login p { margin: 0 0 16px; color: var(--dim); }
+input { width: 100%; padding: 9px 11px; border-radius: 7px; border: 1px solid var(--line); background: var(--bg); color: var(--fg); font: inherit; }
+input:focus { outline: 2px solid var(--acc); outline-offset: -1px; }
+button { padding: 8px 14px; border-radius: 7px; border: 1px solid var(--line); background: var(--bg2); color: var(--fg); font: inherit; cursor: pointer; }
+button.primary { background: var(--acc); border-color: var(--acc); color: #fff; }
+button:disabled { opacity: .6; cursor: default; }
+.row { display: flex; gap: 8px; margin-top: 12px; }
+.row button { flex: 1; }
+.err { color: var(--err); min-height: 20px; margin-top: 10px; }
+.tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px; margin-bottom: 20px; }
+.tile { padding: 14px 16px; }
+.tile .v { font-size: 24px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.tile .l { color: var(--dim); font-size: 12px; }
+.tile .s { color: var(--dim); font-size: 12px; margin-top: 2px; }
+h3 { font-size: 15px; margin: 0; padding: 14px 16px; border-bottom: 1px solid var(--line); }
+.tbl { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+th, td { text-align: left; padding: 9px 16px; border-bottom: 1px solid var(--line); vertical-align: top; white-space: nowrap; }
+th { color: var(--dim); font-weight: 500; font-size: 12px; }
+tr:last-child td { border-bottom: 0; }
+td.devs { white-space: normal; min-width: 240px; }
+button.del { padding: 4px 10px; font-size: 12px; color: var(--err); }
+.mail { user-select: all; }
+.dev { display: flex; gap: 8px; justify-content: space-between; color: var(--dim); font-size: 12px; }
+.dev b { color: var(--fg); font-weight: 500; }
+.dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--dim); margin-right: 6px; vertical-align: 1px; }
+.dot.on { background: var(--ok); }
+.empty { padding: 24px 16px; color: var(--dim); }
+.foot { color: var(--dim); font-size: 12px; margin-top: 16px; }
+[hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <div class="logo"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round"><path d="M6 8l4 4-4 4M12 16h6"/></svg></div>
+    <h1>SSHDeck yönetim</h1>
+    <span class="sp"></span>
+    <button id="refresh" hidden>Yenile</button>
+    <button id="logout" hidden>Çıkış</button>
+  </header>
+
+  <form id="login" class="card login" hidden>
+    <h2>Yönetici girişi</h2>
+    <p>Sunucudaki SSHDECK_ADMIN_KEY ile girin.</p>
+    <input id="code" type="password" autocomplete="current-password" placeholder="Yönetici parolası" autofocus>
+    <div class="row"><button class="primary" id="go" type="submit">Giriş</button></div>
+    <div class="err" id="err"></div>
+  </form>
+
+  <section id="stats" hidden>
+    <div class="tiles" id="tiles"></div>
+    <div class="card">
+      <h3>Hesaplar</h3>
+      <div class="tbl"><table>
+        <thead><tr><th>Kullanıcı</th><th>E-posta</th><th>Son görülme</th><th>Son değişiklik</th><th>Kasa sürümü</th><th>Kasa boyutu</th><th>Açılış</th><th>Kurtarma</th><th>Cihazlar</th><th></th></tr></thead>
+        <tbody id="users"></tbody>
+      </table></div>
+    </div>
+    <div class="foot" id="foot"></div>
+  </section>
+</main>
+<script>
+(function () {
+  var $ = function (id) { return document.getElementById(id); };
+  var KEY = 'sshdeckAdminKey';
+  var code = '';
+  try { code = sessionStorage.getItem(KEY) || ''; } catch (e) {}
+
+  function el(tag, text, cls) { var e = document.createElement(tag); if (text != null) e.textContent = text; if (cls) e.className = cls; return e; }
+  function bytes(n) { var u = ['B', 'KB', 'MB', 'GB']; var i = 0; while (n >= 1024 && i < u.length - 1) { n /= 1024; i++; } return (i ? n.toFixed(1) : n) + ' ' + u[i]; }
+  function ago(t, now) {
+    if (!t) return '—';
+    var s = Math.max(0, Math.round((now - t) / 1000));
+    if (s < 60) return 'az önce';
+    if (s < 3600) return Math.floor(s / 60) + ' dk önce';
+    if (s < 86400) return Math.floor(s / 3600) + ' sa önce';
+    if (s < 30 * 86400) return Math.floor(s / 86400) + ' gün önce';
+    return date(t);
+  }
+  function date(t) { return t ? new Date(t).toLocaleDateString('tr-TR', { day: 'numeric', month: 'short', year: 'numeric' }) : '—'; }
+  function dur(ms) {
+    var m = Math.floor(ms / 60000); var d = Math.floor(m / 1440); var h = Math.floor((m % 1440) / 60);
+    return d ? d + ' gün ' + h + ' sa' : h ? h + ' sa ' + (m % 60) + ' dk' : (m % 60) + ' dk';
+  }
+  var WEEK = 7 * 86400000;
+
+  function show(view) {
+    $('login').hidden = view !== 'login';
+    $('stats').hidden = view !== 'stats';
+    $('refresh').hidden = $('logout').hidden = view !== 'stats';
+  }
+
+  function load() {
+    $('err').textContent = '';
+    $('go').disabled = $('refresh').disabled = true;
+    return api('/api/admin/stats', {})
+      .then(function (d) { try { sessionStorage.setItem(KEY, code); } catch (e) {} render(d); show('stats'); })
+      .catch(function (e) {
+        try { sessionStorage.removeItem(KEY); } catch (x) {}
+        show('login'); $('err').textContent = e.message === 'Failed to fetch' ? 'Sunucuya ulaşılamadı' : e.message; $('code').focus();
+      })
+      .then(function () { $('go').disabled = $('refresh').disabled = false; });
+  }
+
+  function api(path, body) {
+    body.key = code;
+    return fetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+      .then(function (r) { return r.json().catch(function () { return {}; }).then(function (d) { if (!r.ok) throw new Error(d.error || ('Sunucu hatası (' + r.status + ')')); return d; }); });
+  }
+
+  function del(u) {
+    if (!confirm(u.user + ' hesabı ve şifreli kasası kalıcı olarak silinsin mi? Bu geri alınamaz.')) return;
+    api('/api/admin/delete', { user: u.user }).then(load, function (e) { alert(e.message); });
+  }
+
+  function tile(label, value, sub) {
+    var t = el('div', null, 'card tile');
+    t.append(el('div', label, 'l'), el('div', String(value), 'v'));
+    if (sub) t.append(el('div', sub, 's'));
+    return t;
+  }
+
+  function render(d) {
+    var now = d.server.now, T = d.totals;
+    $('tiles').replaceChildren(
+      tile('Hesaplar', T.users + ' / ' + d.server.maxUsers, T.activeUsers + ' hesap son 7 günde etkin · kayıt: ' + ({ open: 'herkese açık', invite: 'davetle', closed: 'kapalı' }[d.server.register] || d.server.register)),
+      tile('Bağlı cihazlar', T.devices, T.activeDevices + ' cihaz son 7 günde görüldü'),
+      tile('Toplam kasa', bytes(T.vaultBytes), 'uçtan uca şifreli'),
+      tile('Eşitleme', T.syncs, 'sunucu açıldığından beri'),
+      tile('Giriş', T.logins, T.failedLogins + ' hatalı deneme'),
+      tile('Çalışma süresi', dur(d.server.uptime), 'Node ' + d.server.node));
+    var tb = $('users');
+    tb.replaceChildren();
+    if (!d.users.length) {
+      var tr0 = el('tr'); var td0 = el('td', 'Henüz hesap yok.', 'empty'); td0.colSpan = 10; tr0.append(td0); tb.append(tr0);
+    }
+    d.users.forEach(function (u) {
+      var tr = el('tr');
+      var name = el('td'); var dot = el('span', null, 'dot' + (now - u.seen < WEEK ? ' on' : '')); name.append(dot, el('b', u.user));
+      var devs = el('td', null, 'devs');
+      if (!u.devices.length) devs.append(el('span', 'oturum açık cihaz yok', 'dev'));
+      u.devices.forEach(function (x) {
+        var r = el('div', null, 'dev'); r.append(el('b', x.client || 'bilinmeyen istemci'), el('span', ago(x.seen, now))); devs.append(r);
+      });
+      var mail = el('td'); if (u.email) { var a = el('a', u.email, 'mail'); a.href = 'mailto:' + u.email; mail.append(a); } else mail.append(el('span', '—', 'dev'));
+      var act = el('td'); var b = el('button', 'Sil', 'del'); b.type = 'button'; b.onclick = function () { del(u); }; act.append(b);
+      tr.append(name, mail, el('td', ago(u.seen, now)), el('td', ago(u.updated, now)), el('td', String(u.version)), el('td', bytes(u.size)), el('td', date(u.created)), el('td', u.recovery ? 'var' : 'yok'), devs, act);
+      tb.append(tr);
+    });
+    $('foot').textContent = 'Sunucu kasaların içeriğini göremez: oturum adları, adresler ve parolalar burada hiçbir zaman görünmez. Güncelleme: ' + new Date(now).toLocaleTimeString('tr-TR');
+  }
+
+  $('login').addEventListener('submit', function (e) { e.preventDefault(); code = $('code').value.trim(); if (code) load(); });
+  $('refresh').addEventListener('click', load);
+  $('logout').addEventListener('click', function () { code = ''; try { sessionStorage.removeItem(KEY); } catch (e) {} $('code').value = ''; show('login'); $('code').focus(); });
+  if (code) load(); else show('login');
+})();
+</script>
+</body>
+</html>

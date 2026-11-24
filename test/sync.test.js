@@ -37,8 +37,10 @@ const names = (st) => st.sessions.map((s) => s.name).sort().join(',');
   const A = device();
   A.st.saveSession({ name: 'web', host: 'web.example', username: 'root', password: 'cokgizli-1' });
   A.st.saveSettings({ fontSize: 17, paneSplit: 30 });
-  await assert.rejects(A.sync.register({ server, user: 'samed', password: 'hesapParola', invite: 'yanlis' }), /Davet kodu yanlış/);
-  await A.sync.register({ server, user: 'Samed', password: 'hesapParola', invite: 'davet-123' });
+  await assert.rejects(A.sync.register({ server, user: 'samed', email: 'samed@ornek.com', password: 'hesapParola', invite: 'yanlis' }), /Davet kodu yanlış/);
+  await assert.rejects(A.sync.register({ server, user: 'samed', email: 'samed@ornek.com', password: 'hesapParola' }), /davet kodu gerekli/);
+  await assert.rejects(A.sync.register({ server, user: 'samed', password: 'hesapParola', invite: 'davet-123' }), /E-posta adresi gerekli/);
+  await A.sync.register({ server, user: 'Samed', email: ' Samed@Ornek.com ', password: 'hesapParola', invite: 'davet-123' });
   assert.equal(A.sync.status().user, 'samed');
   assert.equal(A.sync.status().version, 1);
 
@@ -141,8 +143,11 @@ const names = (st) => st.sessions.map((s) => s.name).sort().join(',');
   assert.equal(page.status, 200);
   assert.match(page.headers.get('content-type'), /text\/html/);
   assert.match(page.headers.get('content-security-policy'), /default-src 'none'/);
-  assert.match(await page.text(), /Davet kodu/);
-  const stats = (invite) => fetch(`http://${server}/api/stats`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ invite }) });
+  assert.match(await page.text(), /Tüm sunucularınız tek pencerede/);
+  const adminPage = await fetch(`http://${server}/admin`);
+  assert.equal(adminPage.status, 200, 'yerel adresten yönetici sayfası açılır');
+  assert.match(await adminPage.text(), /Yönetici girişi/);
+  const stats = (key) => fetch(`http://${server}/api/admin/stats`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ key }) });
   assert.equal((await stats('yanlis')).status, 403);
   const D = new AccountSync(new Store(tmp('sshdeck-dev-'), noKeyring), { client: 'SSHDeck test linux' });
   await D.login({ server, user: 'samed', password: 'yeniParola' });
@@ -150,15 +155,17 @@ const names = (st) => st.sessions.map((s) => s.name).sort().join(',');
   assert.equal(st.totals.users, 1);
   const u = st.users[0];
   assert.equal(u.user, 'samed');
+  assert.equal(u.email, 'samed@ornek.com', 'e-posta yönetici panelinde');
   assert(u.version >= 1 && u.size > 0 && u.updated > 0);
   assert(u.devices.some((d) => d.client === 'SSHDeck test linux'), 'istemci adı kaydedildi');
   assert(st.totals.syncs > 0 && st.totals.failedLogins > 0);
   assert(!JSON.stringify(st).includes('web-prod'), 'istatistikte kasa içeriği yok');
-  // Davet kodu boş sunucuda istatistik kapalı
+  // Yönetici parolası olmayan sunucuda panel yok
   const closed = http.createServer(createSyncServer({ dataDir: tmp('sshdeck-srv-') }));
   await new Promise((r) => closed.listen(0, '127.0.0.1', r));
-  assert.equal((await fetch(`http://127.0.0.1:${closed.address().port}/api/stats`, { method: 'POST', body: '{"invite":""}' })).status, 403);
-  console.log('OK ana sayfa ve istatistikler (davet koduyla)');
+  assert.equal((await fetch(`http://127.0.0.1:${closed.address().port}/api/admin/stats`, { method: 'POST', body: '{"key":""}' })).status, 404);
+  assert.equal((await fetch(`http://127.0.0.1:${closed.address().port}/admin`)).status, 404);
+  console.log('OK ana sayfa ve yönetici paneli');
 
   // --- SSH anahtarları: yalnız "anahtarları eşitle" açık cihazlar gönderir/alır; kapalı cihaz kasadakilere dokunmaz ---
   const { generateKey } = require('../src/main/keys');
@@ -249,8 +256,75 @@ const names = (st) => st.sessions.map((s) => s.name).sort().join(',');
   assert.deepEqual(found, [{ server: `http://127.0.0.1:${port}`, host: '127.0.0.1', register: true }]);
   assert.equal(normServer('192.168.1.50'), 'http://192.168.1.50:3150', 'portsuz adrese varsayılan port');
   assert.equal(normServer('https://senkron.ornek.com'), 'https://senkron.ornek.com');
+  assert.equal(normServer('sshdeck.abdulsamed.net'), 'https://sshdeck.abdulsamed.net', 'alan adı: https');
+  assert.equal(normServer('senkron.ornek.com:8443'), 'https://senkron.ornek.com:8443');
+  assert.equal(normServer('nas'), 'http://nas:3150', 'tek parçalı ad yerel');
+  assert.equal(normServer('nas.local'), 'http://nas.local:3150');
+  assert.equal(normServer('nas.lan:4000'), 'http://nas.lan:4000');
   other.close(); closed.close();
   console.log('OK yerel ağ taraması');
 
   srv.close();
+
+  // --- herkese açık kayıt, e-posta, hesap silme, IP sınırı, yönetici IP'si (vekil arkasında), güncelleme aktarımı ---
+  const upstream = http.createServer((q, s2) => {
+    if (q.url === '/sshdeck/latest/latest.json') return s2.end('{"payload":"e30=","sig":"x"}');
+    if (q.url === '/sshdeck/1.2.3/SSHDeck-1.2.3.apk') { s2.writeHead(200, { 'Content-Length': 5 }); return s2.end('APK!!'); }
+    s2.writeHead(404); s2.end();
+  });
+  await new Promise((r) => upstream.listen(0, '127.0.0.1', r));
+  const openDir = tmp('sshdeck-srv-');
+  const pub = http.createServer(createSyncServer({
+    dataDir: openDir, register: 'open', adminKey: 'yonetici-parolasi', adminIps: '203.0.113.7, 2001:db8::/48', trustProxy: true,
+    updateUpstream: `http://127.0.0.1:${upstream.address().port}/sshdeck/`,
+  }));
+  await new Promise((r) => pub.listen(0, '127.0.0.1', r));
+  const P = `127.0.0.1:${pub.address().port}`;
+  const info = await (await fetch(`http://${P}/api/info`)).json();
+  assert.equal(info.register, true); assert.equal(info.invite, false);
+  const O = device();
+  O.st.saveSession({ name: 'acik', host: 'acik.example' });
+  await assert.rejects(O.sync.register({ server: P, user: 'ali', email: 'gecersiz', password: 'aliParola123' }), /E-posta adresi geçersiz/);
+  await O.sync.register({ server: P, user: 'ali', email: 'ali@ornek.com', password: 'aliParola123' });
+  assert.equal((await O.sync.info()).email, 'ali@ornek.com');
+  await O.sync.setEmail('yeni@ornek.com');
+  assert.equal((await O.sync.info()).email, 'yeni@ornek.com');
+  // aynı IP'den günde en fazla 5 hesap (vekil arkasında CF-Connecting-IP'ye göre)
+  const reg = (user, ip) => fetch(`http://${P}/api/register`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'CF-Connecting-IP': ip },
+    body: JSON.stringify({ user, email: `${user}@ornek.com`, salt: 'A'.repeat(24), iter: 600000, authKey: 'B'.repeat(44), wrappedKey: 'C'.repeat(60) }) });
+  for (let i = 0; i < 5; i++) assert.equal((await reg('u' + i, '198.51.100.9')).status, 200);
+  assert.equal((await reg('u9', '198.51.100.9')).status, 429, 'IP başına günlük kayıt sınırı');
+  assert.equal((await reg('u9', '198.51.100.10')).status, 200, 'başka IP açabilir');
+  // yönetici: yalnız izinli IP'den; yanlış IP'de sayfa yokmuş gibi
+  const adm = (ip, body, path = '/api/admin/stats') => fetch(`http://${P}${path}`, { method: 'POST', headers: { 'Content-Type': 'application/json', ...(ip ? { 'CF-Connecting-IP': ip } : {}) }, body: JSON.stringify(body) });
+  assert.equal((await fetch(`http://${P}/admin`)).status, 404, 'yerel adres izinli listede değil');
+  assert.equal((await fetch(`http://${P}/admin`, { headers: { 'CF-Connecting-IP': '198.51.100.9' } })).status, 404);
+  assert.equal((await fetch(`http://${P}/admin`, { headers: { 'CF-Connecting-IP': '203.0.113.7' } })).status, 200);
+  assert.equal((await fetch(`http://${P}/admin`, { headers: { 'X-Forwarded-For': '1.1.1.1, 2001:db8:0:5::1' } })).status, 200, 'IPv6 alt ağ, XFF en sağ');
+  assert.equal((await fetch(`http://${P}/admin`, { headers: { 'X-Forwarded-For': '203.0.113.7, 1.1.1.1' } })).status, 404, 'XFF soldaki girdi sayılmaz');
+  assert.equal((await adm('198.51.100.9', { key: 'yonetici-parolasi' })).status, 404);
+  assert.equal((await adm('203.0.113.7', { key: 'yanlis' })).status, 403);
+  const ast = await (await adm('203.0.113.7', { key: 'yonetici-parolasi' })).json();
+  assert.equal(ast.totals.users, 7);
+  assert.equal(ast.users.find((x) => x.user === 'ali').email, 'yeni@ornek.com');
+  assert.equal((await adm('203.0.113.7', { key: 'yonetici-parolasi', user: 'u0' }, '/api/admin/delete')).status, 200);
+  assert.equal((await (await adm('203.0.113.7', { key: 'yonetici-parolasi' })).json()).totals.users, 6, 'yönetici hesap siler');
+  // hesap silme: yanlış parola reddedilir, doğrusu hesabı ve kasayı siler; yerel oturumlar kalır
+  await assert.rejects(O.sync.deleteAccount('yanlisParola'), /parolası yanlış/);
+  const vaultsBefore = fs.readdirSync(path.join(openDir, 'vaults')).length;
+  await O.sync.deleteAccount('aliParola123');
+  assert.equal(O.sync.status().loggedIn, false);
+  assert(O.st.sessions.some((x) => x.name === 'acik'), 'yerel oturumlar silinmez');
+  assert.equal(fs.readdirSync(path.join(openDir, 'vaults')).length, vaultsBefore - 1, 'kasa silindi');
+  await assert.rejects(device().sync.login({ server: P, user: 'ali', password: 'aliParola123' }), /parola yanlış/);
+  // güncelleme aktarımı
+  const feed = await fetch(`http://${P}/guncelleme/latest.json`);
+  assert.equal(feed.status, 200); assert.equal((await feed.json()).payload, 'e30=');
+  const apk = await fetch(`http://${P}/indir/1.2.3/SSHDeck-1.2.3.apk`);
+  assert.equal(apk.status, 200); assert.equal(await apk.text(), 'APK!!');
+  assert.match(apk.headers.get('content-disposition'), /SSHDeck-1\.2\.3\.apk/);
+  assert.equal((await fetch(`http://${P}/indir/1.2.3/yok.apk`)).status, 404);
+  assert.equal((await fetch(`http://${P}/indir/1.2.3/..%2Fsecret`)).status, 404);
+  pub.close(); upstream.close();
+  console.log('OK herkese açık kayıt, e-posta, hesap silme, yönetici IP sınırı, güncelleme aktarımı');
 })().catch((e) => { console.error(e); process.exit(1); });

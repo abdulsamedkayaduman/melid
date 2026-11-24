@@ -42,7 +42,7 @@ PW=$!
 # hesap eşitlemesi: gerçek sunucu (SyncTest + sync-desktop.js)
 SYNC_PORT=3157
 rm -rf $W/syncdata
-PORT=$SYNC_PORT HOST=127.0.0.1 DATA_DIR=$W/syncdata SSHDECK_SYNC_INVITE=davet node ../../server/sync-server.js > $W/sync.log 2>&1 &
+PORT=$SYNC_PORT HOST=127.0.0.1 DATA_DIR=$W/syncdata SSHDECK_REGISTER=invite SSHDECK_SYNC_INVITE=davet node ../../server/sync-server.js > $W/sync.log 2>&1 &
 SY=$!
 trap 'kill $(cat $W/sshd.pid) 2>/dev/null; kill $PW $SY 2>/dev/null' EXIT
 sleep 0.5

@@ -1,21 +1,27 @@
 # SSHDeck eşitleme sunucusu — Dokploy (Docker Compose) veya düz `docker compose up -d`
 #
 # Dokploy: Compose Path = ./server/docker-compose.yml
-#   Environment sekmesi: SSHDECK_SYNC_INVITE=<uzun rastgele kod>
-#   Domains sekmesi: servis "sync", port 3150, HTTPS açık (Let's Encrypt)
+#   Environment sekmesi (en az): SSHDECK_ADMIN_KEY=<uzun rastgele parola>, SSHDECK_ADMIN_IPS=<ev IP'niz>
+#   Domains sekmesi: servis "sync", port 3150, HTTPS açık
 # Ayrıntı: docs/senkron.md
 services:
   sync:
     build: .
     restart: unless-stopped
     environment:
-      # Hesap açmak için davet kodu. Boşsa yeni hesap açılamaz (mevcut hesaplar çalışır).
+      # open: herkes hesap açabilir | invite: SSHDECK_SYNC_INVITE davet koduyla | closed: yeni hesap açılamaz
+      SSHDECK_REGISTER: ${SSHDECK_REGISTER:-open}
       SSHDECK_SYNC_INVITE: ${SSHDECK_SYNC_INVITE:-}
-      # Traefik (Dokploy) arkasında istemci IP'si X-Forwarded-For'dan alınır (deneme sınırı için)
+      SSHDECK_MAX_USERS: ${SSHDECK_MAX_USERS:-1000}
+      # Yönetici paneli (/admin): parola + yalnız bu adreslerden (virgülle; CIDR olabilir). Parola boşsa panel kapalı.
+      SSHDECK_ADMIN_KEY: ${SSHDECK_ADMIN_KEY:-}
+      SSHDECK_ADMIN_IPS: ${SSHDECK_ADMIN_IPS:-}
+      # Sürüm dosyalarının iç adresi: ana sayfadaki indirmeler ve uygulama güncellemeleri buradan aktarılır
+      UPDATE_UPSTREAM: ${UPDATE_UPSTREAM:-}
+      # Ters vekil (Traefik/Dokploy, Cloudflare) arkasında istemci IP'si başlıklardan alınır (deneme sınırı, yönetici IP'si)
       TRUST_PROXY: ${TRUST_PROXY:-1}
-    #expose:
-    #  - "3150"
-    # Ters vekil olmadan doğrudan erişmek için (Dokploy'da gerekmez):
+    # Yerel ağdan doğrudan erişim (uygulamadaki "Yerel ağda ara" bunu bulur). Bu port internete açılmamalı:
+    # vekil başlıkları doğrudan gelen isteklerde taklit edilebilir. Yalnız vekil kullanılıyorsa bu iki satırı silin.
     ports:
       - "3150:3150"
     volumes:

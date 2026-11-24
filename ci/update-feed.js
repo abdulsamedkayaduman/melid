@@ -17,10 +17,21 @@ const names = {
   'linux-pacman': `sshdeck-${version}.pacman`,
   android: `SSHDeck-${version}.apk`,
 };
+// Uygulamaların kendisi kurmadığı, yalnız indirme sayfasında listelenen dosyalar (yoksa atlanır)
+const optional = {
+  'mac-arm64': `SSHDeck-${version}-mac-arm64.tar.gz`,
+  'mac-x64': `SSHDeck-${version}-mac-x64.tar.gz`,
+};
 const files = {};
 for (const [kind, name] of Object.entries(names)) {
   const p = path.join(dist, name);
   if (!fs.existsSync(p)) { console.error(`Eksik dosya: ${p}`); process.exit(1); }
+  const buf = fs.readFileSync(p);
+  files[kind] = { name, url: `${baseUrl}/${encodeURIComponent(name)}`, sha256: crypto.createHash('sha256').update(buf).digest('hex'), size: buf.length };
+}
+for (const [kind, name] of Object.entries(optional)) {
+  const p = path.join(dist, name);
+  if (!fs.existsSync(p)) continue;
   const buf = fs.readFileSync(p);
   files[kind] = { name, url: `${baseUrl}/${encodeURIComponent(name)}`, sha256: crypto.createHash('sha256').update(buf).digest('hex'), size: buf.length };
 }

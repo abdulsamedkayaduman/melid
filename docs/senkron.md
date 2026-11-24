@@ -3,38 +3,61 @@
 Giriş yapılan her cihazda oturumlar, kayıtlı parolalar, ayarlar ve hazır komutlar eşitlenir.
 Uçtan uca şifrelidir: sunucu verileri çözemez.
 
+## Genel sunucu
+
+Uygulamalarda hesap penceresinde `sshdeck.abdulsamed.net` hazır gelir; herkes e-posta adresiyle hesap açabilir.
+Aynı sunucu `https://sshdeck.abdulsamed.net/` adresinde tanıtım ve indirme sayfasını, `/guncelleme/latest.json` ve
+`/indir/<sürüm>/<dosya>` adreslerinde uygulama güncellemelerini sunar (Dokploy `sshdeck-server`, `main`'e her push'ta
+yeniden dağıtılır; Cloudflare tüneli → Traefik → konteyner).
+
 ## Sunucuyu çalıştırmak
 
-`server/sync-server.js` bağımlılıksızdır (yalnız Node 18+). Tek dosya; başka bir makineye kopyalamak yeter.
+`server/sync-server.js` bağımlılıksızdır (yalnız Node 18+); yanında `server/pages/` (ana sayfa ve yönetici sayfası) durur.
 
 ```
-PORT=3150 HOST=0.0.0.0 DATA_DIR=/var/lib/sshdeck-sync SSHDECK_SYNC_INVITE='uzun-rastgele-kod' node server/sync-server.js
+PORT=3150 HOST=0.0.0.0 DATA_DIR=/var/lib/sshdeck-sync SSHDECK_ADMIN_KEY='uzun-rastgele-parola' node server/sync-server.js
 ```
 
-- `SSHDECK_SYNC_INVITE`: hesap açmak için gereken davet kodu. Boşsa yeni hesap açılamaz (mevcutlar çalışır).
-  Ana sayfadaki istatistiklere de bu kodla girilir; boşsa istatistik sayfası da kapanır.
-  Herkese açık sunucuda hesaplarınızı açtıktan sonra boşaltmak iyi bir fikir.
-- `TRUST_PROXY=1`: ters vekil arkasında istemci IP'si `X-Forwarded-For`'un en sağındaki girdiden alınır.
-- 1.8 ile kurtarma anahtarı uçları (`/api/account`, `/api/recovery`, `/api/recover/*`) eklendi: sunucuyu güncelleyin.
-- `TLS_CERT` / `TLS_KEY`: verilirse HTTPS dinler. Alternatif: Caddy/nginx ters vekil ya da Tailscale.
+| Değişken | Anlamı |
+|---|---|
+| `SSHDECK_REGISTER` | `open` (varsayılan: herkes hesap açabilir), `invite` (`SSHDECK_SYNC_INVITE` davet koduyla), `closed` |
+| `SSHDECK_SYNC_INVITE` | `invite` kipinde davet kodu |
+| `SSHDECK_MAX_USERS` | en fazla hesap (1000) |
+| `SSHDECK_ADMIN_KEY` | yönetici sayfası parolası; boşsa `SSHDECK_SYNC_INVITE`, ikisi de boşsa sayfa kapalı |
+| `SSHDECK_ADMIN_IPS` | yönetici sayfasını açabilecek adresler, virgülle; CIDR olabilir (`203.0.113.7, 2001:db8::/56`). Boşsa yalnız yerel ağ |
+| `UPDATE_UPSTREAM` | sürüm dosyalarının iç adresi (Forgejo generic paket deposu `.../generic/sshdeck`); boşsa indirme/güncelleme kapalı |
+| `TRUST_PROXY=1` | vekil arkasında istemci IP'si `CF-Connecting-IP`'den, yoksa `X-Forwarded-For`'un en sağındaki girdiden |
+| `TLS_CERT` / `TLS_KEY` | verilirse HTTPS dinler. Alternatif: Caddy/nginx ters vekil ya da Tailscale |
+
+- Hesap açarken e-posta zorunlu (doğrulanmaz; yalnız yöneticinin kullanıcıya ulaşması için). Aynı IP'den günde en fazla 5 hesap.
+  1.9.0 ve öncesi uygulamalar e-posta göndermediği için yeni hesap açamaz (giriş çalışır).
 - Sürekli çalışması için örnek systemd birimi: `server/sshdeck-sync.service`.
 - Yedek: `DATA_DIR` klasörünü yedeklemek yeter (`users.json`, `tokens.json`, `vaults/`, `secret.json`).
 
-Uygulamada: araç çubuğundaki bulut düğmesi → **Hesap oluştur** (ilk cihaz, davet kodu ile) → diğer cihazlarda **Giriş yap**.
-Android: Ayarlar → **Hesap ve eşitleme** (aynı hesap, aynı kasa).
+Uygulamada: araç çubuğundaki bulut düğmesi → **Hesap oluştur** (ilk cihaz) → diğer cihazlarda **Giriş yap**.
+Android: Ayarlar → **Hesap ve eşitleme** (aynı hesap, aynı kasa). Davet kodu alanı yalnız sunucu isterse görünür.
 
-Sunucu adresinde port yazılmazsa 3150 kabul edilir (`192.168.1.50` → `http://192.168.1.50:3150`; `https://…` adreslerinde
-olduğu gibi kalır). **Yerel ağda ara** düğmesi, bu cihazın yerel IPv4 ağlarındaki (en fazla /24) adreslerde 3150 portunu
-tarar ve `/api/info` yanıtı SSHDeck olanları listeler (masaüstü: `scanLan()` sync.js, Android: `SyncCore.scan()`).
+Şemasız yazılan adres: alan adıysa `https://` (`sshdeck.ornek.com` → `https://sshdeck.ornek.com`); IP, tek parçalı ad ya da
+`.local/.lan/.home/.internal` ise `http://` + 3150 (`192.168.1.50` → `http://192.168.1.50:3150`). **Yerel ağda ara** düğmesi,
+bu cihazın yerel IPv4 ağlarındaki (en fazla /24) adreslerde 3150 portunu tarar ve `/api/info` yanıtı SSHDeck olanları listeler
+(masaüstü: `scanLan()` sync.js, Android: `SyncCore.scan()`).
 
-## Ana sayfa / istatistikler
+## Ana sayfa ve yönetici sayfası
 
-Sunucunun kök adresi (`http://<sunucu>:3150/`) davet koduyla (`SSHDECK_SYNC_INVITE`) girilen bir istatistik paneli açar:
-hesap ve cihaz sayısı, son 7 günde etkin olanlar, toplam kasa boyutu, sunucu açıldığından beri eşitleme/giriş/hatalı giriş
-sayıları ve hesap başına son görülme, son değişiklik, kasa sürümü/boyutu, oturum açık cihazlar (istemci adı ve son görülme;
-istemciler kendini `X-SSHDeck-Client` başlığıyla tanıtır, ör. `SSHDeck 1.5.0 Android 14`). Kasa içerikleri şifreli
-olduğundan oturum adı, adres ya da parola burada hiçbir zaman görünmez. API: `POST /api/stats {invite}`; hatalı kod
-denemeleri giriş denemeleriyle aynı IP sınırına tabidir. Davet kodunu bilen herkes kullanıcı adlarını görebilir.
+- `/`: tanıtım ve indirme sayfası (`server/pages/home.html`). İndirme bağlantılarını `/guncelleme/latest.json`'dan okur,
+  ziyaretçinin işletim sistemini öne alır.
+- `/admin`: yönetici sayfası (`server/pages/admin.html`). Yalnız `SSHDECK_ADMIN_IPS`'teki adreslerden açılır, diğerlerine 404
+  döner; ayrıca `SSHDECK_ADMIN_KEY` ister. Hesap ve cihaz sayısı, son 7 günde etkin olanlar, toplam kasa boyutu, sunucu
+  açıldığından beri eşitleme/giriş/hatalı giriş sayıları; hesap başına kullanıcı adı, e-posta, son görülme, son değişiklik,
+  kasa sürümü/boyutu, oturum açık cihazlar (istemciler kendini `X-SSHDeck-Client` başlığıyla tanıtır). Hesap silinebilir.
+  Kasa içerikleri şifreli olduğundan oturum adı, adres ya da parola burada hiçbir zaman görünmez.
+  API: `POST /api/admin/stats {key}`, `POST /api/admin/delete {key, user}`.
+
+## Hesap silme
+
+Uygulamada hesap penceresi → **Hesabı sil** (Android: Hesap ve eşitleme → Hesabı sil). Hesap parolasıyla doğrulanır
+(`POST /api/account/delete {authKey}`); hesap, kasa, kurtarma bilgisi ve tüm cihaz oturumları silinir. Cihazlardaki yerel
+oturumlar kalır. E-posta değişimi: `POST /api/email`.
 
 ## Docker / Dokploy
 
@@ -42,18 +65,16 @@ denemeleri giriş denemeleriyle aynı IP sınırına tabidir. Davet kodunu bilen
 Veriler `sshdeck-sync-data` adlı birimde (`/data`) durur; yeniden dağıtımda kaybolmaz.
 
 **Dokploy:**
-1. Create Service > **Compose** (Docker Compose). Kaynak: bu Forgejo deposu (Git sağlayıcısı veya SSH anahtarıyla Git),
-   dal `main`, **Compose Path** `./server/docker-compose.yml`.
-2. **Environment**: `SSHDECK_SYNC_INVITE=<uzun rastgele kod>` (ör. `openssl rand -base64 24`).
-3. **Domains**: alan adı, servis `sync`, container port `3150`, HTTPS açık (Let's Encrypt).
-4. **Deploy**. Kontrol: `https://<alan-adı>/api/info` -> `{"app":"SSHDeck","api":1,"register":true}`.
-5. Uygulamada sunucu olarak `https://<alan-adı>` girilir.
+1. Create Service > **Compose** (Docker Compose). Kaynak: bu depo, dal `main`, **Compose Path** `./server/docker-compose.yml`.
+2. **Environment**: `SSHDECK_ADMIN_KEY=<uzun rastgele parola>` (ör. `openssl rand -base64 24`), `SSHDECK_ADMIN_IPS=<ev IP'niz>`,
+   isteğe bağlı `UPDATE_UPSTREAM`.
+3. **Domains**: alan adı, servis `sync`, container port `3150`.
+4. **Deploy**. Kontrol: `https://<alan-adı>/api/info` -> `{"app":"SSHDeck","api":2,"register":true,"invite":false}`.
 
-`TRUST_PROXY=1` compose'ta varsayılan: Traefik arkasında deneme sınırı gerçek istemci IP'siyle çalışır.
-Ters vekil olmadan doğrudan açacaksanız `TRUST_PROXY=0` yapın (yoksa istemci başlığı taklit ederek sınırı aşabilir)
-ve compose'taki `ports` satırını açın.
+`TRUST_PROXY=1` compose'ta varsayılan. Compose, yerel ağ taraması için 3150 portunu da açar: bu port internete açılmamalı
+(doğrudan gelen istekte vekil başlıkları taklit edilebilir). Yalnız vekil kullanılıyorsa `ports` satırlarını silin.
 
-Düz Docker: `cd server && SSHDECK_SYNC_INVITE=... docker compose up -d --build`.
+Düz Docker: `cd server && SSHDECK_ADMIN_KEY=... docker compose up -d --build`.
 
 Yedek: `docker run --rm -v <proje>_sshdeck-sync-data:/d -v $PWD:/b alpine tar czf /b/sshdeck-sync.tgz -C /d .`
 (birim adı `docker volume ls` ile görülür; Dokploy proje adını önek yapar).
@@ -68,7 +89,7 @@ kasa anahtarı VK (rastgele 32 bayt) ──AES-256-GCM(wrapKey)──► wrapped
 kasa JSON'u ──AES-256-GCM(VK)──► sunucuda yalnız bu şifreli blob
 ```
 
-- Sunucunun gördüğü: kullanıcı adı, tuz, authKey'in scrypt özeti, wrappedKey, şifreli kasa, sürüm numarası.
+- Sunucunun gördüğü: kullanıcı adı, e-posta, tuz, authKey'in scrypt özeti, wrappedKey, şifreli kasa, sürüm numarası.
   Oturum adları, adresler, parolalar ve hesap parolası sunucuya hiç düz gitmez (test: `test/sync.test.js`).
 - Hesap parolası unutulursa kasa kurtarılamaz (bilerek; sunucu da açamaz).
 - Parola değişimi: VK aynı kalır, yalnız yeniden sarılır; diğer cihazların jetonları iptal edilir.

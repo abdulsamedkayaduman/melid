@@ -37,14 +37,16 @@ async function loginDialog(app, { reauth } = {}) {
   try { lastServer = localStorage.getItem('syncServer') || ''; lastUser = localStorage.getItem('syncUser') || ''; } catch {}
   if (reauth) { lastServer = reauth.server; lastUser = reauth.user; }
   const f = {
-    server: h('input.input', { type: 'text', value: lastServer, placeholder: 'örn. 192.168.1.50 veya https://senkron.ornek.com', spellcheck: false }),
+    server: h('input.input', { type: 'text', value: lastServer, placeholder: 'örn. sshdeck.abdulsamed.net veya 192.168.1.50', spellcheck: false }),
     user: h('input.input', { type: 'text', value: lastUser, spellcheck: false, autocapitalize: 'off' }),
+    email: h('input.input', { type: 'email', spellcheck: false, autocapitalize: 'off', placeholder: 'ornek@eposta.com' }),
     password: h('input.input', { type: 'password' }),
     password2: h('input.input', { type: 'password' }),
     invite: h('input.input', { type: 'text', spellcheck: false }),
     syncKeys: h('input', { type: 'checkbox' }),
   };
   api.account.status().then((st) => { f.syncKeys.checked = !!st.syncKeys; }).catch(() => {});
+  if (!lastServer) api.account.defaultServer().then((d) => { if (!f.server.value) { f.server.value = d; checkWarn(); } }).catch(() => {});
   if (reauth) { f.server.disabled = true; f.user.disabled = true; }
   const field = (label, control, cls) => h('label.field' + (cls || ''), null, h('span', null, label), control);
   const warn = h('div.hint.warn', { hidden: true }, 'Bu adres internette ve şifresiz (http). Kasa uçtan uca şifreli olsa da giriş bilgisi ağda açık gider; https kullanın.');
@@ -67,7 +69,11 @@ async function loginDialog(app, { reauth } = {}) {
       found.replaceChildren(h('div.upd-err', null, cleanErr(e)));
     } finally { scanBtn.disabled = false; }
   };
-  const regOnly = [field('Parola (tekrar)', f.password2, '.reg-only'), field('Davet kodu', f.invite, '.reg-only')];
+  // Davet kodu yalnız sunucu isterse görünür (genel sunucuda herkes hesap açabilir)
+  const inviteField = field('Davet kodu', f.invite, '.reg-only');
+  let needInvite = false;
+  const emailField = field('E-posta', f.email, '.reg-only');
+  const regOnly = [field('Parola (tekrar)', f.password2, '.reg-only'), inviteField];
   const modeBtns = {
     login: h('button.seg', { type: 'button', onclick: () => setMode('login') }, 'Giriş yap'),
     register: h('button.seg', { type: 'button', onclick: () => setMode('register') }, 'Hesap oluştur'),
@@ -78,6 +84,7 @@ async function loginDialog(app, { reauth } = {}) {
     intro,
     h('label.field', null, h('span', null, 'Sunucu'), h('div.row', null, f.server, scanBtn)), found, warn,
     field('Kullanıcı adı', f.user),
+    emailField,
     field('Hesap parolası', f.password),
     ...regOnly,
     h('div.forgot', null, h('a', { href: '#', onclick: (e) => { e.preventDefault(); forgot = true; closeLogin?.(null); } }, 'Hesap parolamı unuttum (kurtarma anahtarıyla gir)')),
@@ -87,9 +94,10 @@ async function loginDialog(app, { reauth } = {}) {
   const setMode = (m) => {
     mode = m;
     for (const [k, b] of Object.entries(modeBtns)) b.classList.toggle('on', k === m);
-    for (const el of regOnly) el.hidden = m !== 'register';
+    for (const el of [...regOnly, emailField]) el.hidden = m !== 'register';
+    inviteField.hidden = m !== 'register' || !needInvite;
     intro.textContent = m === 'register'
-      ? 'Hesap parolası bağlantılarınızı şifreler ve hiçbir zaman sunucuya gönderilmez. Unutursanız sunucudaki veriler kurtarılamaz; güçlü ve akılda kalır bir parola seçin.'
+      ? 'Hesap parolası bağlantılarınızı şifreler ve hiçbir zaman sunucuya gönderilmez. Unutursanız sunucudaki veriler kurtarılamaz; güçlü ve akılda kalır bir parola seçin. E-posta yalnız hesabınızla ilgili size ulaşmak için saklanır.'
       : reauth ? 'Hesap parolası başka bir cihazda değiştirildi; yeni parolayla tekrar giriş yapın.'
         : 'Giriş yaptığınız her cihazda oturumlarınız, kayıtlı parolalarınız, ayarlarınız ve hazır komutlarınız eşitlenir. Bu cihazdaki oturumlar hesaptakilerle birleştirilir.';
     err.textContent = '';
@@ -114,8 +122,10 @@ async function loginDialog(app, { reauth } = {}) {
       if (mode === 'register') {
         if (o.password.length < 10) { err.textContent = 'Hesap parolası en az 10 karakter olmalı'; return false; }
         if (o.password !== f.password2.value) { err.textContent = 'Parolalar eşleşmiyor'; return false; }
+        o.email = f.email.value.trim();
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(o.email)) { err.textContent = 'Geçerli bir e-posta adresi girin'; return false; }
         o.invite = f.invite.value.trim();
-        if (!o.invite) { err.textContent = 'Davet kodu gerekli (sunucudaki SSHDECK_SYNC_INVITE)'; return false; }
+        if (needInvite && !o.invite) { err.textContent = 'Bu sunucu davet kodu istiyor'; return false; }
       }
       busy = true;
       const btns = body.closest('.modal').querySelectorAll('.modal-foot .btn');
@@ -128,6 +138,7 @@ async function loginDialog(app, { reauth } = {}) {
         try { localStorage.setItem('syncServer', o.server); localStorage.setItem('syncUser', o.user); } catch {}
         return res;
       } catch (e) {
+        if (mode === 'register' && /davet kodu/i.test(cleanErr(e))) needInvite = true;
         setMode(mode); // giriş metnini geri getirir
         err.textContent = cleanErr(e);
         return false;
@@ -151,10 +162,18 @@ async function manageDialog(app, st) {
     h('div.hint', null, 'Hesap parolanızı unutursanız bu anahtarla yeni parola belirlersiniz; yoksa kasa kurtarılamaz.')),
   h('button.btn.sm', { type: 'button', onclick: () => recoveryMenu(app, recInfo, (i) => { recInfo = i; showRec(); }) }, 'Yönet…'));
   const showRec = () => { recState.textContent = recInfo && recInfo.recovery ? `var (${new Date(recInfo.recovery).toLocaleDateString('tr-TR')})` : 'yok — oluşturmanız önerilir'; recState.classList.toggle('warn-text', !(recInfo && recInfo.recovery)); };
-  api.account.info().then((i) => { recInfo = i; showRec(); }).catch(() => { recState.textContent = 'sunucuya sorulamadı'; });
+  const emailVal = h('span.muted', null, '…');
+  const showEmail = () => { emailVal.textContent = recInfo && recInfo.email ? recInfo.email : 'yok'; emailVal.classList.toggle('warn-text', !(recInfo && recInfo.email)); };
+  const editEmail = async () => {
+    const v = await promptText({ title: 'E-posta', label: 'Hesabınızın e-posta adresi', value: (recInfo && recInfo.email) || '', ok: 'Kaydet' });
+    if (v == null) return;
+    try { const r = await api.account.setEmail(v); recInfo = { ...(recInfo || {}), email: r.email }; showEmail(); toast('E-posta kaydedildi', 'ok'); } catch (e) { toast(cleanErr(e), 'err', 6000); }
+  };
+  api.account.info().then((i) => { recInfo = i; showRec(); showEmail(); }).catch(() => { recState.textContent = 'sunucuya sorulamadı'; emailVal.textContent = 'sunucuya sorulamadı'; });
   const body = h('div.account', null,
     h('dl.kv', null,
       h('dt', null, 'Hesap'), h('dd', null, st.user),
+      h('dt', null, 'E-posta'), h('dd', null, emailVal, ' ', h('a', { href: '#', onclick: (e) => { e.preventDefault(); editEmail(); } }, 'değiştir')),
       h('dt', null, 'Sunucu'), h('dd', null, st.server),
       h('dt', null, 'Durum'), h('dd', null, STATE_TEXT[st.state] || st.state),
       h('dt', null, 'Son eşitleme'), h('dd', null, syncTimeText(st.lastSync))),
@@ -172,15 +191,19 @@ async function manageDialog(app, st) {
     }), 'SSH anahtarlarını da eşitle'),
     h('p.hint', null, KEYS_HINT),
     recRow,
-    h('p.hint', null, 'Oturumlar, kayıtlı parolalar, ayarlar ve hazır komutlar uçtan uca şifreli eşitlenir. Bu cihaza özgü ayarlar (kayıt klasörü, panel boyutları) ve oturumların yerel klasörü eşitlenmez.'));
+    h('p.hint', null, 'Oturumlar, kayıtlı parolalar, ayarlar ve hazır komutlar uçtan uca şifreli eşitlenir. Bu cihaza özgü ayarlar (kayıt klasörü, panel boyutları) ve oturumların yerel klasörü eşitlenmez.'),
+    h('div.forgot', null, h('a', { href: '#', onclick: (e) => { e.preventDefault(); wantDelete = true; closeManage?.(null); } }, 'Hesabı sil…')));
+  let wantDelete = false; let closeManage = null;
   const act = await modal({
     title: 'Hesap ve eşitleme', width: 460, body,
+    bind: (c) => { closeManage = c; },
     buttons: [
       { label: 'Çıkış yap', value: 'logout', danger: true },
       { label: 'Parolayı değiştir', value: 'password' },
       { label: st.state === 'auth' ? 'Tekrar giriş yap' : 'Şimdi eşitle', value: st.state === 'auth' ? 'reauth' : 'sync', primary: true },
     ],
   });
+  if (wantDelete) { await deleteAccountDialog(app, st); return; }
   try {
     if (act === 'sync') {
       app.setAccount(await api.account.syncNow());
@@ -209,6 +232,29 @@ async function manageDialog(app, st) {
       toast('Hesaptan çıkıldı', 'ok');
     }
   } catch (e) { toast(cleanErr(e), 'err', 6000); }
+}
+
+async function deleteAccountDialog(app, st) {
+  const pw = h('input.input', { type: 'password' });
+  const err = h('div.upd-err');
+  let busy = false;
+  const r = await modal({
+    title: 'Hesabı sil', width: 460,
+    canClose: () => !busy,
+    body: h('div.account', null,
+      h('p', null, `${st.user} hesabı ve sunucudaki şifreli kasası kalıcı olarak silinecek. Bu geri alınamaz.`),
+      h('p.hint', null, 'Bu cihazdaki oturumlar ve parolalar silinmez, yalnız eşitleme durur. Diğer cihazlar bir sonraki eşitlemede hesaptan çıkar; oradaki veriler de yerinde kalır.'),
+      h('label.field', null, h('span', null, 'Onaylamak için hesap parolanız'), pw), err),
+    buttons: [{ label: 'Vazgeç', value: null }, { label: 'Hesabı kalıcı olarak sil', value: 'ok', primary: true, danger: true }],
+    onButton: async (v) => {
+      if (v !== 'ok') return busy ? false : undefined;
+      if (busy) return false;
+      if (!pw.value) { err.textContent = 'Hesap parolası gerekli'; return false; }
+      busy = true; err.textContent = '';
+      try { return await api.account.deleteAccount(pw.value); } catch (e) { err.textContent = cleanErr(e); return false; } finally { busy = false; }
+    },
+  });
+  if (r) { app.setAccount(r); toast('Hesap silindi. Bu cihazdaki oturumlar yerinde.', 'ok', 6000); }
 }
 
 // ---------------------------------------------------------------- kurtarma anahtarı
@@ -255,7 +301,7 @@ async function showRecoveryCode(rc) {
 /** Parolası unutulan hesap: kurtarma anahtarı (yazarak ya da dosyadan) + yeni parola */
 export async function recoverDialog(app, pre = {}) {
   const f = {
-    server: h('input.input', { value: pre.server || '', placeholder: 'örn. 192.168.1.50 veya https://senkron.ornek.com', spellcheck: false }),
+    server: h('input.input', { value: pre.server || '', placeholder: 'örn. sshdeck.abdulsamed.net veya 192.168.1.50', spellcheck: false }),
     user: h('input.input', { value: pre.user || '', spellcheck: false, autocapitalize: 'off' }),
     code: h('input.input.mono', { placeholder: 'XXXX-XXXX-XXXX-XXXX-XXXX-XXXX-XXXX-XXXX', spellcheck: false, autocapitalize: 'characters' }),
     pw1: h('input.input', { type: 'password' }),

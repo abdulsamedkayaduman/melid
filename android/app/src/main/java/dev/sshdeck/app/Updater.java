@@ -40,7 +40,7 @@ import java.util.Locale;
  * PackageInstaller ile (Android onay ekranı gösterir). APK aynı anahtarla imzalı olmalı, yoksa Android reddeder.
  */
 public final class Updater {
-    static final String FEED_URL = "http://192.168.1.50:3001/api/packages/abdulsamed.kayaduman/generic/sshdeck/latest/latest.json";
+    static final String FEED_URL = "https://sshdeck.abdulsamed.net/guncelleme/latest.json";
     static final String PUBLIC_KEY = "JZZUOZm0s+7S9kpAprN5IKx+6fMm07tbSeq5jkCy2Fo=";
     static final String CHANNEL = "updates";
     static final int NOTIF_ID = 2;
@@ -109,7 +109,7 @@ public final class Updater {
     static String netError(Exception e) {
         if (e instanceof java.net.SocketTimeoutException) return "Güncelleme sunucusu yanıt vermedi";
         if (e instanceof java.net.ConnectException || e instanceof java.net.UnknownHostException || e instanceof java.net.NoRouteToHostException)
-            return "Güncelleme sunucusuna ulaşılamadı (ev ağında mısınız?)";
+            return "Güncelleme sunucusuna ulaşılamadı (internet bağlantınızı denetleyin)";
         return e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage();
     }
 

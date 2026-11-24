@@ -1,7 +1,8 @@
-# SSHDeck eşitleme sunucusu. Bağımlılık yok: yalnız Node ve tek dosya.
+# SSHDeck eşitleme sunucusu. Bağımlılık yok: yalnız Node, sunucu dosyası ve iki sayfa.
 FROM node:22-alpine
 WORKDIR /app
 COPY sync-server.js ./
+COPY pages ./pages
 # /data adlandırılmış birime bağlanır; ilk bağlamada sahipliği buradan alır (root olmayan node kullanıcısı)
 RUN mkdir -p /data && chown node:node /data
 USER node
