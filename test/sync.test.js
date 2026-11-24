@@ -275,7 +275,7 @@ const names = (st) => st.sessions.map((s) => s.name).sort().join(',');
   await new Promise((r) => upstream.listen(0, '127.0.0.1', r));
   const openDir = tmp('sshdeck-srv-');
   const pub = http.createServer(createSyncServer({
-    dataDir: openDir, register: 'open', adminKey: 'yonetici-parolasi', adminIps: '203.0.113.7, 2001:db8::/48', trustProxy: true,
+    dataDir: openDir, register: 'open', adminKey: 'yonetici-parolasi', adminIps: '203.0.113.7, 2001:db8::/48', trustProxy: 'cloudflare',
     updateUpstream: `http://127.0.0.1:${upstream.address().port}/sshdeck/`,
   }));
   await new Promise((r) => pub.listen(0, '127.0.0.1', r));
@@ -290,16 +290,21 @@ const names = (st) => st.sessions.map((s) => s.name).sort().join(',');
   await O.sync.setEmail('yeni@ornek.com');
   assert.equal((await O.sync.info()).email, 'yeni@ornek.com');
   // aynı IP'den günde en fazla 5 hesap (vekil arkasında CF-Connecting-IP'ye göre)
-  const reg = (user, ip) => fetch(`http://${P}/api/register`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'CF-Connecting-IP': ip },
+  // Traefik, Cloudflare kenar sunucusunun adresini X-Forwarded-For'un sonuna ekler; gerçek istemci CF-Connecting-IP'de
+  const CF_EDGE = '188.114.96.5';
+  const viaCf = (ip) => ({ 'X-Forwarded-For': CF_EDGE, 'CF-Connecting-IP': ip });
+  const reg = (user, ip) => fetch(`http://${P}/api/register`, { method: 'POST', headers: { 'Content-Type': 'application/json', ...viaCf(ip) },
     body: JSON.stringify({ user, email: `${user}@ornek.com`, salt: 'A'.repeat(24), iter: 600000, authKey: 'B'.repeat(44), wrappedKey: 'C'.repeat(60) }) });
   for (let i = 0; i < 5; i++) assert.equal((await reg('u' + i, '198.51.100.9')).status, 200);
   assert.equal((await reg('u9', '198.51.100.9')).status, 429, 'IP başına günlük kayıt sınırı');
   assert.equal((await reg('u9', '198.51.100.10')).status, 200, 'başka IP açabilir');
   // yönetici: yalnız izinli IP'den; yanlış IP'de sayfa yokmuş gibi
-  const adm = (ip, body, path = '/api/admin/stats') => fetch(`http://${P}${path}`, { method: 'POST', headers: { 'Content-Type': 'application/json', ...(ip ? { 'CF-Connecting-IP': ip } : {}) }, body: JSON.stringify(body) });
+  const adm = (ip, body, path = '/api/admin/stats') => fetch(`http://${P}${path}`, { method: 'POST', headers: { 'Content-Type': 'application/json', ...viaCf(ip) }, body: JSON.stringify(body) });
   assert.equal((await fetch(`http://${P}/admin`)).status, 404, 'yerel adres izinli listede değil');
-  assert.equal((await fetch(`http://${P}/admin`, { headers: { 'CF-Connecting-IP': '198.51.100.9' } })).status, 404);
-  assert.equal((await fetch(`http://${P}/admin`, { headers: { 'CF-Connecting-IP': '203.0.113.7' } })).status, 200);
+  assert.equal((await fetch(`http://${P}/admin`, { headers: viaCf('198.51.100.9') })).status, 404);
+  assert.equal((await fetch(`http://${P}/admin`, { headers: viaCf('203.0.113.7') })).status, 200);
+  assert.equal((await fetch(`http://${P}/admin`, { headers: { 'CF-Connecting-IP': '203.0.113.7' } })).status, 404, 'Cloudflare\'i atlayan istek başlığı taklit edemez');
+  assert.equal((await fetch(`http://${P}/admin`, { headers: { 'X-Forwarded-For': '9.9.9.9', 'CF-Connecting-IP': '203.0.113.7' } })).status, 404, 'Cloudflare olmayan vekil');
   assert.equal((await fetch(`http://${P}/admin`, { headers: { 'X-Forwarded-For': '1.1.1.1, 2001:db8:0:5::1' } })).status, 200, 'IPv6 alt ağ, XFF en sağ');
   assert.equal((await fetch(`http://${P}/admin`, { headers: { 'X-Forwarded-For': '203.0.113.7, 1.1.1.1' } })).status, 404, 'XFF soldaki girdi sayılmaz');
   assert.equal((await adm('198.51.100.9', { key: 'yonetici-parolasi' })).status, 404);
@@ -325,6 +330,28 @@ const names = (st) => st.sessions.map((s) => s.name).sort().join(',');
   assert.match(apk.headers.get('content-disposition'), /SSHDeck-1\.2\.3\.apk/);
   assert.equal((await fetch(`http://${P}/indir/1.2.3/yok.apk`)).status, 404);
   assert.equal((await fetch(`http://${P}/indir/1.2.3/..%2Fsecret`)).status, 404);
+  // TRUST_PROXY=1 kipinde CF-Connecting-IP hiç sayılmaz
+  const plain = http.createServer(createSyncServer({ dataDir: tmp('sshdeck-srv-'), adminKey: 'k', adminIps: '203.0.113.7', trustProxy: true }));
+  await new Promise((r) => plain.listen(0, '127.0.0.1', r));
+  const PL = `http://127.0.0.1:${plain.address().port}`;
+  assert.equal((await fetch(`${PL}/admin`, { headers: viaCf('203.0.113.7') })).status, 404);
+  assert.equal((await fetch(`${PL}/admin`, { headers: { 'X-Forwarded-For': '203.0.113.7' } })).status, 200);
+  plain.close();
+  // UPDATE_FEED_URL: yönlendirme izlenir (GitHub sürüm dosyası gibi), kaynak düşse de son akış verilir
+  let feedHits = 0;
+  const gh = http.createServer((q, s2) => {
+    if (q.url === '/releases/latest/download/latest.json') { s2.writeHead(302, { Location: '/obj/latest.json' }); return s2.end(); }
+    if (q.url === '/obj/latest.json') { feedHits++; return s2.end('{"payload":"gh","sig":"x"}'); }
+    s2.writeHead(404); s2.end();
+  });
+  await new Promise((r) => gh.listen(0, '127.0.0.1', r));
+  const fsrv = http.createServer(createSyncServer({ dataDir: tmp('sshdeck-srv-'), updateFeedUrl: `http://127.0.0.1:${gh.address().port}/releases/latest/download/latest.json` }));
+  await new Promise((r) => fsrv.listen(0, '127.0.0.1', r));
+  const FU = `http://127.0.0.1:${fsrv.address().port}/guncelleme/latest.json`;
+  const [f1, f2] = await Promise.all([fetch(FU), fetch(FU)]);
+  assert.equal((await f1.json()).payload, 'gh'); assert.equal((await f2.json()).payload, 'gh');
+  assert.equal(feedHits, 1, 'eşzamanlı istekler tek kez alır, sonra bellekten');
+  gh.close(); fsrv.close();
   pub.close(); upstream.close();
   console.log('OK herkese açık kayıt, e-posta, hesap silme, yönetici IP sınırı, güncelleme aktarımı');
 })().catch((e) => { console.error(e); process.exit(1); });

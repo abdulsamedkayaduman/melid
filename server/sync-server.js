@@ -17,10 +17,14 @@
 //   SSHDECK_ADMIN_KEY    yönetici paneli parolası (boşsa SSHDECK_SYNC_INVITE; ikisi de boşsa panel kapalı)
 //   SSHDECK_ADMIN_IPS    paneli açabilecek adresler, virgülle: 203.0.113.7, 192.168.0.0/16, 2001:db8::/48
 //                        (boşsa yalnız yerel ağ ve bu makine)
-//   UPDATE_UPSTREAM      sürüm dosyalarının iç adresi (ör. Forgejo generic paket deposu .../generic/sshdeck)
+//   UPDATE_FEED_URL      imzalı latest.json'ın adresi (ör. https://github.com/<kullanıcı>/<depo>/releases/latest/download/latest.json);
+//                        /guncelleme/latest.json buradan alınıp 5 dakika bellekte tutulur. İndirme adresleri akışın içinde.
+//   UPDATE_UPSTREAM      sürüm dosyalarının iç adresi (ör. Forgejo generic paket deposu .../generic/sshdeck); hem akış
+//                        hem /indir/<sürüm>/<dosya> buradan aktarılır (UPDATE_FEED_URL yoksa)
 //   TLS_CERT / TLS_KEY   verilirse HTTPS (yoksa HTTP; internete açarken önüne TLS'li ters vekil koyun)
-//   TRUST_PROXY=1        ters vekil (Traefik/Dokploy, nginx, Cloudflare) arkasında: istemci IP'si CF-Connecting-IP'den,
-//                        yoksa X-Forwarded-For'un en sağındaki girdiden alınır
+//   TRUST_PROXY          1: ters vekil (Traefik/Dokploy, nginx) arkasında istemci IP'si X-Forwarded-For'un en sağındaki girdisi.
+//                        cloudflare: üstelik o girdi bir Cloudflare adresiyse gerçek IP CF-Connecting-IP'den alınır
+//                        (sunucuya Cloudflare'i atlayıp doğrudan gelen istek bu başlığı taklit edemez)
 const http = require('http');
 const https = require('https');
 const fs = require('fs');
@@ -34,7 +38,12 @@ const USER_RE = /^[a-z0-9._-]{2,40}$/;
 const EMAIL_RE = /^[^\s@<>"'`]{1,64}@[^\s@<>"'`]+\.[^\s@<>"'`]{2,}$/;
 const normEmail = (e) => String(e || '').trim().toLowerCase();
 const PRIVATE_NETS = ['127.0.0.0/8', '10.0.0.0/8', '172.16.0.0/12', '192.168.0.0/16', '::1/128', 'fc00::/7'];
-const REG_PER_IP_DAY = 5; // aynı IP'den günde en fazla yeni hesap
+const REG_PER_IP_DAY = 5;
+// https://www.cloudflare.com/ips/ (2026)
+const CLOUDFLARE_NETS = ['173.245.48.0/20', '103.21.244.0/22', '103.22.200.0/22', '103.31.4.0/22', '141.101.64.0/18', '108.162.192.0/18',
+  '190.93.240.0/20', '188.114.96.0/20', '197.234.240.0/22', '198.41.128.0/17', '162.158.0.0/15', '104.16.0.0/13', '104.24.0.0/14',
+  '172.64.0.0/13', '131.0.72.0/22', '2400:cb00::/32', '2606:4700::/32', '2803:f800::/32', '2405:b500::/32', '2405:8100::/32',
+  '2a06:98c0::/29', '2c0f:f248::/32']; // aynı IP'den günde en fazla yeni hesap
 
 /** "1.2.3.4, 10.0.0.0/8, 2001:db8::/32" -> BlockList */
 function ipList(spec) {
@@ -55,8 +64,9 @@ const ipIn = (bl, ip) => { ip = plainIp(ip); const t = net.isIPv4(ip) ? 'ipv4' :
 const B64 = (s, min, max) => typeof s === 'string' && /^[A-Za-z0-9+/=]+$/.test(s) && s.length >= min && s.length <= max;
 
 function createSyncServer({
-  dataDir, invite = '', register, adminKey = '', adminIps = '', trustProxy = false, maxUsers = 1000, updateUpstream = '', pagesDir,
+  dataDir, invite = '', register, adminKey = '', adminIps = '', trustProxy = false, maxUsers = 1000, updateUpstream = '', updateFeedUrl = '', pagesDir,
 }) {
+  const cfNets = ipList(CLOUDFLARE_NETS);
   const regMode = register || (invite ? 'invite' : 'open');
   if (regMode === 'invite' && !invite) throw new Error('SSHDECK_REGISTER=invite için SSHDECK_SYNC_INVITE gerekli');
   const adminSecret = adminKey || invite;
@@ -64,16 +74,19 @@ function createSyncServer({
   const page = (n) => { try { return fs.readFileSync(path.join(pagesDir || path.join(__dirname, 'pages'), n), 'utf8'); } catch { return `<!doctype html><title>SSHDeck</title><p>${n} bulunamadı</p>`; } };
   const PAGES = { home: page('home.html'), admin: page('admin.html') };
 
-  // Vekil arkasında herkes vekilin IP'siyle gelir. Cloudflare gerçek adresi CF-Connecting-IP'ye yazar (istemci onu
-  // değiştiremez); yoksa vekilin eklediği en sağdaki X-Forwarded-For girdisi (soldakileri istemci kendisi yazabilir).
+  // Vekil arkasında herkes vekilin IP'siyle gelir: vekilin eklediği en sağdaki X-Forwarded-For girdisi kullanılır
+  // (soldakileri istemci kendisi yazabilir). Cloudflare kipinde o girdi bir Cloudflare adresiyse gerçek istemci
+  // CF-Connecting-IP'dedir; Cloudflare'i atlayan istek bu başlığı yazsa da sayılmaz.
   const realIp = (req) => {
-    if (trustProxy) {
-      const cf = String(req.headers['cf-connecting-ip'] || '').trim();
-      if (net.isIP(cf)) return cf;
-      const xff = req.headers['x-forwarded-for'];
-      if (xff) { const last = String(xff).split(',').pop().trim(); if (net.isIP(last)) return last; }
+    let ip = plainIp(req.socket.remoteAddress);
+    if (!trustProxy) return ip;
+    const xff = req.headers['x-forwarded-for'];
+    if (xff) { const last = plainIp(String(xff).split(',').pop().trim()); if (net.isIP(last)) ip = last; }
+    if (trustProxy === 'cloudflare' && ipIn(cfNets, ip)) {
+      const cf = plainIp(String(req.headers['cf-connecting-ip'] || '').trim());
+      if (net.isIP(cf)) ip = cf;
     }
-    return plainIp(req.socket.remoteAddress);
+    return ip;
   };
   const clientIp = (req) => 'ip:' + realIp(req);
   fs.mkdirSync(path.join(dataDir, 'vaults'), { recursive: true, mode: 0o700 });
@@ -357,6 +370,32 @@ function createSyncServer({
     },
   };
 
+  // UPDATE_FEED_URL: latest.json yönlendirmeleri izlenerek alınır (GitHub sürüm dosyaları başka bir sunucuya yönlendirir)
+  let urlFeed = null; let urlFeedWait = null;
+  const fetchFeed = (u, hops = 0) => new Promise((resolve, reject) => {
+    const target = new URL(u);
+    (target.protocol === 'https:' ? https : http).get(target, { timeout: 20000, headers: { 'User-Agent': 'SSHDeck-sync' } }, (r) => {
+      if ([301, 302, 303, 307, 308].includes(r.statusCode) && r.headers.location && hops < 5) {
+        r.resume(); return resolve(fetchFeed(new URL(r.headers.location, target).toString(), hops + 1));
+      }
+      if (r.statusCode !== 200) { r.resume(); return reject(new Error('HTTP ' + r.statusCode)); }
+      const chunks = []; let size = 0;
+      r.on('data', (c) => { size += c.length; if (size > 1048576) r.destroy(new Error('çok büyük')); else chunks.push(c); });
+      r.on('end', () => resolve(Buffer.concat(chunks)));
+      r.on('error', reject);
+    }).on('timeout', function () { this.destroy(new Error('timeout')); }).on('error', reject);
+  });
+  const serveUrlFeed = (res) => {
+    const send = (body) => { res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'public, max-age=60', 'Access-Control-Allow-Origin': '*' }); res.end(body); };
+    if (urlFeed && Date.now() - urlFeed.at < 300000) return send(urlFeed.body);
+    urlFeedWait = urlFeedWait || fetchFeed(updateFeedUrl).then((body) => { urlFeed = { at: Date.now(), body }; return body; }).finally(() => { urlFeedWait = null; });
+    urlFeedWait.then(send, (e) => {
+      if (urlFeed) return send(urlFeed.body); // kaynak geçici olarak yoksa eskisi
+      console.error('Güncelleme akışı alınamadı:', e.message);
+      res.writeHead(502, { 'Content-Type': 'application/json; charset=utf-8' }); res.end(JSON.stringify({ error: 'Güncelleme kaynağına ulaşılamadı' }));
+    });
+  };
+
   // Sürüm dosyalarını iç kaynaktan (UPDATE_UPSTREAM) aktarır; latest.json bir dakika bellekte tutulur
   let feedCache = null;
   const proxy = (rel, res, isFeed) => {
@@ -412,7 +451,7 @@ function createSyncServer({
         if (!adminSecret || !adminIpOk(req)) return reply(404, { error: 'Bulunamadı' });
         htmlHead(200); return res.end(PAGES.admin);
       }
-      if (url.pathname === '/guncelleme/latest.json') return proxy('latest/latest.json', res, true);
+      if (url.pathname === '/guncelleme/latest.json') return updateFeedUrl ? serveUrlFeed(res) : proxy('latest/latest.json', res, true);
       const m = /^\/indir\/(\d+\.\d+\.\d+)\/([\w.-]+)$/.exec(url.pathname);
       if (m && !m[2].startsWith('.')) return proxy(`${m[1]}/${m[2]}`, res, false);
     }
@@ -454,7 +493,8 @@ if (require.main === module) {
     adminIps: env.SSHDECK_ADMIN_IPS || '',
     maxUsers: Number(env.SSHDECK_MAX_USERS) || 1000,
     updateUpstream: env.UPDATE_UPSTREAM || '',
-    trustProxy: /^(1|true|yes)$/i.test(env.TRUST_PROXY || ''),
+    updateFeedUrl: env.UPDATE_FEED_URL || '',
+    trustProxy: /^cloudflare$/i.test(env.TRUST_PROXY || '') ? 'cloudflare' : /^(1|true|yes)$/i.test(env.TRUST_PROXY || ''),
   });
   const tls = process.env.TLS_CERT && process.env.TLS_KEY;
   const srv = tls

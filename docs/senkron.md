@@ -25,8 +25,9 @@ PORT=3150 HOST=0.0.0.0 DATA_DIR=/var/lib/sshdeck-sync SSHDECK_ADMIN_KEY='uzun-ra
 | `SSHDECK_MAX_USERS` | en fazla hesap (1000) |
 | `SSHDECK_ADMIN_KEY` | yönetici sayfası parolası; boşsa `SSHDECK_SYNC_INVITE`, ikisi de boşsa sayfa kapalı |
 | `SSHDECK_ADMIN_IPS` | yönetici sayfasını açabilecek adresler, virgülle; CIDR olabilir (`203.0.113.7, 2001:db8::/56`). Boşsa yalnız yerel ağ |
-| `UPDATE_UPSTREAM` | sürüm dosyalarının iç adresi (Forgejo generic paket deposu `.../generic/sshdeck`); boşsa indirme/güncelleme kapalı |
-| `TRUST_PROXY=1` | vekil arkasında istemci IP'si `CF-Connecting-IP`'den, yoksa `X-Forwarded-For`'un en sağındaki girdiden |
+| `UPDATE_FEED_URL` | imzalı `latest.json`'ın adresi, ör. `https://github.com/<kullanıcı>/<depo>/releases/latest/download/latest.json`; `/guncelleme/latest.json` buradan alınır (5 dk bellekte) |
+| `UPDATE_UPSTREAM` | ya da sürüm dosyalarının iç adresi (Forgejo generic paket deposu `.../generic/sshdeck`); akış ve `/indir/*` buradan aktarılır |
+| `TRUST_PROXY` | `1`: vekil arkasında istemci IP'si `X-Forwarded-For`'un en sağındaki girdisi. `cloudflare`: o girdi bir Cloudflare adresiyse `CF-Connecting-IP` (Cloudflare'i atlayan istek taklit edemez) |
 | `TLS_CERT` / `TLS_KEY` | verilirse HTTPS dinler. Alternatif: Caddy/nginx ters vekil ya da Tailscale |
 
 - Hesap açarken e-posta zorunlu (doğrulanmaz; yalnız yöneticinin kullanıcıya ulaşması için). Aynı IP'den günde en fazla 5 hesap.

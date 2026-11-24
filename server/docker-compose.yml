@@ -16,9 +16,11 @@ services:
       # Yönetici paneli (/admin): parola + yalnız bu adreslerden (virgülle; CIDR olabilir). Parola boşsa panel kapalı.
       SSHDECK_ADMIN_KEY: ${SSHDECK_ADMIN_KEY:-}
       SSHDECK_ADMIN_IPS: ${SSHDECK_ADMIN_IPS:-}
-      # Sürüm dosyalarının iç adresi: ana sayfadaki indirmeler ve uygulama güncellemeleri buradan aktarılır
+      # Güncellemeler: imzalı latest.json'ın adresi (GitHub sürümleri) ya da sürüm dosyalarının iç adresi (Forgejo paketleri)
+      UPDATE_FEED_URL: ${UPDATE_FEED_URL:-}
       UPDATE_UPSTREAM: ${UPDATE_UPSTREAM:-}
-      # Ters vekil (Traefik/Dokploy, Cloudflare) arkasında istemci IP'si başlıklardan alınır (deneme sınırı, yönetici IP'si)
+      # Ters vekil arkasında istemci IP'si başlıklardan alınır (deneme sınırı, yönetici IP'si).
+      # 1: X-Forwarded-For; cloudflare: Cloudflare'den gelen isteklerde CF-Connecting-IP
       TRUST_PROXY: ${TRUST_PROXY:-1}
     # Yerel ağdan doğrudan erişim (uygulamadaki "Yerel ağda ara" bunu bulur). Bu port internete açılmamalı:
     # vekil başlıkları doğrudan gelen isteklerde taklit edilebilir. Yalnız vekil kullanılıyorsa bu iki satırı silin.
