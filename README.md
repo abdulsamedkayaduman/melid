@@ -1,39 +1,60 @@
 # SSHDeck
 
-Xshell + Xftp tarzı, Linux, Windows ve macOS için SSH terminali ve SFTP dosya yöneticisi (Electron + xterm.js + ssh2).
+Linux, Windows, macOS ve Android için açık kaynak SSH terminali ve SFTP dosya yöneticisi. Terminal, dosya aktarımı,
+tüneller ve toplu sunucu işleri tek pencerede; oturumlar cihazlar arasında uçtan uca şifreli eşitlenir.
+Arayüz Türkçe. Electron + xterm.js + ssh2; Android'de WebView + JSch.
 
-macOS'ta kısayollarda Ctrl yerine Cmd kullanılır. Paket imzasızdır; ilk kurulum için bkz. `docs/ci.md` > macOS paketi.
-
-## Kurulum (CachyOS / Arch)
-
-Hazır paket:
-
-```bash
-sudo pacman -U sshdeck-1.0.0.pacman
-sshdeck          # veya uygulama menüsünden "SSHDeck"
-```
-
-Kaynaktan çalıştırma:
-
-```bash
-tar xzf sshdeck-src.tar.gz && cd sshdeck
-npm install
-npm start
-```
-
-Kendi paketini üretmek için: `sudo pacman -S libarchive` (bsdtar) sonra `npm run dist` → `dist/` içinde `.pacman` ve `.AppImage`.
+**İndir:** https://sshdeck.abdulsamed.net
 
 ## Özellikler
 
-- **Oturum yöneticisi**: gruplar (`Prod/DB` gibi iç içe), arama, sürükle-bırak ile gruba taşıma, `~/.ssh/config` içe aktarma (ProxyJump ve *Forward satırları dahil).
-- **Kimlik doğrulama**: parola, özel anahtar (parolalı anahtar sorulur), ssh-agent, otomatik (agent → `~/.ssh` anahtarları → parola), klavye etkileşimli / 2FA. Yanlış parolada tekrar sorar.
-- **Güvenlik**: sunucu anahtarı parmak izi doğrulaması (ilk bağlantıda sorar, değişirse MITM uyarısı). Parolalar KWallet / GNOME Keyring üzerinden şifrelenir (Electron safeStorage).
-- **Terminal**: sekmeler, 256 renk, arama, seçince kopyala, sağ tık yapıştır, başlangıç komutu, kopunca Enter ile yeniden bağlanma, tüm sekmelere komut gönderme (broadcast).
-- **SFTP (Xftp tarzı)**: yerel ↔ uzak çift panel, sürükle-bırak, dosya yöneticisinden sürükleyip yükleme, çift tık ile karşı tarafa aktarma, klasör aktarımı, hız/ETA, iptal, üzerine yazma sorusu, chmod, uzak dosyayı yerel editörde açıp kaydedince otomatik yükleme, “terminalde bu dizine git”.
-- **Tüneller**: yerel (-L), uzak (-R), dinamik SOCKS5 (-D); oturuma kaydedilebilir veya anlık açılabilir.
-- **Jump host**: başka bir oturumu bastion olarak seç, zincirleme (bastion → bastion → hedef) desteklenir.
+- **Terminal**: sekmeler, bölünmüş ekran, iki sekme grubu yan yana, arama, tüm sekmelere komut gönderme, hazır komutlar,
+  oturum kaydı, bağlantı koparsa otomatik yeniden bağlanma.
+- **SFTP**: yerel ↔ uzak çift panel, sürükle-bırak ve kopyala-yapıştır, yarım kalan aktarımı sürdürme, klasör eşitleme ve
+  karşılaştırma, uzak dosyayı yerel editörde açıp kaydedince otomatik yükleme, önizleme.
+- **Sunucudan sunucuya**: iki sunucu arasında dosyalar bilgisayara inmeden doğrudan kopyalanır.
+- **Bağlantı**: parola, anahtar, ssh-agent / Pageant, klavye etkileşimli / 2FA, jump host zinciri, -L / -R / -D tünelleri,
+  `~/.ssh/config` içe aktarma, sunucu anahtarı doğrulaması.
+- **Toplu işler**: tüm oturumları denetleme (erişim, kimlik doğrulama), çok sunucuda komut, kaynak özeti (CPU, RAM, disk).
+- **Hesap ve eşitleme**: oturumlar, kayıtlı parolalar, ayarlar, hazır komutlar ve isteğe bağlı SSH anahtarları cihazlar
+  arasında uçtan uca şifreli eşitlenir. Genel sunucu hazır gelir; isteyen kendi sunucusunu kurar ([docs/senkron.md](docs/senkron.md)).
+- **Güvenlik**: parolalar işletim sisteminin anahtarlığıyla şifreli, isteğe bağlı ana parola, şifreli yedek.
+- **Geçiş**: WindTerm ve Xshell oturumlarını içe aktarma (WindTerm parolaları dahil).
+
+## Kurulum
+
+Hazır paketler indirme sayfasında: https://sshdeck.abdulsamed.net
+
+| Platform | Paket | Not |
+|---|---|---|
+| Windows 10/11 | kurulum veya taşınabilir `.exe` | İmzasız: SmartScreen'de "Ek bilgi" → "Yine de çalıştır" |
+| macOS | `-mac-arm64.tar.gz` (Apple Silicon), `-mac-x64.tar.gz` (Intel) | İmzasız: ilk kurulum aşağıda |
+| Linux | `.AppImage`, Arch için `.pacman` | |
+| Android 8+ | `.apk` | |
+
+macOS ilk kurulum:
+
+```bash
+tar xzf SSHDeck-<sürüm>-mac-arm64.tar.gz
+mv SSHDeck.app /Applications/
+xattr -cr /Applications/SSHDeck.app
+codesign --force --deep --sign - /Applications/SSHDeck.app
+```
+
+Uygulamalar yeni sürümü kendileri bildirir; Windows, Linux ve Android'de tek tıkla kurulur.
+
+## Kaynaktan çalıştırma
+
+```bash
+npm install
+npm start          # npm run dev: F12 ile DevTools
+```
+
+Paket üretmek: `npm run dist` (Linux), `npm run dist:win`, `npm run dist:mac`. Android: [android/README.md](android/README.md).
 
 ## Kısayollar
+
+macOS'ta Ctrl yerine Cmd.
 
 | Tuş | İş |
 |---|---|
@@ -41,30 +62,28 @@ Kendi paketini üretmek için: `sudo pacman -S libarchive` (bsdtar) sonra `npm r
 | Ctrl+Shift+T | Sekmeyi çoğalt |
 | Ctrl+Shift+W | Sekmeyi kapat |
 | Ctrl+Tab / Alt+1..9 | Sekmeler arası geçiş |
+| Ctrl+Shift+D / S | Terminali sağa / aşağı böl |
 | Ctrl+Shift+E | SFTP panelini aç/kapat |
 | Ctrl+Shift+B | Oturum listesini aç/kapat |
 | Ctrl+Shift+F | Terminalde ara |
+| Ctrl+Shift+K | Hazır komutlar |
 | Ctrl+Shift+C / V | Kopyala / yapıştır |
 | Ctrl+Shift+R | Yeniden bağlan |
 | Ctrl + / − / 0 | Yazı boyutu |
-| Dosya panelinde: Enter, Backspace, F2, F5, Del, Ctrl+A | Aç/aktar, üst dizin, yeniden adlandır, yenile, sil, tümünü seç |
+| Dosya panelinde: Enter, Backspace, F2, F5, Del, Ctrl+A, Ctrl+C / V, Ctrl+F, Boşluk | Aç/aktar, üst dizin, yeniden adlandır, yenile, sil, tümünü seç, kopyala/yapıştır, süz, önizle |
 
-## Testler
+## Eşitleme sunucusu
 
-`npm test` — Docker/Podman'da geçici bir SSH sunucusu açıp bağlantı, SFTP, aktarım ve tünel testlerini çalıştırır.
+`server/` bağımlılıksız bir Node uygulaması (Docker / Dokploy dosyaları içinde). Genel sunucu `sshdeck.abdulsamed.net`;
+kendi sunucunuzu kurmak ve güvenlik modeli için [docs/senkron.md](docs/senkron.md). Sunucu kasaların içeriğini göremez:
+yalnız kullanıcı adı, e-posta ve şifreli kasayı saklar.
 
-## Veriler
+## Geliştirme
 
-`~/.config/SSHDeck/` altında: `sessions.json`, `settings.json`, `known_hosts.json`.
+- `npm test`: Docker/Podman'da geçici sshd açıp bağlantı, SFTP, aktarım, tünel testleri + sunucusuz birim testleri.
+- Android çekirdeği: `bash android/coretest/run.sh` (JDK 17 + sshd).
+- Mimari ve kurallar: [CLAUDE.md](CLAUDE.md). CI ve sürüm yayını: [docs/ci.md](docs/ci.md).
 
-## Proje yapısı
+## Lisans
 
-```
-src/main/main.js          Electron ana süreç, IPC
-src/main/ssh-manager.js   Bağlantı, jump host, shell, SFTP, aktarımlar, tüneller
-src/main/socks.js         -D için SOCKS5 sunucusu
-src/main/store.js         Oturum/ayar/known_hosts kaydı, parola şifreleme
-src/main/sshconfig.js     ~/.ssh/config ayrıştırıcı
-src/preload.js            Güvenli köprü (contextIsolation + sandbox)
-src/renderer/             Arayüz (app, tab, filepane, dialogs, styles)
-```
+[MIT](LICENSE)

@@ -1,6 +1,6 @@
 # CI/CD (Forgejo Actions)
 
-Forgejo: `http://192.168.1.50:3001/abdulsamed.kayaduman/ssh-deck`. İş akışı: `.forgejo/workflows/derle.yml`.
+İş akışı: `.forgejo/workflows/derle.yml` (Forgejo Actions). Açık kaynak kopya GitLab'da; derleme ve sürümler Forgejo'da.
 
 ## Ne yapar
 
@@ -36,13 +36,17 @@ yani tek yerden sürüm artırmak yeterli.
 
 ## Güncelleme kaynağı (uygulama içi güncelleme)
 
-Depo özel olduğu için sürüm dosyaları anonim indirilemez; bu yüzden etiketli her sürümde `ci/publish-update.sh`
-dosyaları Forgejo **generic paket deposuna** koyar (kullanıcı herkese açık olduğu için paketler anonim okunur):
+Etiketli her sürümde `ci/publish-update.sh` dosyaları Forgejo **generic paket deposuna** koyar:
 
 ```
-http://192.168.1.50:3001/api/packages/abdulsamed.kayaduman/generic/sshdeck/<sürüm>/<dosya>
-http://192.168.1.50:3001/api/packages/abdulsamed.kayaduman/generic/sshdeck/latest/latest.json
+<forgejo>/api/packages/<kullanıcı>/generic/sshdeck/<sürüm>/<dosya>
+<forgejo>/api/packages/<kullanıcı>/generic/sshdeck/latest/latest.json
 ```
+
+Forgejo yalnız ev ağında; dışarıya eşitleme sunucusu aktarır (`UPDATE_UPSTREAM`, docs/senkron.md):
+`https://sshdeck.abdulsamed.net/guncelleme/latest.json` ve `https://sshdeck.abdulsamed.net/indir/<sürüm>/<dosya>`.
+`latest.json`'daki indirme adresleri bu genel adreslerdir (`PUBLIC_DOWNLOAD_BASE`, derle.yml). 1.9.0 ve öncesi uygulamalar
+hâlâ Forgejo'daki `latest.json`'a bakar; o dosya da her sürümde yenilenir, böylece yeni adrese geçerler.
 
 `latest.json` = `{ payload: base64(JSON), sig: Ed25519 imzası }`; JSON'da sürüm, notlar ve her paket türü için
 `url`, `sha256`, `size` var (`ci/update-feed.js`). Uygulamalar imzayı gömülü açık anahtarla
@@ -54,7 +58,6 @@ http://192.168.1.50:3001/api/packages/abdulsamed.kayaduman/generic/sshdeck/lates
 - Android: açılışta/geri dönüşte (6 saatte bir) ve arka planda 12 saatte bir (JobScheduler) denetler; bildirim +
   ana ekranda şerit. Kurulum PackageInstaller ile; ilk seferde "bilinmeyen uygulamaları yükle" izni istenir.
 - Ayarlardan "Şimdi denetle" ve otomatik denetimi kapatma. "Bu sürümü atla" yalnız o sürümü susturur.
-- Sunucu ev ağında (`192.168.1.50`); dışarıdayken denetim sessizce başarısız olur (WireGuard ile çalışır).
 - Deneme için masaüstünde `SSHDECK_UPDATE_URL`, Android'de `updateUrl` ayarı başka kaynak gösterebilir
   (imza yine aynı anahtarla doğrulanır).
 
@@ -73,8 +76,8 @@ xattr -cr /Applications/SSHDeck.app
 codesign --force --deep --sign - /Applications/SSHDeck.app
 ```
 
-Uygulama içi güncelleme macOS'ta kurulum yapmaz: yeni sürüm bildirilir, paket Sürümler sayfasından elle indirilir
-(`installKind()` `null` döner, `ci/publish-update.sh` Mac paketlerini `latest.json`'a eklemez).
+Uygulama içi güncelleme macOS'ta kurulum yapmaz: yeni sürüm bildirilir, "İndirme sayfasını aç" ile paket elle indirilir
+(`installKind()` `null` döner). Mac paketleri `latest.json`'da `mac-arm64` / `mac-x64` olarak yalnız indirme sayfası için durur.
 
 ## Bir kez yapılacak kurulum
 

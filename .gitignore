@@ -3,3 +3,4 @@ dist/
 test/.work/
 update-signing-key.pem
 server/data/
+/*.apk
