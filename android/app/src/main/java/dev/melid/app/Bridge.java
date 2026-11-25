@@ -236,15 +236,15 @@ public class Bridge {
             case "xshellPick": {
                 List<Uri> uris = act.pickFiles(false);
                 if (uris == null || uris.isEmpty()) return null;
-                String[] m = meta(uris.get(0));
-                if (Long.parseLong(m[1]) > (32 << 20)) throw new Exception("Dosya çok büyük");
+                String[] fm = meta(uris.get(0));
+                if (Long.parseLong(fm[1]) > (32 << 20)) throw new Exception("Dosya çok büyük");
                 byte[] data;
                 try (InputStream in = act.getContentResolver().openInputStream(uris.get(0))) { data = readAll(in, 32 << 20); }
-                try { xshellPending = dev.melid.core.XshellImport.parse(m[0], data); }
+                try { xshellPending = dev.melid.core.XshellImport.parse(fm[0], data); }
                 catch (Exception e) { throw new Exception("Xshell oturumları okunamadı: " + e.getMessage()); }
                 int enc = 0;
                 for (JSONObject x : xshellPending) if (x.has("_xsEnc")) enc++;
-                return obj("found", xshellPending.size(), "encrypted", enc, "name", m[0]);
+                return obj("found", xshellPending.size(), "encrypted", enc, "name", fm[0]);
             }
             case "xshellDecrypt": {
                 if (xshellPending == null) throw new Exception("Önce dosya seçin");
