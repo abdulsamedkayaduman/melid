@@ -64,7 +64,7 @@ public final class XshellImport {
         if (b.length > 3 && b[1] == 0 && b[3] == 0) return new String(b, StandardCharsets.UTF_16LE);
         String s = new String(b, StandardCharsets.UTF_8);
         if (s.indexOf('�') >= 0) return new String(b, Charset.forName("windows-1254"));
-        return s.startsWith("﻿") ? s.substring(1) : s;
+        return !s.isEmpty() && s.charAt(0) == (char) 0xFEFF ? s.substring(1) : s;
     }
 
     /** INI: bölüm adı büyük harf, anahtar küçük harf */
