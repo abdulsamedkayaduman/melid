@@ -41,7 +41,43 @@ xattr -cr /Applications/Melid.app
 codesign --force --deep --sign - /Applications/Melid.app
 ```
 
+Linux:
+
+```bash
+# AppImage (her dağıtım): çalıştırılabilir yapıp açın
+chmod +x Melid-<sürüm>.AppImage
+./Melid-<sürüm>.AppImage
+# Ubuntu 22.04+ "FUSE" hatası verirse: sudo apt install libfuse2   (24.04: libfuse2t64)
+
+# Arch / CachyOS / Manjaro: pacman paketi (menüye "Melid" ve "melid" komutu eklenir)
+sudo pacman -U melid-<sürüm>.pacman
+```
+
+Kayıtlı parolalar sistemin anahtarlığında (GNOME Keyring / KWallet) şifrelenir. Anahtarlık yoksa Ayarlar'dan bir ana parola
+belirleyin.
+
 Uygulamalar yeni sürümü kendileri bildirir; Windows, Linux ve Android'de tek tıkla kurulur.
+
+## Xshell'den geçiş
+
+Masaüstü uygulamada, oturumlar klasörleri, parolaları ve tünelleriyle birlikte gelir.
+
+1. **Xshell'de** oturumları dışa aktarın (Export): bir `.xts` dosyası oluşur. Ya da doğrudan Xshell'in `Sessions` klasörünü kullanın
+   (`Belgeler\NetSarang Computer\<sürüm>\Xshell\Sessions`).
+2. **Melid'de** araç çubuğundaki **İçe aktar** düğmesi → **Xshell** → `.xts` dosyasını (ya da `.xsh` dosyalarını / klasörü) seçin.
+3. **Parolalar:** Xshell parolaları, onları kaydeden Windows kullanıcısına bağlı bir anahtarla ya da Xshell ana parolasıyla şifreler.
+   - Aynı Windows bilgisayarında, aynı kullanıcıyla içe aktarıyorsanız parolalar kendiliğinden çözülür.
+   - Xshell'de ana parola (Master Password) ayarladıysanız Melid onu sorar.
+   - Başka bir bilgisayarda (Linux, macOS ya da başka bir Windows) içe aktarıyorsanız, Xshell'in kurulu olduğu Windows'ta komut
+     istemine `whoami /user` yazın; çıkan **kullanıcı adını** ve `S-1-5-21-…` ile başlayan **SID**'i Melid'in sorduğu pencereye girin.
+4. Bazı parolalar çözülemezse (ör. "133 parolanın 91'i çözüldü"), bu bir hata değildir: kalan oturumlar başka bir bilgisayarda,
+   başka bir kullanıcıyla ya da eski bir ana parolayla kaydedilmiştir. Başka bir ana parola / kullanıcı deneyebilir ya da
+   **Kalanlar parolasız, devam et** diyebilirsiniz; parolası olmayan oturumda parola ilk bağlantıda sorulur ve kaydedilebilir.
+   **İptal** (ya da pencereyi kapatmak) içe aktarmayı tamamen iptal eder.
+
+Gelenler: klasörler, ad, adres, port, kullanıcı adı, açıklama, parola, tüneller (yerel `-L`, uzak `-R`, SOCKS `-D`).
+Gelmeyenler: Xshell'in kendi anahtar deposundaki özel anahtarlar (Xshell'den dışa aktarıp `~/.ssh`'ye koyun) ve görünüm ayarları.
+WindTerm oturumları da aynı düğmeden, WindTerm ana parolasıyla parolalarıyla birlikte aktarılır.
 
 ## Kaynaktan çalıştırma
 

@@ -172,7 +172,7 @@ footer .sp { flex: 1; }
     <div class="dl" id="dl">
       <div class="card" data-os="windows"><h3>Windows</h3><div class="files"></div><div class="note">Windows 10 / 11, 64 bit. İlk açılışta SmartScreen uyarısı: "Ek bilgi" → "Yine de çalıştır".</div></div>
       <div class="card" data-os="mac"><h3>macOS</h3><div class="files"></div><div class="note">Apple Silicon (M1–M4) için arm64, eski Intel Mac'ler için x64. İlk kurulum aşağıda.</div></div>
-      <div class="card" data-os="linux"><h3>Linux</h3><div class="files"></div><div class="note">AppImage her dağıtımda çalışır (<code>chmod +x</code>). Arch için pacman paketi.</div></div>
+      <div class="card" data-os="linux"><h3>Linux</h3><div class="files"></div><div class="note">AppImage her dağıtımda çalışır; Arch, CachyOS ve Manjaro için pacman paketi. Kurulum aşağıda.</div></div>
       <div class="card" data-os="android"><h3>Android</h3><div class="files"></div><div class="note">Android 8 ve üstü. Kurarken "bilinmeyen kaynaklara izin ver" istenir.</div></div>
     </div>
     <div style="margin-top:22px">
@@ -184,6 +184,26 @@ mv Melid.app /Applications/
 xattr -cr /Applications/Melid.app
 codesign --force --deep --sign - /Applications/Melid.app</pre>
         <p>Sonra Launchpad'den açabilirsiniz. Güncellemeler uygulamada bildirilir; yeni sürümü aynı adımlarla kurun.</p>
+      </details>
+      <details>
+        <summary>Linux'ta kurulum</summary>
+        <p><b>AppImage</b> her dağıtımda çalışır, kurulum gerektirmez:</p>
+        <pre class="cmd">chmod +x Melid-*.AppImage
+./Melid-*.AppImage</pre>
+        <p>Ubuntu 22.04 ve sonrası "FUSE" hatası verirse: <code>sudo apt install libfuse2</code> (Ubuntu 24.04'te <code>libfuse2t64</code>).</p>
+        <p><b>Arch, CachyOS, Manjaro</b> için pacman paketi uygulama menüsüne "Melid"i ve <code>melid</code> komutunu ekler:</p>
+        <pre class="cmd">sudo pacman -U melid-*.pacman</pre>
+        <p>Kayıtlı parolalar sistemin anahtarlığında (GNOME Keyring / KWallet) şifrelenir; anahtarlık yoksa Ayarlar'dan bir ana parola belirleyin. Yeni sürümler uygulamada bildirilir ve tek tıkla kurulur (pacman paketinde yönetici parolası sorulur).</p>
+      </details>
+      <details>
+        <summary>Xshell'den nasıl geçerim?</summary>
+        <ol>
+          <li>Xshell'de oturumlarınızı dışa aktarın (Export): bir <code>.xts</code> dosyası oluşur.</li>
+          <li>Melid'de araç çubuğundaki <b>İçe aktar</b> → <b>Xshell</b> ile bu dosyayı seçin. Klasörler, adresler, kullanıcı adları, parolalar ve tüneller gelir.</li>
+          <li><b>Parolalar:</b> aynı Windows bilgisayarında aynı kullanıcıyla kendiliğinden çözülür. Xshell'de ana parola ayarladıysanız Melid onu sorar. Başka bir bilgisayardaysanız (Linux, macOS ya da başka bir Windows), Xshell'in kurulu olduğu Windows'ta komut istemine <code>whoami /user</code> yazın; çıkan kullanıcı adını ve <code>S-1-5-21-…</code> ile başlayan SID'i Melid'in sorduğu pencereye girin.</li>
+          <li>"133 parolanın 91'i çözüldü" gibi bir sonuç hata değildir: kalanlar başka bir bilgisayarda ya da eski bir ana parolayla kaydedilmiştir. Başka bir ana parola deneyebilir ya da <b>Kalanlar parolasız, devam et</b> diyebilirsiniz; parola ilk bağlantıda sorulur.</li>
+        </ol>
+        <p>Xshell'in kendi anahtar deposundaki özel anahtarlar aktarılmaz: onları Xshell'den dışa aktarıp <code>~/.ssh</code> klasörüne koyun. Xshell içe aktarma masaüstü uygulamadadır.</p>
       </details>
       <details>
         <summary>Eşitleme hesabı nasıl açılır?</summary>

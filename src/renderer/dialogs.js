@@ -104,17 +104,23 @@ export async function xshellCredsDialog({ pending, total, solved, last, prev = {
   };
   const err = h('div.upd-err');
   const field = (label, control, hint) => h('label.field', null, h('span', null, label), control, hint ? h('div.hint', null, hint) : null);
+  // Sonuç kutusu: başarı yeşil, sonuçsuz deneme turuncu (kısmi başarı hata gibi görünmesin)
+  const notice = (kind, title, text) => h('div.notice.' + kind, null, icon(kind === 'ok' ? 'check' : 'info', 18), h('div', null, h('b', null, title), text ? h('div', null, text) : null));
   let status = null;
-  if (last && last.solved > 0) status = h('p.hint.ok-text', null, `Bu bilgilerle ${last.solved} parola çözüldü.`);
-  else if (last) status = h('p.hint.warn', null, 'Bu bilgilerle yeni parola çözülemedi. Yazımı kontrol edin ya da başka bir ana parola / kullanıcı deneyin.');
-  else if (triedMe) status = h('p.hint', null, 'Bu bilgisayardaki Windows hesabıyla çözülemeyenler var; bunlar başka bir bilgisayarda ya da başka bir kullanıcıyla kaydedilmiş olabilir.');
+  if (last && last.solved > 0) {
+    status = notice('ok', `${last.solved} parola çözüldü`, `Şu ana kadar ${solved} / ${total} parola alındı. ${pending} oturumun parolası farklı bir anahtarla şifrelenmiş; bunlar için başka bir ana parola ya da Windows kullanıcısı deneyebilir veya devam edebilirsiniz.`);
+  } else if (last) {
+    status = notice('warn', 'Bu bilgilerle yeni parola çözülemedi', 'Yazımı kontrol edin ya da başka bir ana parola / Windows kullanıcısı deneyin. Kalanları parolasız da aktarabilirsiniz; parola ilk bağlantıda sorulur.');
+  } else if (solved > 0) {
+    status = notice('ok', `${solved} / ${total} parola bu bilgisayardaki Windows hesabıyla çözüldü`, `${pending} oturumun parolası başka bir bilgisayarda, başka bir kullanıcıyla ya da Xshell ana parolasıyla şifrelenmiş.`);
+  }
   const head = solved > 0
-    ? `${total} şifreli parolanın ${solved} tanesi çözüldü, ${pending} tanesi kaldı. Kalanlar başka bir anahtarla şifrelenmiş: başka bir bilgisayarda, başka bir Windows kullanıcısıyla ya da eski bir Xshell ana parolasıyla kaydedilmiş olabilir.`
+    ? 'Kalan parolalar için bilgi girin: Xshell ana parolası ya da parolaları kaydeden Windows kullanıcısının adı ve SID\'i.'
     : `${pending} oturumun parolası şifreli. Xshell parolaları, dışa aktarıldığı Windows kullanıcısına bağlı bir anahtarla ya da Xshell ana parolasıyla şifreler.`;
   const v = await modal({
     title: 'Xshell parolaları', width: 520,
     body: h('div', null,
-      h('p', null, head), status,
+      status, h('p', null, head),
       field('Xshell ana parolası', f.master, 'Xshell\'de ana parola (Master Password) ayarladıysanız bunu girin.'),
       field('Windows kullanıcı adı', f.user),
       field('Windows SID', f.sid, 'Xshell\'in kurulu olduğu Windows\'ta komut istemine whoami /user yazın: kullanıcı adı ve S-1-5-21 ile başlayan SID görünür.'),

@@ -180,6 +180,7 @@ const I = {
   download: 'M12 4v12M7 11l5 5 5-5M4 20h16',
   arrowRight: 'M5 12h14M13 6l6 6-6 6',
   check: 'M5 12.5l4.5 4.5L19 7.5',
+  info: 'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM12 16v-5M12 8h.01',
   arrowLeft: 'M19 12H5M11 6l-6 6 6 6',
   upgrade: 'M12 20V8M7 13l5-5 5 5M4 4h16',
   upload: 'M12 20V8M7 13l5-5 5 5M4 4h16',
