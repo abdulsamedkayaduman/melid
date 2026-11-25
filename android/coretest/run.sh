@@ -48,7 +48,7 @@ trap 'kill $(cat $W/sshd.pid) 2>/dev/null; kill $PW $SY 2>/dev/null' EXIT
 sleep 0.5
 
 rm -rf $W/classes && mkdir -p $W/classes
-javac -nowarn -encoding UTF-8 -d $W/classes -cp "$CP" ../app/src/main/java/dev/melid/core/*.java CoreTest.java SyncTest.java XshellTest.java
+javac -nowarn -encoding UTF-8 -d $W/classes -cp "$CP" ../app/src/main/java/dev/melid/core/*.java CoreTest.java SyncTest.java
 # masaüstü store.js ile şifreli yedek üret -> Java çözer; Java'nın şifrelediğini Node çözer
 node -e '
 const fs=require("fs"),os=require("os"),path=require("path");
@@ -58,15 +58,6 @@ st.saveSession({ name:"yedek", host:"h", username:"u", password:"gizli-ğ" });
 fs.writeFileSync(process.argv[1], JSON.stringify(st.exportData({ passphrase:"yedekP" })));
 ' "$W/backup.json"
 java -cp "$W/classes:$CP" CoreTest "$ABS"
-# Xshell içe aktarma: masaüstünün (importers.js) şifrelediği .xsh'yi Java çözer (Türkçe kullanıcı adı, Windows-1254)
-node -e '
-const im=require("../../src/main/importers"),crypto=require("crypto"),fs=require("fs");
-const sid="S-1-5-21-3623811015-3361044348-30300820-1013";
-const key=crypto.createHash("sha256").update(Buffer.concat([Buffer.from([0xde]),Buffer.from("ükrü","latin1"),Buffer.from(sid)])).digest();
-const t="[SessionInfo]\r\nVersion=7.0\r\n[CONNECTION]\r\nHost=h\r\nProtocol=SSH\r\n[CONNECTION:AUTHENTICATION]\r\nUserName=u\r\nPassword="+im.encryptXshellPassword("masaüstü-ğ",key)+"\r\n";
-fs.writeFileSync(process.argv[1]+"/desktop.xsh",Buffer.concat([Buffer.from([0xff,0xfe]),Buffer.from(t,"utf16le")]));
-' "$ABS"
-java -cp "$W/classes:$CP" XshellTest "$ABS"
 node -e '
 const crypto=require("crypto"),fs=require("fs");
 const bk=JSON.parse(fs.readFileSync(process.argv[1]+"/backup.json"));

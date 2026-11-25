@@ -1,7 +1,7 @@
 'use strict';
 // Session importers for WindTerm (user.sessions) and Xshell (.xsh files, session folders, .xts exports).
 // WindTerm passwords: with the WindTerm master password. Xshell passwords: RC4 with a key from the exporting Windows
-// user (username + SID) or the Xshell master password (decryptXshellPassword). Android port: core/XshellImport.java.
+// user (username + SID) or the Xshell master password (decryptXshellPassword). Desktop only.
 const fs = require('fs');
 const os = require('os');
 const path = require('path');

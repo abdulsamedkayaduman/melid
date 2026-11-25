@@ -225,7 +225,6 @@ export function settingsView(app) {
         row('snippet', 'Hazır komutlar', `${(st.snippets || []).length} komut`, icon('chevron', 18), () => app.push(snippetsView(app))),
         row('lock', 'Bilinen sunucular', `${Object.keys(app.knownHosts).length} sunucu anahtarı`, icon('chevron', 18), () => app.push(knownHostsView(app))),
         row('import', 'Masaüstü yedeğini içe aktar', 'Melid (Linux) > Ayarlar > Yedekle ile alınan .json', null, () => importBackup(app)),
-        row('import', 'Xshell oturumlarını içe aktar', 'Xshell > Dışa aktar ile alınan .xts ya da .xsh; parolalar ve tüneller dahil', null, () => importXshell(app)),
         row('upload', 'Yedek dışa aktar', 'Masaüstü Melid ile uyumlu; İndirilenler/Melid', null, () => exportBackup(app))),
       h('div.sec-title', null, 'Hakkında'),
       h('div.set-card', null,
@@ -284,51 +283,6 @@ export async function importBackup(app) {
   if (!r) return;
   await app.reload();
   toast(`${res.added} oturum eklendi, ${res.updated} güncellendi${res.withPassword ? ` (${res.withPassword} parola)` : ''}`, { type: 'ok' });
-}
-
-/** Xshell: .xts / .xsh seç -> şifreli parolalar varsa Windows kullanıcı adı + SID ya da Xshell ana parolası -> kaydet */
-export async function importXshell(app) {
-  let pick;
-  try { pick = await N.call('xshellPick'); } catch (e) { toast(e.message, { type: 'err' }); return; }
-  if (!pick) return;
-  if (!pick.found) { toast('Dosyada SSH oturumu bulunamadı', { type: 'err' }); return; }
-  let pending = pick.encrypted;
-  let tries = 0;
-  while (pending > 0 && tries < 3) {
-    const f = {
-      master: h('input.input', { type: 'password', autocomplete: 'off' }),
-      user: h('input.input', { spellcheck: false, autocapitalize: 'off', autocomplete: 'off', placeholder: 'ör. Abdulsamed' }),
-      sid: h('input.input.mono', { spellcheck: false, autocapitalize: 'off', autocomplete: 'off', placeholder: 'S-1-5-21-…' }),
-    };
-    const err = h('div.form-err', null, tries ? 'Bu bilgilerle parolalar çözülemedi. Yazımı kontrol edip tekrar deneyin ya da parolasız aktarın.' : '');
-    let res = null;
-    const r = await sheet({
-      title: 'Xshell parolaları',
-      body: h('div', null,
-        h('p.hint', { style: { marginTop: 0 } }, `${pending} oturumun parolası şifreli. Xshell parolaları, dışa aktarıldığı Windows kullanıcısına bağlı bir anahtarla ya da Xshell ana parolasıyla şifreler.`),
-        field('Xshell ana parolası', f.master, 'Xshell\'de ana parola ayarladıysanız yalnız bunu girin'),
-        field('Windows kullanıcı adı', f.user),
-        field('Windows SID', f.sid, 'Windows\'ta komut istemine whoami /user yazın: S-1-5-21 ile başlayan değer'),
-        h('p.hint', null, 'Bu bilgiler yalnız parolaları çözmek için kullanılır, kaydedilmez.'),
-        err),
-      buttons: [{ label: 'Parolasız aktar', value: null }, { label: 'Parolaları çöz', value: 'ok', primary: true }],
-      onButton: async (v) => {
-        if (!v) return true;
-        if (!f.master.value && !f.sid.value.trim()) { err.textContent = 'Ana parola ya da SID gerekli'; return false; }
-        try { res = await N.call('xshellDecrypt', { master: f.master.value, user: f.user.value.trim(), sid: f.sid.value.trim() }); return true; }
-        catch (e) { err.textContent = e.message; return false; }
-      },
-    });
-    if (!r || !res) break;
-    pending = res.total - res.ok;
-    tries++;
-  }
-  let out;
-  try { out = await N.call('xshellSave'); } catch (e) { toast(e.message, { type: 'err' }); return; }
-  await app.reload();
-  if (!out.added) { toast('Tüm oturumlar zaten ekli', { type: 'info' }); return; }
-  const pw = out.withPassword ? `${out.withPassword} tanesinin parolası da alındı` : 'parolalar ilk bağlantıda sorulur';
-  toast(`${out.added} oturum eklendi${out.found > out.added ? ` (${out.found - out.added} zaten vardı)` : ''}; ${pw}`, { type: 'ok', ms: 6000 });
 }
 
 export async function exportBackup(app) {

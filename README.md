@@ -19,7 +19,7 @@ Arayüz Türkçe. Electron + xterm.js + ssh2; Android'de WebView + JSch.
 - **Hesap ve eşitleme**: oturumlar, kayıtlı parolalar, ayarlar, hazır komutlar ve isteğe bağlı SSH anahtarları cihazlar
   arasında uçtan uca şifreli eşitlenir. Genel sunucu hazır gelir; isteyen kendi sunucusunu kurar ([docs/senkron.md](docs/senkron.md)).
 - **Güvenlik**: parolalar işletim sisteminin anahtarlığıyla şifreli, isteğe bağlı ana parola, şifreli yedek.
-- **Geçiş**: WindTerm ve Xshell oturumlarını parolaları ve tünelleriyle içe aktarma (Xshell `.xts` dışa aktarması, masaüstü ve Android).
+- **Geçiş**: WindTerm ve Xshell oturumlarını parolaları ve tünelleriyle içe aktarma (Xshell `.xts` dışa aktarması; masaüstü uygulamada).
 
 ## Kurulum
 
