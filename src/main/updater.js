@@ -1,7 +1,7 @@
 'use strict';
 // Güncelleme denetimi ve indirme (Electron'dan bağımsız; test/updater.test.js düz Node ile test eder).
-// Kaynak: CI'ın her vX.Y.Z sürümünde Forgejo generic paket deposuna koyduğu latest.json; dışarıya eşitleme sunucusu
-// (server/sync-server.js, UPDATE_UPSTREAM) /guncelleme/latest.json ve /indir/<sürüm>/<dosya> olarak aktarır:
+// Kaynak: CI'ın (.github/workflows/derle.yml) her vX.Y.Z sürümünde GitHub Releases'a koyduğu latest.json; eşitleme
+// sunucusu (server/sync-server.js, UPDATE_FEED_URL) /guncelleme/latest.json olarak sunar. Dosyalar GitHub'dan iner:
 //   { "payload": base64(JSON), "sig": base64(Ed25519 imzası, payload baytları üzerinde) }
 //   JSON = { app, version, date, notes, files: { <tür>: { name, url, sha256, size } } }
 // İmza CI secret'ı UPDATE_SIGNING_KEY ile atılır; açık anahtar aşağıda gömülü. Dosyalar sha256 ile doğrulanır.

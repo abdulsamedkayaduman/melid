@@ -16,7 +16,7 @@ services:
       # Yönetici paneli (/admin): parola + yalnız bu adreslerden (virgülle; CIDR olabilir). Parola boşsa panel kapalı.
       MELID_ADMIN_KEY: ${MELID_ADMIN_KEY:-}
       MELID_ADMIN_IPS: ${MELID_ADMIN_IPS:-}
-      # Güncellemeler: imzalı latest.json'ın adresi (GitHub sürümleri) ya da sürüm dosyalarının iç adresi (Forgejo paketleri)
+      # Güncellemeler: imzalı latest.json'ın adresi (GitHub sürümleri) ya da sürüm dosyalarının iç adresi (paket deposu)
       UPDATE_FEED_URL: ${UPDATE_FEED_URL:-}
       UPDATE_UPSTREAM: ${UPDATE_UPSTREAM:-}
       # Ters vekil arkasında istemci IP'si başlıklardan alınır (deneme sınırı, yönetici IP'si).

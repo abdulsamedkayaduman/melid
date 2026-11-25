@@ -19,7 +19,7 @@
 //                        (boşsa yalnız yerel ağ ve bu makine)
 //   UPDATE_FEED_URL      imzalı latest.json'ın adresi (ör. https://github.com/<kullanıcı>/<depo>/releases/latest/download/latest.json);
 //                        /guncelleme/latest.json buradan alınıp 5 dakika bellekte tutulur. İndirme adresleri akışın içinde.
-//   UPDATE_UPSTREAM      sürüm dosyalarının iç adresi (ör. Forgejo generic paket deposu .../generic/sshdeck); hem akış
+//   UPDATE_UPSTREAM      sürüm dosyalarının iç adresi (ör. bir paket deposunun .../<sürüm>/<dosya> kökü); hem akış
 //                        hem /indir/<sürüm>/<dosya> buradan aktarılır (UPDATE_FEED_URL yoksa)
 //   TLS_CERT / TLS_KEY   verilirse HTTPS (yoksa HTTP; internete açarken önüne TLS'li ters vekil koyun)
 //   TRUST_PROXY          1: ters vekil (Traefik/Dokploy, nginx) arkasında istemci IP'si X-Forwarded-For'un en sağındaki girdisi.

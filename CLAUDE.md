@@ -26,8 +26,9 @@ Bekleyen işler için `YAPILACAKLAR.md` (otomatik güncelleme, AUR paketi, elect
 - `npm run dist:mac` — macOS arm64 + x64: `Melid-<sürüm>-mac-<mimari>.tar.gz`. Linux'ta üretilir; `.zip` sembolik bağları bozar,
   `.dmg` için Mac gerekir. İmzasız: ilk kurulum adımları `docs/ci.md`
 
-CI: `.forgejo/workflows/derle.yml` (Forgejo Actions; elle başlatma veya `vX.Y.Z` etiketi) testler + Linux + Windows + macOS +
-imzalı APK üretir, Forgejo sürümüne yükler. Ayrıntılar ve gereken secret'lar: `docs/ci.md`. Sürüm tek yerde: `package.json`.
+Kod: https://github.com/abdulsamedkayaduman/melid. CI: `.github/workflows/derle.yml` (GitHub Actions; main'e push'ta testler,
+elle başlatma veya `vX.Y.Z` etiketinde Linux + Windows + macOS + imzalı APK, GitHub Releases + imzalı latest.json).
+Ayrıntılar ve gereken secret'lar: `docs/ci.md`. Sürüm tek yerde: `package.json`.
 
 Değişiklikten sonra en az `npm test` çalıştır. Arayüz değişikliklerini uygulamayı açıp elle kontrol et.
 
@@ -51,9 +52,9 @@ src/main/ssh-manager.js  Electron'dan bağımsız (düz Node ile test edilir). B
                          'agent': agent yalnız o komuta yönlendirilir. Hedef sunucu anahtarı kaynağa HostKeyAlias ile
                          verilir. Olmazsa bu bilgisayar üzerinden (olay: fallback)), startForward/stopForward (L: net.Server, D: socks.js, R: forwardIn)
                          shellCwd(): terminal dizini (/proc + $SSH_CONNECTION; aynı bağlantıdaki diğer kabukların pid'leri hariç)
-src/main/updater.js      Güncelleme: imzalı latest.json (Forgejo generic paket deposu, Ed25519 açık anahtar gömülü),
+src/main/updater.js      Güncelleme: imzalı latest.json (GitHub Releases, sunucu /guncelleme; Ed25519 açık anahtar gömülü),
                          check()/download() (sha256). Kurulum türü + kurulum main.js installUpdate(): NSIS sessiz,
-                         taşınabilir exe (cmd betiği), AppImage (yerine yaz), pacman (pkexec). Yayın: ci/publish-update.sh
+                         taşınabilir exe (cmd betiği), AppImage (yerine yaz), pacman (pkexec). Akış: ci/update-feed.js
 src/main/sync.js         Hesap eşitlemesi (AccountSync): giriş/kayıt/çıkış/parola değişimi, uçtan uca şifreli kasa,
                          syncNow() (al -> mergeVaults -> uygula -> 409'da yeniden dene). store.onChange ile tetiklenir.
                          scanLan(): yerel ağda 3150 portu açık sunucu arama. Kurtarma anahtarı: createRecovery/recover.
@@ -61,8 +62,8 @@ src/main/sync.js         Hesap eşitlemesi (AccountSync): giriş/kayıt/çıkı�
                          (settings.syncKeys, cihaza özgü; kasada keys, oturumda keyFp; gelen anahtarlar store.keys). Sunucu: server/sync-server.js (bağımsız,
                          bağımlılıksız; server/Dockerfile + docker-compose.yml, Dokploy). Kayıt herkese açık (MELID_REGISTER),
                          e-posta zorunlu; / tanıtım+indirme (server/pages/home.html), /admin yönetici (MELID_ADMIN_IPS +
-                         MELID_ADMIN_KEY), /guncelleme ve /indir: UPDATE_UPSTREAM'den sürüm dosyaları. Genel sunucu
-                         melid.abdulsamed.net (DEFAULT_SERVER; Dokploy main'e push'ta yeniden dağıtır). Ayrıntı: docs/senkron.md
+                         MELID_ADMIN_KEY), /guncelleme: UPDATE_FEED_URL'deki latest.json. Genel sunucu melid.abdulsamed.net
+                         (DEFAULT_SERVER; dokploy.abdulsamed.net, GitHub'dan; deploy elle). Ayrıntı: docs/senkron.md
 src/main/conncheck.js    Toplu işler: ayrı, sormayan SshManager ile oturumlara bağlanır (runOne/runSessions), önce TCP yoklaması
                          + gerekirse ping ile erişim teşhisi (reach: dns/ip/port/ssh), sonra iş: denetim (sınıflandırma
                          ok/auth/input/unreachable/hostkey/error, need: düzeltmek için sorulacak alan), execTask (komut),
@@ -141,7 +142,7 @@ derlemede `../node_modules`'tan kopyalanır); SSH Java'da: JSch (mwiede) + Bounc
   (zamanlama), `Store` `SyncCore.Local`'ı uygular; arayüz `www/account.js`. Masaüstüyle uyumu coretest'teki
   `SyncTest.java` + `sync-desktop.js` gerçek sunucuya karşı sınar. Protokol değişirse ikisi birlikte değişmeli.
 - Derleme: `cd android && ./gradlew assembleRelease` (JDK 17 + SDK; `local.properties`, imza için
-  `keystore.properties` + `sshdeck-release.jks` — git dışı, kaybolmamalı). Değişiklikten sonra `./gradlew lintDebug`.
+  `keystore.properties` + `melid-release.jks` — git dışı, kaybolmamalı). Değişiklikten sonra `./gradlew lintDebug`.
 
 ## Ad: Melid (eski adı SSHDeck)
 

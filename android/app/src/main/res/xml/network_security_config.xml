@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- Şifresiz HTTP'ye ağ katmanında izin verilir; uygulama kendisi sınırlar:
-     - güncelleme: https; eski sürümler ev ağındaki Forgejo’ya http ile bakar. İçerik Ed25519 imzalı (Updater.java), APK ayrıca imza kontrolünden geçer.
+     - güncelleme: https (GitHub Releases). İçerik Ed25519 imzalı (Updater.java), APK ayrıca imza kontrolünden geçer.
      - hesap eşitlemesi: yerel ağdaki sunucular (tarama ile bulunur, IP'ler önceden bilinemez). SyncCore, http'yi yalnız
        yerel ağ / Tailscale adreslerine izin verir; internetteki sunucu için https şarttır. Kasa ayrıca uçtan uca şifreli.
      WebView yalnız uygulama içi dosyaları yükler; SSH bağlantıları bu ayardan etkilenmez. -->

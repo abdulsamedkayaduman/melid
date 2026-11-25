@@ -35,7 +35,7 @@ import java.security.MessageDigest;
 import java.util.Locale;
 
 /**
- * Güncellemeler: masaüstündeki src/main/updater.js ile aynı imzalı latest.json (Forgejo generic paket deposu).
+ * Güncellemeler: masaüstündeki src/main/updater.js ile aynı imzalı latest.json (GitHub Releases; melid.abdulsamed.net/guncelleme).
  * Arka planda JobScheduler ile 12 saatte bir denetlenir, yeni sürüm bildirim olarak gelir; kurulum
  * PackageInstaller ile (Android onay ekranı gösterir). APK aynı anahtarla imzalı olmalı, yoksa Android reddeder.
  */
