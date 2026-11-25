@@ -151,6 +151,7 @@ public class Bridge {
                 finally { app.sync.afterLogin(); }
             case "accountLogout": app.sync.stop(); app.sync.client.logout(); return app.sync.status();
             // SSH anahtarlarını eşitleme seçimi (bu cihaza özgü); açılınca hemen eşitlenir
+            case "accountSetUsage": app.store.setUsageStats(a.optBoolean("on")); return app.sync.status();
             case "accountSetKeys": app.store.setSyncKeys(a.optBoolean("on")); app.sync.syncAsync(); return app.sync.status();
             case "accountSync": return app.sync.run();
             // kurtarma anahtarı: kod arayüze bir kez gider (gösterilip kaydedilsin diye)
@@ -167,7 +168,11 @@ public class Bridge {
 
             // ---- ssh
             case "connect": {
-                JSONObject r = app.core.connect(c, a.getString("sessionId"), a.optJSONObject("overrides"));
+                JSONObject r;
+                try { r = app.core.connect(c, a.getString("sessionId"), a.optJSONObject("overrides")); }
+                catch (dev.melid.core.SshCore.CancelledException e) { throw e; }
+                catch (Exception e) { app.usage.inc("connectionFailures", 1); throw e; }
+                app.usage.inc("connections", 1);
                 app.updateService();
                 return r;
             }
@@ -194,8 +199,8 @@ public class Bridge {
             case "sftpChmod": app.sftp.chmod(c, a.getString("path"), a.getInt("mode")); return null;
             case "sftpRead": return app.sftp.read(c, a.getString("path"), a.optInt("max", 2 << 20), a.optBoolean("base64"));
             case "sftpWrite": app.sftp.writeText(c, a.getString("path"), a.getString("text")); return null;
-            case "download": app.sftp.download(a.getString("t"), c, a.getString("path"), downloadSink(a.getString("t"))); return null;
-            case "upload": return upload(a.getString("t"), c, a.getString("dir"));
+            case "download": app.usage.xferDir.put(a.getString("t"), "down"); app.sftp.download(a.getString("t"), c, a.getString("path"), downloadSink(a.getString("t"))); return null;
+            case "upload": app.usage.xferDir.put(a.getString("t"), "up"); return upload(a.getString("t"), c, a.getString("dir"));
             case "cancelXfer": app.sftp.cancel(a.getString("t")); return null;
             case "openDownloaded": openDownloaded(a.getString("t"), a.optString("name")); return null;
 

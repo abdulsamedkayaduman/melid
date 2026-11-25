@@ -29,7 +29,8 @@ const names = (st) => st.sessions.map((s) => s.name).sort().join(',');
   console.log('OK birleştirme kuralları');
 
   const dataDir = tmp('melid-srv-');
-  const srv = http.createServer(createSyncServer({ dataDir, invite: 'davet-123' }));
+  const srvHandler = createSyncServer({ dataDir, invite: 'davet-123' });
+  const srv = http.createServer(srvHandler);
   await new Promise((r) => srv.listen(0, '127.0.0.1', r));
   const server = `127.0.0.1:${srv.address().port}`;
 
@@ -158,7 +159,16 @@ const names = (st) => st.sessions.map((s) => s.name).sort().join(',');
   assert.equal(u.email, 'samed@ornek.com', 'e-posta yönetici panelinde');
   assert(u.version >= 1 && u.size > 0 && u.updated > 0);
   assert(u.devices.some((d) => d.client === 'Melid test linux'), 'istemci adı kaydedildi');
-  assert(st.totals.syncs > 0 && st.totals.failedLogins > 0);
+  assert(st.lifetime.syncs > 0 && st.lifetime.failedLogins > 0, 'kalıcı toplamlar');
+  assert.equal(st.days.length, 30);
+  const today = st.days[29];
+  assert(today.activeUsers >= 1 && today.syncs > 0 && today.logins > 0 && today.registrations === 1, 'bugünün sayaçları');
+  assert(st.server.rss > 0 && st.server.memTotal > 0 && Array.isArray(st.rpm) && st.rpm.length === 60);
+  assert(st.online.some((x) => x.user === 'samed'), 'çevrimiçi cihazlar');
+  // sayaçlar dosyaya yazılır (sunucu yeniden başlayınca korunur)
+  srvHandler.flush();
+  const saved = JSON.parse(fs.readFileSync(path.join(dataDir, 'stats.json'), 'utf8'));
+  assert(saved.totals.syncs > 0 && saved.days[today.date].users.includes('samed'));
   assert(!JSON.stringify(st).includes('web-prod'), 'istatistikte kasa içeriği yok');
   // Yönetici parolası olmayan sunucuda panel yok
   const closed = http.createServer(createSyncServer({ dataDir: tmp('melid-srv-') }));
@@ -309,8 +319,20 @@ const names = (st) => st.sessions.map((s) => s.name).sort().join(',');
   assert.equal((await fetch(`http://${P}/admin`, { headers: { 'X-Forwarded-For': '203.0.113.7, 1.1.1.1' } })).status, 404, 'XFF soldaki girdi sayılmaz');
   assert.equal((await adm('198.51.100.9', { key: 'yonetici-parolasi' })).status, 404);
   assert.equal((await adm('203.0.113.7', { key: 'yanlis' })).status, 403);
+  // kullanım sayıları: gün başına tam değer gelir, tekrar gönderim iki kez saymaz; kapalıysa hiç gönderilmez
+  const dk = new Date().toLocaleDateString('sv-SE', { timeZone: 'Europe/Istanbul' });
+  O.sync.usage = () => ({ snapshot: { sessions: 3, groups: 1, keys: 2, bogus: 9 }, days: { [dk]: { connections: 5, bytesUp: 1000, transfers: 2, evil: 7 }, 'gecersiz': { connections: 99 } } });
+  await O.sync._sendUsage(O.sync._token(), true);
+  await O.sync._sendUsage(O.sync._token(), true);
+  assert.equal(await O.sync._sendUsage(O.sync._token()), null, 'saatte bir gönderilir');
   const ast = await (await adm('203.0.113.7', { key: 'yonetici-parolasi' })).json();
   assert.equal(ast.totals.users, 7);
+  const aliUse = ast.users.find((x) => x.user === 'ali').usage;
+  assert.deepEqual(aliUse.snapshot, { sessions: 3, groups: 1, keys: 2 }, 'yalnız izinli anlık sayılar');
+  assert.deepEqual(aliUse.last30, { connections: 5, bytesUp: 1000, transfers: 2 }, 'yalnız izinli günlük sayılar, iki kez sayılmaz');
+  assert.equal(ast.days[29].usage.connections, 5);
+  assert(ast.days[29].registrations >= 7);
+  assert.equal(ast.lifetime.usageReports, 2);
   assert.equal(ast.users.find((x) => x.user === 'ali').email, 'yeni@ornek.com');
   assert.equal((await adm('203.0.113.7', { key: 'yonetici-parolasi', user: 'u0' }, '/api/admin/delete')).status, 200);
   assert.equal((await (await adm('203.0.113.7', { key: 'yonetici-parolasi' })).json()).totals.users, 6, 'yönetici hesap siler');
@@ -321,6 +343,9 @@ const names = (st) => st.sessions.map((s) => s.name).sort().join(',');
   assert.equal(O.sync.status().loggedIn, false);
   assert(O.st.sessions.some((x) => x.name === 'acik'), 'yerel oturumlar silinmez');
   assert.equal(fs.readdirSync(path.join(openDir, 'vaults')).length, vaultsBefore - 1, 'kasa silindi');
+  const ast2 = await (await adm('203.0.113.7', { key: 'yonetici-parolasi' })).json();
+  assert.equal(ast2.days[29].usage.connections, undefined, 'silinen hesabın kullanım kayıtları da silinir');
+  assert.equal(ast2.lifetime.deletions, 2);
   await assert.rejects(device().sync.login({ server: P, user: 'ali', password: 'aliParola123' }), /parola yanlış/);
   // güncelleme aktarımı
   const feed = await fetch(`http://${P}/guncelleme/latest.json`);

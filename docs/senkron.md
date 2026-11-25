@@ -48,11 +48,26 @@ bu cihazın yerel IPv4 ağlarındaki (en fazla /24) adreslerde 3150 portunu tara
 - `/`: tanıtım ve indirme sayfası (`server/pages/home.html`). İndirme bağlantılarını `/guncelleme/latest.json`'dan okur,
   ziyaretçinin işletim sistemini öne alır.
 - `/admin`: yönetici sayfası (`server/pages/admin.html`). Yalnız `MELID_ADMIN_IPS`'teki adreslerden açılır, diğerlerine 404
-  döner; ayrıca `MELID_ADMIN_KEY` ister. Hesap ve cihaz sayısı, son 7 günde etkin olanlar, toplam kasa boyutu, sunucu
-  açıldığından beri eşitleme/giriş/hatalı giriş sayıları; hesap başına kullanıcı adı, e-posta, son görülme, son değişiklik,
-  kasa sürümü/boyutu, oturum açık cihazlar (istemciler kendini `X-Melid-Client` başlığıyla tanıtır). Hesap silinebilir.
+  döner; ayrıca `MELID_ADMIN_KEY` ister. Anlık durum (çevrimiçi cihazlar, son 60 dk istek, bellek, yük, disk), hesap
+  özetleri, son 30 günün grafikleri (etkin hesap/cihaz, eşitleme, giriş, yeni hesap, hatalı giriş, istekler), uygulama
+  kullanımı, sürüm ve platform dağılımı (istemciler kendini `X-Melid-Client` başlığıyla tanıtır), aranıp sıralanabilen
+  hesap listesi (e-posta, cihazlar, kayıtlı sunucu, 30 günlük bağlantı ve aktarım). Hesap silinebilir. 30 sn'de bir yenilenir.
+- `/kosullar` (`/gizlilik`): kullanım koşulları ve gizlilik.
   Kasa içerikleri şifreli olduğundan oturum adı, adres ya da parola burada hiçbir zaman görünmez.
   API: `POST /api/admin/stats {key}`, `POST /api/admin/delete {key, user}`.
+
+## İstatistikler ve kullanım sayıları
+
+- **Sunucu sayaçları** (`stats.json`): gün başına giriş, hatalı giriş, eşitleme, yeni/silinen hesap, API isteği,
+  reddedilen (401/403/429) ve hatalı (5xx) istek; o gün eşitleme yapan hesaplar ve cihazlar. 120 gün saklanır, toplamlar
+  kalıcıdır. Gün `MELID_STATS_TZ` saat diliminde (varsayılan `Europe/Istanbul`). Dakikada bir ve kapanırken diske yazılır.
+- **Uygulama kullanım sayıları** (`usage.json`, `POST /api/usage`): istemci eşitlemeden sonra en fazla saatte bir son
+  14 günün günlük sayaçlarını (bağlantı, başarısız bağlantı, aktarım, başarısız aktarım, yüklenen/indirilen bayt, tünel)
+  ve anlık sayıları (kayıtlı sunucu, grup, anahtar, hazır komut, kayıtlı tünel) gönderir. Gün başına tam değer gittiği
+  için tekrar gönderim iki kez saymaz; sunucu yalnız bilinen anahtarları saklar. Masaüstü `src/main/usage.js`, Android
+  `app/UsageStats.java`. Hesap penceresindeki **Kullanım istatistiklerini gönder** (cihaza özgü `usageStats`) kapatır.
+- Hesap silinince kullanım kayıtları silinir, kullanıcı adı günlük listelerden çıkarılır.
+- Kullanıcıya açıklama: `/kosullar` (`server/pages/kosullar.html`). Toplanan veri değişirse bu sayfa da güncellenmeli.
 
 ## Hesap silme
 

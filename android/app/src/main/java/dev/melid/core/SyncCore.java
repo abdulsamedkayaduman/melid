@@ -71,6 +71,8 @@ public final class SyncCore {
          */
         JSONObject snapshot() throws Exception;
         void apply(JSONObject merged) throws Exception;
+        /** Kullanım sayıları { snapshot, days } (POST /api/usage); gönderilmeyecekse null */
+        default JSONObject usageReport() throws Exception { return null; }
     }
 
     public static class SyncException extends Exception {
@@ -473,6 +475,19 @@ public final class SyncCore {
             this.clientName = clientName;
         }
 
+        private long usageSent = 0;
+
+        /** Kullanım sayılarını en fazla saatte bir gönderir; hata eşitlemeyi etkilemez */
+        void sendUsage(String server, String token) {
+            if (System.currentTimeMillis() - usageSent < 3600000) return;
+            try {
+                JSONObject rep = local.usageReport();
+                if (rep == null) return;
+                usageSent = System.currentTimeMillis();
+                req(server, "POST", "/api/usage", rep, token);
+            } catch (Exception e) { usageSent = 0; }
+        }
+
         public JSONObject status() {
             try {
                 JSONObject a = local.account();
@@ -681,6 +696,7 @@ public final class SyncCore {
                     }
                 }
                 set("ok", null);
+                sendUsage(server, token);
                 return changed;
             } catch (javax.crypto.AEADBadTagException e) {
                 set("error", "Kasa çözülemedi (kasa anahtarı uyuşmuyor)");

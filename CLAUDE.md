@@ -70,6 +70,8 @@ src/main/conncheck.js    Toplu işler: ayrı, sormayan SshManager ile oturumlara
                          statsTask (kaynak özeti). IPC check:start {kind}/check:one. Arayüz: src/renderer/conncheck.js
                          (denetim, Düzelt, toplu sil) ve src/renderer/bulk.js (sunucularda komut, sunucu özeti).
                          Bilinmeyen sunucu anahtarına yalnız seçilirse güvenir.
+src/main/usage.js        Kullanım sayıları (usage.json, günlük bağlantı/aktarım/tünel); sync.js eşitlemeden sonra saatte bir
+                         gönderir (POST /api/usage), ayar usageStats kapatır. Android: app/UsageStats.java. Gizlilik: /kosullar
 src/main/termlog.js      Oturum kaydı: TermLogger (oturum adına göre klasör, dosya başına kabuk) + parçalı ANSI temizleyici
 src/main/keys.js         ~/.ssh anahtarlarını listeleme, ssh2 utils ile anahtar üretme (OpenSSH biçimi)
 src/main/socks.js        -D için minimal SOCKS5 (CONNECT, kimlik doğrulamasız)

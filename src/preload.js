@@ -36,6 +36,7 @@ contextBridge.exposeInMainWorld('api', {
     syncNow: inv('account:syncNow'),
     changePassword: inv('account:changePassword'),
     setSyncKeys: inv('account:setSyncKeys'),
+    setUsageStats: inv('account:setUsageStats'),
     info: inv('account:info'),
     setEmail: inv('account:setEmail'),
     deleteAccount: inv('account:delete'),

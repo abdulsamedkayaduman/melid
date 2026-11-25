@@ -51,6 +51,7 @@ jobs:
           node test/updater.test.js
           node test/sync.test.js
           node test/conncheck.test.js
+          node test/usage.test.js
       - name: Çekirdek testleri (geçici sshd)
         run: |
           sudo ci/test-sshd.sh

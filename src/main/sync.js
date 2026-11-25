@@ -112,8 +112,10 @@ async function scanLan({ port = DEFAULT_PORT, targets = lanTargets(), timeout = 
 }
 
 class AccountSync extends EventEmitter {
-  constructor(store, { fetchImpl = globalThis.fetch, interval = 5 * 60000, debounce = 2000, client = '' } = {}) {
+  constructor(store, { fetchImpl = globalThis.fetch, interval = 5 * 60000, debounce = 2000, client = '', usage = null } = {}) {
     super();
+    this.usage = usage; // () => { snapshot, days } | null: kullanım sayıları (main.js, usage.js)
+    this.usageSent = 0;
     this.client = client; // sunucu istatistiklerinde görünen istemci adı (ör. "Melid 1.5.0 linux")
     this.store = store;
     this.fetch = fetchImpl;
@@ -133,8 +135,9 @@ class AccountSync extends EventEmitter {
   status() {
     const a = this.account;
     const syncKeys = !!this.store.settings.syncKeys;
-    return a ? { loggedIn: true, server: a.server, user: a.user, version: a.version || 0, lastSync: a.lastSync || 0, state: this.state, error: this.error, syncKeys }
-      : { loggedIn: false, state: 'idle', syncKeys };
+    const usageStats = this.store.settings.usageStats !== false;
+    return a ? { loggedIn: true, server: a.server, user: a.user, version: a.version || 0, lastSync: a.lastSync || 0, state: this.state, error: this.error, syncKeys, usageStats }
+      : { loggedIn: false, state: 'idle', syncKeys, usageStats };
   }
 
   _set(state, error = null) { this.state = state; this.error = error; this.emit('status', this.status()); }
@@ -213,6 +216,16 @@ class AccountSync extends EventEmitter {
     await this._req('POST', '/api/password', {
       authKey: old.authKey, newSalt, iter: KDF_ITER, newAuthKey: nk.authKey, wrappedKey: encWithKey(vk.toString('base64'), nk.wrapKey),
     }, this._token());
+  }
+
+  /** Kullanım sayılarını en fazla saatte bir gönderir; hata eşitlemeyi etkilemez (eski sunucuda uç yoksa sessiz geçer) */
+  _sendUsage(token, force = false) {
+    if (!this.usage || (!force && Date.now() - this.usageSent < 3600000)) return null;
+    let payload = null;
+    try { payload = this.usage(); } catch {}
+    if (!payload) return null;
+    this.usageSent = Date.now();
+    return this._req('POST', '/api/usage', payload, token).catch(() => { this.usageSent = 0; });
   }
 
   /** Sunucudaki hesap bilgisi: { user, email, created, recovery: oluşturulma zamanı | null } */
@@ -341,6 +354,7 @@ class AccountSync extends EventEmitter {
       }
       if (changed) this.emit('changed');
       this._set('ok');
+      this._sendUsage(token);
       return { changed };
     } catch (e) {
       if (e.message === 'MASTER_LOCKED') { this._set('locked', 'Ana parola kilitli'); return { changed: false }; }

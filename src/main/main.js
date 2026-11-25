@@ -13,6 +13,7 @@ const { TermLogger } = require('./termlog');
 const keys = require('./keys');
 const updater = require('./updater');
 const { AccountSync, DEFAULT_SERVER, scanLan } = require('./sync');
+const { Usage } = require('./usage');
 const { runSessions, runOne, execTask, statsTask } = require('./conncheck');
 const { spawn } = require('child_process');
 const { fileURLToPath } = require('url');
@@ -44,6 +45,8 @@ let win = null;
 let store = null;
 let manager = null;
 let account = null; // hesap eşitlemesi (sync.js)
+let usage = null; // kullanım sayıları (usage.js)
+const xferDir = new Map(); // aktarım tid -> yön (kullanım sayıları için)
 
 // ---------- main -> renderer request/response (prompts, host keys) ----------
 let reqSeq = 0;
@@ -573,6 +576,7 @@ function registerIpc() {
     await account.syncNow();
     return account.status();
   });
+  h('account:setUsageStats', (on) => { store.saveSettings({ usageStats: !!on }); return account.status(); });
   h('account:setSyncKeys', async (on) => {
     if (on && !(await ensureUnlocked())) throw new Error('Ana parola girilmedi');
     store.setSyncKeys(on);
@@ -682,7 +686,8 @@ function registerIpc() {
       session = resolveKey(store.getSession(ref.sessionId));
       if (!session) throw new Error('Oturum bulunamadı');
     } else session = { ...ref.session };
-    await manager.connect(connId, session);
+    try { await manager.connect(connId, session); } catch (e) { if (!e.cancelled) usage.inc('connectionFailures'); throw e; }
+    usage.inc('connections');
     return { host: session.host, username: session.username, remoteDir: session.remoteDir, localDir: session.localDir };
   });
   h('ssh:shell', (connId, cols, rows, startup, sid) => manager.openShell(connId, cols, rows, startup, sid));
@@ -769,7 +774,7 @@ function registerIpc() {
   h('sftp:edit', (c, p) => editRemote(c, p));
   h('sftp:preview', (c, p) => preview((x, max) => manager.readFile(c, x, max), p));
   h('sync:compare', (c, localDir, remoteDir, exclude) => compareDirs(c, localDir, remoteDir, exclude));
-  h('sftp:transfer', (c, t) => { manager.transfer(c, t); return true; });
+  h('sftp:transfer', (c, t) => { if (t && t.tid) xferDir.set(t.tid, t.direction); manager.transfer(c, t); return true; });
   h('sftp:cancel', (c, tid) => manager.cancelTransfer(c, tid));
   h('sftp:agentKeys', (c) => manager.agentKeyCount(c));
   h('drag:prepare', (c, tid, items) => prepareDrag(c, tid, items));
@@ -840,8 +845,18 @@ function registerIpc() {
   manager.on('shell-data', (id, data, sid) => { send('ssh:data', id, data, sid); logShellData(id, data, sid); });
   manager.on('shell-exit', (id, sid) => { logger.close(`${id}:${sid}`); send('ssh:exit', id, sid); });
   manager.on('banner', (id, msg) => send('ssh:banner', id, msg));
-  manager.on('forward', (id, fid, state, msg) => send('ssh:forward', id, fid, state, msg));
-  manager.on('transfer', (id, info) => send('sftp:transfer', id, info));
+  manager.on('forward', (id, fid, state, msg) => { if (state === 'active') usage.inc('tunnels'); send('ssh:forward', id, fid, state, msg); });
+  manager.on('transfer', (id, info) => {
+    if (xferDir.has(info.tid) && (info.state === 'done' || info.state === 'error' || info.state === 'cancelled')) {
+      const dir = xferDir.get(info.tid);
+      xferDir.delete(info.tid);
+      if (info.state === 'done') {
+        usage.inc('transfers');
+        usage.inc(dir === 'download' ? 'bytesDown' : 'bytesUp', info.total || 0);
+      } else if (info.state === 'error') usage.inc('transferFailures');
+    }
+    send('sftp:transfer', id, info);
+  });
 }
 
 // Arayüz temasının pencere arka planı (açılışta beyaz/siyah parlama olmasın) ve yerel diyalogların açık/koyu modu
@@ -976,7 +991,27 @@ app.whenReady().then(async () => {
       send('sessions:updated', store.publicSessions(), err);
     },
   });
-  account = new AccountSync(store, { client: `Melid ${app.getVersion()} ${{ win32: 'Windows', darwin: 'macOS' }[process.platform] || 'Linux'}` });
+  usage = new Usage(app.getPath('userData'));
+  account = new AccountSync(store, {
+    client: `Melid ${app.getVersion()} ${{ win32: 'Windows', darwin: 'macOS' }[process.platform] || 'Linux'}`,
+    // Kullanım sayıları: yalnız sayılar (ayrıntı: usage.js); "Kullanım istatistiklerini gönder" kapalıysa hiç gönderilmez
+    usage: () => {
+      if (store.settings.usageStats === false) return null;
+      let sshKeys = 0;
+      try { sshKeys = keys.listKeys(SSH_DIR).length; } catch {}
+      const sessions = store.sessions;
+      return {
+        snapshot: {
+          sessions: sessions.length,
+          groups: new Set(sessions.map((x) => x.group).filter(Boolean)).size,
+          keys: sshKeys + (store.keys || []).length,
+          snippets: (store.settings.snippets || []).length,
+          savedTunnels: sessions.reduce((n, x) => n + ((x.forwards || []).length), 0),
+        },
+        days: usage.recent(),
+      };
+    },
+  });
   account.on('status', (st) => send('account:status', st));
   account.on('changed', () => { applyNativeTheme(); send('account:changed', { sessions: store.publicSessions(), settings: store.publicSettings() }); });
   registerIpc();
@@ -990,7 +1025,7 @@ app.whenReady().then(async () => {
 
 // macOS: pencere kapanınca uygulama Dock'ta kalır (bağlantılar kapanır, eşitleme sürer); Dock'a tıklayınca yeni pencere açılır
 let quitting = false;
-app.on('before-quit', () => { quitting = true; });
+app.on('before-quit', () => { quitting = true; if (usage) usage.save(); });
 app.on('window-all-closed', () => {
   if (manager) manager.closeAll();
   logger.closeAll();

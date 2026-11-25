@@ -32,6 +32,7 @@ public class App extends Application implements Host {
     Forwards fwd;
     AccountSync sync;
     AppLock lock;
+    UsageStats usage;
     volatile Bridge bridge;
     final Handler main = new Handler(Looper.getMainLooper());
 
@@ -43,6 +44,7 @@ public class App extends Application implements Host {
         super.onCreate();
         I = this;
         store = new Store(this);
+        usage = new UsageStats(this);
         lock = new AppLock(this);
         core = new SshCore(this);
         sftp = new Sftp(core);
@@ -73,6 +75,7 @@ public class App extends Application implements Host {
 
     // ------------------------------------------------------------------ Host
     @Override public void emit(String type, JSONObject data) {
+        try { usage.onEvent(type, data); } catch (Exception ignored) { }
         Bridge b = bridge;
         if (b != null) b.emit(type, data);
         if (type.equals("closed")) updateService();

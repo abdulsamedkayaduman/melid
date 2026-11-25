@@ -31,6 +31,8 @@ export async function accountSheet(app) {
   return st.loggedIn ? manageSheet(app, st) : loginSheet(app, null, st);
 }
 
+const TERMS_URL = 'https://melid.abdulsamed.net/kosullar';
+
 // Hesap penceresinde hazır gelen genel eşitleme sunucusu (masaüstünde src/main/sync.js DEFAULT_SERVER)
 const DEFAULT_SERVER = 'melid.abdulsamed.net';
 
@@ -88,7 +90,7 @@ async function loginSheet(app, reauth, st0) {
     for (const el of [...regOnly, emailField]) el.hidden = m !== 'register';
     inviteField.hidden = m !== 'register' || !needInvite;
     intro.textContent = m === 'register'
-      ? 'Hesap parolası bağlantılarınızı şifreler ve hiçbir zaman sunucuya gönderilmez. Unutursanız sunucudaki veriler kurtarılamaz.'
+      ? 'Hesap parolası bağlantılarınızı şifreler ve hiçbir zaman sunucuya gönderilmez. Unutursanız sunucudaki veriler kurtarılamaz. Hesap açarak kullanım koşullarını kabul edersiniz (aşağıdaki bağlantı).'
       : reauth ? 'Hesap parolası başka bir cihazda değiştirildi; yeni parolayla tekrar giriş yapın.'
         : 'Bilgisayardaki Melid hesabınızla giriş yapın: oturumlar, kayıtlı parolalar ve hazır komutlar iki yönlü eşitlenir. Bu telefondaki oturumlar hesaptakilerle birleştirilir.';
     err.textContent = '';
@@ -113,6 +115,7 @@ async function loginSheet(app, reauth, st0) {
       field('Hesap parolası', f.password),
       h('div', { style: { margin: '-6px 0 12px', fontSize: '13px' } }, h('a', { href: '#', style: { color: 'var(--accent)' }, onclick: (e) => { e.preventDefault(); forgot = true; sh.close(null); } }, 'Hesap parolamı unuttum')),
       ...regOnly,
+      h('div', { style: { margin: '-4px 0 12px', fontSize: '13px' } }, h('a', { href: '#', style: { color: 'var(--accent)' }, onclick: (e) => { e.preventDefault(); N.call('openUrl', { url: TERMS_URL }); } }, 'Kullanım koşulları ve gizlilik')),
       reauth ? null : h('label.check', null, f.syncKeys, 'SSH anahtarlarını da eşitle'),
       reauth ? null : h('p.hint', { style: { margin: '-4px 0 12px 32px', fontSize: '12px' } }, 'Özel anahtarlar da hesaba (şifreli) yüklenir. Sonradan Hesap ve eşitleme menüsünden değiştirilebilir.'),
       err),
@@ -168,6 +171,8 @@ async function manageSheet(app, st) {
     { icon: 'lock', label: 'Hesap parolasını değiştir', value: 'password' },
     { icon: 'key', label: 'Kurtarma anahtarı', value: 'recovery', hint: recHint },
     { icon: 'edit', label: 'E-postayı değiştir', value: 'email', hint: info ? (info.email || 'yok') : '' },
+    { icon: 'info', label: st.usageStats !== false ? 'Kullanım istatistiklerini kapat' : 'Kullanım istatistiklerini gönder', value: 'usage', hint: st.usageStats !== false ? 'açık' : 'kapalı' },
+    { icon: 'open', label: 'Kullanım koşulları ve gizlilik', value: 'terms' },
     '-',
     { icon: 'power', label: 'Çıkış yap', value: 'logout', danger: true },
     { icon: 'trash', label: 'Hesabı sil', value: 'delete', danger: true },
@@ -199,6 +204,15 @@ async function manageSheet(app, st) {
       const t = toast('Parola değiştiriliyor…', { ms: 20000 });
       try { await N.call('accountPassword', { old: oldP, new: n1 }); } finally { t.remove(); }
       toast('Hesap parolası değiştirildi. Diğer cihazlarda yeni parolayla tekrar giriş gerekecek.', { type: 'ok', ms: 6000 });
+    } else if (act === 'usage') {
+      const on = st.usageStats === false;
+      if (!await confirm({ title: on ? 'Kullanım istatistikleri' : 'İstatistikleri kapat',
+        message: on ? 'Yalnız sayılar gönderilir: günlük bağlantı ve aktarım sayısı, kayıtlı sunucu sayısı gibi. Sunucu adresleri, kullanıcı adları ve dosyalar gönderilmez.'
+          : 'Bu telefon artık kullanım sayılarını göndermez. Hesap ve eşitleme bundan etkilenmez.', ok: on ? 'Gönder' : 'Kapat' })) return;
+      app.setAccount(await N.call('accountSetUsage', { on }));
+      toast(on ? 'Kullanım istatistikleri gönderilecek' : 'Kullanım istatistikleri kapatıldı', { type: 'ok' });
+    } else if (act === 'terms') {
+      N.call('openUrl', { url: TERMS_URL });
     } else if (act === 'email') {
       const v = await promptText({ title: 'E-posta', label: 'Hesabınızın e-posta adresi', value: info?.email || '', type: 'email', ok: 'Kaydet',
         validate: (x) => /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(x.trim()) ? null : 'Geçerli bir e-posta adresi girin' });

@@ -26,6 +26,7 @@
 //                        cloudflare: üstelik o girdi bir Cloudflare adresiyse gerçek IP CF-Connecting-IP'den alınır
 //                        (sunucuya Cloudflare'i atlayıp doğrudan gelen istek bu başlığı taklit edemez)
 const http = require('http');
+const os = require('os');
 const https = require('https');
 const fs = require('fs');
 const path = require('path');
@@ -72,7 +73,7 @@ function createSyncServer({
   const adminSecret = adminKey || invite;
   const adminNets = ipList(adminIps || PRIVATE_NETS);
   const page = (n) => { try { return fs.readFileSync(path.join(pagesDir || path.join(__dirname, 'pages'), n), 'utf8'); } catch { return `<!doctype html><title>Melid</title><p>${n} bulunamadı</p>`; } };
-  const PAGES = { home: page('home.html'), admin: page('admin.html') };
+  const PAGES = { home: page('home.html'), admin: page('admin.html'), terms: page('kosullar.html') };
   // Favicon ve uygulama ikonları (pages/static, melid-brand/web)
   const STATIC_TYPES = { '.png': 'image/png', '.svg': 'image/svg+xml', '.ico': 'image/x-icon' };
   const STATIC = new Map();
@@ -110,7 +111,48 @@ function createSyncServer({
   const verifier = (authKey, salt) => crypto.scryptSync(Buffer.from(authKey, 'base64'), Buffer.from(salt, 'base64'), 32).toString('base64');
   const tokenHash = (t) => crypto.createHash('sha256').update(t).digest('hex');
   const started = Date.now();
-  const counters = { syncs: 0, logins: 0, failedLogins: 0 }; // sunucu açıldığından beri
+
+  // ---- İstatistikler (stats.json): günlük sayaçlar ve kalıcı toplamlar; sunucu yeniden başlasa da korunur.
+  // Gün, MELID_STATS_TZ saat diliminde (varsayılan İstanbul). 120 günden eski günler atılır.
+  const statsTz = process.env.MELID_STATS_TZ || 'Europe/Istanbul';
+  const dayKey = (t = Date.now()) => new Date(t).toLocaleDateString('sv-SE', { timeZone: statsTz });
+  const stats = load('stats.json', null) || { since: new Date().toISOString(), totals: {}, days: {} };
+  let statsDirty = false;
+  const today = () => { const k = dayKey(); return stats.days[k] || (stats.days[k] = { users: [], devices: [] }); };
+  const bump = (key, n = 1) => { const d = today(); d[key] = (d[key] || 0) + n; stats.totals[key] = (stats.totals[key] || 0) + n; statsDirty = true; };
+  const seenToday = (user, dev) => {
+    const d = today();
+    if (!d.users.includes(user)) { d.users.push(user); statsDirty = true; }
+    if (dev && !d.devices.includes(dev)) { d.devices.push(dev); statsDirty = true; }
+  };
+  // Uygulama kullanım sayıları (usage.json): kullanıcı -> cihaz -> gün; istemci açıksa gönderir (POST /api/usage)
+  const usage = load('usage.json', {});
+  let usageDirty = false;
+  const USAGE_KEYS = ['connections', 'connectionFailures', 'transfers', 'transferFailures', 'bytesUp', 'bytesDown', 'tunnels'];
+  const SNAP_KEYS = ['sessions', 'groups', 'keys', 'snippets', 'savedTunnels'];
+  const pickNums = (o, keys) => {
+    const out = {};
+    if (o && typeof o === 'object') for (const k of keys) { const v = Number(o[k]); if (Number.isFinite(v) && v > 0) out[k] = Math.min(Math.floor(v), 1e15); }
+    return out;
+  };
+  // Anlık: son istekler (cihaz başına) ve dakika başına istek sayısı (son 60 dk)
+  const live = new Map(); // jeton özeti -> { user, client, ts }
+  const perMinute = new Map(); // dakika (epoch/60000) -> istek
+  const flushStats = () => {
+    const cut = dayKey(Date.now() - 120 * 86400000);
+    if (statsDirty) {
+      for (const k of Object.keys(stats.days)) if (k < cut) delete stats.days[k];
+      save('stats.json', stats); statsDirty = false;
+    }
+    if (usageDirty) {
+      for (const u of Object.values(usage)) for (const d of Object.values(u.devices || {})) for (const k of Object.keys(d.days || {})) if (k < cut) delete d.days[k];
+      save('usage.json', usage); usageDirty = false;
+    }
+    const m = Math.floor(Date.now() / 60000);
+    for (const k of perMinute.keys()) if (k < m - 60) perMinute.delete(k);
+    for (const [k, v] of live) if (Date.now() - v.ts > 3600000) live.delete(k);
+  };
+  setInterval(flushStats, 60000).unref();
   // İstemci kendini X-Melid-Client başlığıyla tanıtır (ör. "Melid 1.5.0 linux"); yalnız istatistik için
   const clientName = (req) => String(req.headers['x-melid-client'] || req.headers['user-agent'] || '').replace(/[^\w .:;/()+-]/g, '').slice(0, 60);
   const newToken = (user, req) => {
@@ -150,7 +192,10 @@ function createSyncServer({
       rec.expires = now + TOKEN_TTL; rec.seen = now; if (c) rec.client = c;
       save('tokens.json', tokens);
     }
-    return { user: rec.user, hash: tokenHash(m[1]) };
+    const hash = tokenHash(m[1]);
+    live.set(hash, { user: rec.user, client: rec.client || c, ts: now });
+    seenToday(rec.user, hash.slice(0, 12));
+    return { user: rec.user, hash };
   };
 
   const recoverCheck = (req, b) => {
@@ -160,11 +205,16 @@ function createSyncServer({
     const r = users[u] && users[u].recovery;
     const good = r && B64(b.recAuth, 40, 64)
       && crypto.timingSafeEqual(Buffer.from(verifier(b.recAuth, r.vsalt), 'base64'), Buffer.from(r.verifier, 'base64'));
-    if (!good) { fail(ip, 'u:' + u); counters.failedLogins++; throw new HttpError(401, 'Kullanıcı adı veya kurtarma anahtarı yanlış'); }
+    if (!good) { fail(ip, 'u:' + u); bump('failedLogins'); throw new HttpError(401, 'Kullanıcı adı veya kurtarma anahtarı yanlış'); }
     return true;
   };
 
   const removeUser = (u) => {
+    bump('deletions');
+    // Silinen hesabın adı istatistiklerden ve kullanım kayıtlarından da çıkar
+    for (const d of Object.values(stats.days)) d.users = (d.users || []).filter((x) => x !== u);
+    if (usage[u]) { delete usage[u]; usageDirty = true; }
+    for (const [k, v] of live) if (v.user === u) live.delete(k);
     delete users[u];
     save('users.json', users);
     try { fs.unlinkSync(file(vaultName(u))); } catch {}
@@ -217,6 +267,7 @@ function createSyncServer({
       users[u] = { email, salt: b.salt, iter: b.iter, vsalt, verifier: verifier(b.authKey, vsalt), wrappedKey: b.wrappedKey, created: new Date().toISOString() };
       save('users.json', users);
       regCount(ip).push(Date.now());
+      bump('registrations');
       return { token: newToken(u, req), wrappedKey: b.wrappedKey };
     },
 
@@ -227,8 +278,8 @@ function createSyncServer({
       const rec = users[u];
       const good = rec && B64(b.authKey, 40, 64)
         && crypto.timingSafeEqual(Buffer.from(verifier(b.authKey, rec.vsalt), 'base64'), Buffer.from(rec.verifier, 'base64'));
-      if (!good) { fail(ip, 'u:' + u); counters.failedLogins++; throw new HttpError(401, 'Kullanıcı adı veya parola yanlış'); }
-      counters.logins++;
+      if (!good) { fail(ip, 'u:' + u); bump('failedLogins'); throw new HttpError(401, 'Kullanıcı adı veya parola yanlış'); }
+      bump('logins');
       return { token: newToken(u, req), wrappedKey: rec.wrappedKey };
     },
 
@@ -237,7 +288,7 @@ function createSyncServer({
     'GET /api/vault': (req) => {
       const a = auth(req);
       const v = load(vaultName(a.user), null);
-      counters.syncs++;
+      bump('syncs');
       return v || { version: 0, data: null };
     },
 
@@ -330,8 +381,25 @@ function createSyncServer({
       save('users.json', users);
       for (const [k, v] of Object.entries(tokens)) if (v.user === u) delete tokens[k];
       save('tokens.json', tokens);
-      counters.logins++;
+      bump('logins');
       return { token: newToken(u, req), wrappedKey: rec.wrappedKey };
+    },
+
+    // Uygulama kullanım sayıları: istemci (kapatılmadıysa) günlük sayaçlarını ve anlık sayılarını gönderir. Gün başına
+    // değerin tamamı gönderildiği için tekrar gönderim üstüne yazar, iki kez sayılmaz. Sunucu adresi vb. hiç gelmez.
+    'POST /api/usage': (req, b) => {
+      const a = auth(req);
+      const dev = a.hash.slice(0, 12);
+      const U = usage[a.user] || (usage[a.user] = { devices: {} });
+      const D = U.devices[dev] || (U.devices[dev] = { days: {} });
+      D.client = clientName(req); D.updated = Date.now();
+      if (b.snapshot) D.snapshot = pickNums(b.snapshot, SNAP_KEYS);
+      if (b.days && typeof b.days === 'object') {
+        for (const [k, v] of Object.entries(b.days).slice(-31)) if (/^\d{4}-\d{2}-\d{2}$/.test(k)) D.days[k] = pickNums(v, USAGE_KEYS);
+      }
+      usageDirty = true;
+      bump('usageReports');
+      return { ok: true };
     },
 
     // Yönetici paneli (/admin): yalnız MELID_ADMIN_IPS'ten ve yönetici parolasıyla. Kasa içerikleri şifreli olduğundan
@@ -356,14 +424,58 @@ function createSyncServer({
         };
       }).sort((x, y) => (y.seen - x.seen) || x.user.localeCompare(y.user));
       const allDevs = Object.values(devices).flat();
+      // Son 30 gün: sunucu sayaçları + uygulama kullanım toplamları
+      const days = [];
+      for (let i = 29; i >= 0; i--) {
+        const k = dayKey(now - i * 86400000);
+        const d = stats.days[k] || {};
+        const use = {};
+        for (const u of Object.values(usage)) for (const dv of Object.values(u.devices || {})) {
+          const x = (dv.days || {})[k]; if (x) for (const [kk, vv] of Object.entries(x)) use[kk] = (use[kk] || 0) + vv;
+        }
+        days.push({
+          date: k, activeUsers: (d.users || []).length, activeDevices: (d.devices || []).length,
+          logins: d.logins || 0, failedLogins: d.failedLogins || 0, syncs: d.syncs || 0, registrations: d.registrations || 0,
+          deletions: d.deletions || 0, requests: d.requests || 0, errors: d.errors || 0, denied: d.denied || 0, usage: use,
+        });
+      }
+      const last30 = new Set(days.map((d) => d.date));
+      // Hesap başına uygulama kullanımı: son anlık sayılar (cihazlardaki en büyük) ve 30 günlük toplam
+      for (const x of list) {
+        const U = usage[x.user]; const snap = {}; const sum = {};
+        let reported = 0;
+        if (U) for (const dv of Object.values(U.devices || {})) {
+          reported = Math.max(reported, dv.updated || 0);
+          for (const [k, v] of Object.entries(dv.snapshot || {})) snap[k] = Math.max(snap[k] || 0, v);
+          for (const [day, v] of Object.entries(dv.days || {})) if (last30.has(day)) for (const [k, n] of Object.entries(v)) sum[k] = (sum[k] || 0) + n;
+        }
+        x.usage = { snapshot: snap, last30: sum, reported };
+      }
+      const onlineCut = now - 10 * 60000;
+      const online = [...live.values()].filter((v) => v.ts > onlineCut).sort((p, q) => q.ts - p.ts).map((v) => ({ user: v.user, client: v.client, seen: v.ts }));
+      const m = Math.floor(now / 60000);
+      const rpm = []; for (let i = 59; i >= 0; i--) rpm.push(perMinute.get(m - i) || 0);
+      let disk = null;
+      try { const f = fs.statfsSync(dataDir); disk = { total: f.blocks * f.bsize, free: f.bavail * f.bsize }; } catch {}
+      let dataBytes = 0;
+      const walk = (d) => { for (const e of fs.readdirSync(d, { withFileTypes: true })) { const p = path.join(d, e.name); if (e.isDirectory()) walk(p); else try { dataBytes += fs.statSync(p).size; } catch {} } };
+      try { walk(dataDir); } catch {}
+      const mem = process.memoryUsage();
       return {
-        server: { started, uptime: now - started, register: regMode, maxUsers, node: process.version, now },
+        server: {
+          started, uptime: now - started, register: regMode, maxUsers, node: process.version, now, tz: statsTz,
+          rss: mem.rss, heapUsed: mem.heapUsed, memTotal: os.totalmem(), memFree: os.freemem(), load: os.loadavg(),
+          cpus: os.cpus().length, disk, dataBytes, statsSince: stats.since,
+        },
         totals: {
           users: list.length, devices: allDevs.length,
           activeDevices: allDevs.filter((d) => now - d.seen < 7 * 24 * 3600 * 1000).length,
           activeUsers: list.filter((x) => now - x.seen < 7 * 24 * 3600 * 1000).length,
-          vaultBytes, ...counters,
+          withRecovery: list.filter((x) => x.recovery).length,
+          vaultBytes, online: online.length,
         },
+        lifetime: stats.totals,
+        days, online, rpm,
         users: list,
       };
     },
@@ -441,6 +553,7 @@ function createSyncServer({
 
   const handler = (req, res) => {
     const reply = (status, obj) => {
+      if (status >= 500) bump('errors'); else if (status === 401 || status === 403 || status === 429) bump('denied');
       const body = JSON.stringify(obj);
       res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' });
       res.end(body);
@@ -453,6 +566,7 @@ function createSyncServer({
         'Content-Security-Policy': `default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'self'; img-src 'self' data:; frame-ancestors 'none'; base-uri 'none'; form-action 'none'`,
       });
       if (url.pathname === '/' || url.pathname === '/index.html') { htmlHead(200); return res.end(PAGES.home); }
+      if (url.pathname === '/kosullar' || url.pathname === '/gizlilik') { htmlHead(200); return res.end(PAGES.terms); }
       const st = STATIC.get(url.pathname);
       if (st) {
         res.writeHead(200, { 'Content-Type': st.type, 'Content-Length': st.body.length, 'Cache-Control': 'public, max-age=86400', 'X-Content-Type-Options': 'nosniff' });
@@ -469,6 +583,9 @@ function createSyncServer({
     }
     const route = routes[`${req.method} ${url.pathname}`];
     if (!route) return reply(404, { error: 'Bulunamadı' });
+    bump('requests');
+    const minute = Math.floor(Date.now() / 60000);
+    perMinute.set(minute, (perMinute.get(minute) || 0) + 1);
     let size = 0; const chunks = [];
     req.on('data', (c) => { size += c.length; if (size > MAX_BODY) { reply(413, { error: 'Kasa çok büyük' }); req.destroy(); } else chunks.push(c); });
     req.on('end', () => {
@@ -484,6 +601,7 @@ function createSyncServer({
       }
     });
   };
+  handler.flush = flushStats; // kapanırken bekleyen istatistikleri yaz
   return handler;
 }
 
@@ -512,6 +630,7 @@ if (require.main === module) {
   const srv = tls
     ? https.createServer({ cert: fs.readFileSync(process.env.TLS_CERT), key: fs.readFileSync(process.env.TLS_KEY) }, handler)
     : http.createServer(handler);
+  for (const sig of ['SIGTERM', 'SIGINT']) process.once(sig, () => { try { handler.flush(); } finally { process.exit(0); } });
   srv.listen(port, host, () => {
     console.log(`Melid eşitleme sunucusu: ${tls ? 'https' : 'http'}://${host}:${port}  (veri: ${dataDir})`);
     console.log(`Hesap açma: ${env.MELID_REGISTER || 'open'}; yönetici paneli: ${env.MELID_ADMIN_KEY || env.MELID_SYNC_INVITE ? 'açık (/admin)' : 'kapalı (MELID_ADMIN_KEY yok)'}`);

@@ -33,7 +33,7 @@ class AccountSync {
     /** Hesap durumu + bu cihazda anahtar eşitlemesi açık mı */
     JSONObject status() {
         JSONObject st = client.status();
-        try { st.put("syncKeys", app.store.syncKeys()); } catch (Exception ignored) { }
+        try { st.put("syncKeys", app.store.syncKeys()).put("usageStats", app.store.usageStats()); } catch (Exception ignored) { }
         return st;
     }
 

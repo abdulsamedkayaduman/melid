@@ -23,6 +23,9 @@ export function syncTimeText(t) {
 
 export const STATE_TEXT = { idle: 'Bekliyor', syncing: 'Eşitleniyor…', ok: 'Eşitlendi', error: 'Hata', locked: 'Ana parola kilitli', auth: 'Tekrar giriş gerekli' };
 
+export const TERMS_URL = 'https://melid.abdulsamed.net/kosullar';
+const termsLink = (text = 'Kullanım koşulları ve gizlilik') => h('a', { href: '#', onclick: (e) => { e.preventDefault(); api.openExternal(TERMS_URL); } }, text);
+
 export const KEYS_HINT = 'Açıkken bu cihazın SSH anahtarları (~/.ssh ve hesaptan gelenler) uçtan uca şifreli olarak hesaba yüklenir, diğer cihazların anahtarları buraya gelir. Anahtarlar ~/.ssh\'ye yazılmaz; Melid bağlanırken kullanır. Kapalıysa bu cihaz anahtar göndermez ve almaz.';
 
 export async function accountDialog(app) {
@@ -73,7 +76,8 @@ async function loginDialog(app, { reauth } = {}) {
   const inviteField = field('Davet kodu', f.invite, '.reg-only');
   let needInvite = false;
   const emailField = field('E-posta', f.email, '.reg-only');
-  const regOnly = [field('Parola (tekrar)', f.password2, '.reg-only'), inviteField];
+  const regOnly = [field('Parola (tekrar)', f.password2, '.reg-only'), inviteField,
+    h('p.hint.reg-only', null, 'Hesap açarak ', termsLink(), ' metnini kabul etmiş olursunuz. Uygulama kullanım sayılarını (içerik değil) gönderir; hesap penceresinden kapatılabilir.')];
   const modeBtns = {
     login: h('button.seg', { type: 'button', onclick: () => setMode('login') }, 'Giriş yap'),
     register: h('button.seg', { type: 'button', onclick: () => setMode('register') }, 'Hesap oluştur'),
@@ -190,6 +194,15 @@ async function manageDialog(app, st) {
       },
     }), 'SSH anahtarlarını da eşitle'),
     h('p.hint', null, KEYS_HINT),
+    h('label.check', null, h('input', {
+      type: 'checkbox', checked: st.usageStats !== false,
+      onchange: async (e) => {
+        const on = e.target.checked;
+        try { await api.account.setUsageStats(on); toast(on ? 'Kullanım istatistikleri gönderilecek' : 'Kullanım istatistikleri artık gönderilmeyecek', 'ok'); }
+        catch (err) { e.target.checked = !on; toast(cleanErr(err), 'err'); }
+      },
+    }), 'Kullanım istatistiklerini gönder'),
+    h('p.hint', null, 'Yalnız sayılar: günlük bağlantı ve aktarım sayısı, kayıtlı sunucu sayısı gibi. Sunucu adresleri, kullanıcı adları ve dosyalar gönderilmez. ', termsLink('Ayrıntılar')),
     recRow,
     h('p.hint', null, 'Oturumlar, kayıtlı parolalar, ayarlar ve hazır komutlar uçtan uca şifreli eşitlenir. Bu cihaza özgü ayarlar (kayıt klasörü, panel boyutları) ve oturumların yerel klasörü eşitlenmez.'),
     h('div.forgot', null, h('a', { href: '#', onclick: (e) => { e.preventDefault(); wantDelete = true; closeManage?.(null); } }, 'Hesabı sil…')));

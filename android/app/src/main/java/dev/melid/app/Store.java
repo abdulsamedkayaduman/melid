@@ -404,6 +404,31 @@ public class Store implements SyncCore.Local {
 
     static long keyMtime(JSONObject k) { return k.optLong("mtime", k.optLong("created")); }
 
+    /** Kullanım sayıları gönderilsin mi (bu cihaza özgü; varsayılan açık). Ayrıntı: UsageStats, server/pages/kosullar.html */
+    public synchronized boolean usageStats() { return settings.optBoolean("usageStats", true); }
+
+    public synchronized void setUsageStats(boolean on) throws JSONException {
+        settings.put("usageStats", on);
+        save("settings.json", settings);
+    }
+
+    /** Sunucuya gidecek kullanım raporu: yalnız sayılar; kapalıysa null */
+    @Override public synchronized JSONObject usageReport() throws JSONException {
+        if (!usageStats() || App.I == null || App.I.usage == null) return null;
+        java.util.Set<String> groups = new java.util.HashSet<>();
+        int tunnels = 0;
+        for (int i = 0; i < sessions.length(); i++) {
+            JSONObject s = sessions.getJSONObject(i);
+            if (!s.optString("group").isEmpty()) groups.add(s.optString("group"));
+            JSONArray f = s.optJSONArray("forwards");
+            if (f != null) tunnels += f.length();
+        }
+        JSONArray snips = settings.optJSONArray("snippets");
+        JSONObject snap = new JSONObject().put("sessions", sessions.length()).put("groups", groups.size())
+                .put("keys", keys.length()).put("snippets", snips == null ? 0 : snips.length()).put("savedTunnels", tunnels);
+        return new JSONObject().put("snapshot", snap).put("days", App.I.usage.recent());
+    }
+
     /** Hesap eşitlemesinde SSH anahtarları da gönderilsin/alınsın mı (bu cihaza özgü seçim) */
     public synchronized boolean syncKeys() { return settings.optBoolean("syncKeys"); }
 
