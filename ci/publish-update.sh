@@ -3,8 +3,9 @@
 # sshdeck/latest/latest.json'ı yeniler. Uygulamalar bunu anonim okur (depo özel olsa da paketler açık).
 # Kullanım: publish-update.sh <sürüm> <notlar-dosyası>
 # Ortam: PACKAGE_TOKEN (package yazma yetkili token), UPDATE_SIGNING_KEY, GITHUB_SERVER_URL, GITHUB_REPOSITORY
-#       PUBLIC_DOWNLOAD_BASE (isteğe bağlı): latest.json'daki indirme adreslerinin tabanı, ör. https://melid.ornek.com/indir
-#       (eşitleme sunucusu UPDATE_UPSTREAM ile bu depoyu dışarıya aktarır). Yoksa doğrudan paket deposu adresleri.
+#       PUBLIC_DOWNLOAD_BASE (isteğe bağlı): latest.json'daki indirme adreslerinin tabanı. {tag} içerirse etiketle
+#       değiştirilir (GitHub: https://github.com/<kullanıcı>/<repo>/releases/download/{tag}), yoksa sonuna /<sürüm> eklenir
+#       (eşitleme sunucusunun /indir aktarımı). Hiç yoksa doğrudan paket deposu adresleri.
 set -euo pipefail
 version=$1 notes=$2
 [ -n "${PACKAGE_TOKEN:-}" ] || { echo "::error::PACKAGE_TOKEN secret'ı yok (package yazma yetkili Forgejo token'ı; bkz. docs/ci.md)"; exit 1; }
@@ -19,7 +20,11 @@ put() { # <yerel dosya> <paket sürümü> <dosya adı>; aynı adla varsa önce s
 }
 
 pub=${PUBLIC_DOWNLOAD_BASE:-$base}
-node ci/update-feed.js "$version" "$notes" "${pub%/}/$version" dist > latest.json
+case "$pub" in
+    *'{tag}'*) pub=${pub//\{tag\}/v$version} ;;
+    *) pub="${pub%/}/$version" ;;
+esac
+node ci/update-feed.js "$version" "$notes" "$pub" dist > latest.json
 for f in "Melid-$version-kurulum.exe" "Melid-$version-tasinabilir.exe" "Melid-$version.AppImage" "melid-$version.pacman" "Melid-$version.apk" \
          "Melid-$version-mac-arm64.tar.gz" "Melid-$version-mac-x64.tar.gz"; do
     [ -f "dist/$f" ] || continue

@@ -4,3 +4,4 @@ test/.work/
 update-signing-key.pem
 server/data/
 /*.apk
+core.[0-9]*

@@ -218,8 +218,10 @@ jobs:
           FORGEJO_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PACKAGE_TOKEN: ${{ secrets.PACKAGE_TOKEN }}
           UPDATE_SIGNING_KEY: ${{ secrets.UPDATE_SIGNING_KEY }}
-          # latest.json'daki indirme adresleri: eşitleme sunucusu bunları paket deposundan aktarır (server/sync-server.js)
-          PUBLIC_DOWNLOAD_BASE: https://sshdeck.abdulsamed.net/indir
+          # latest.json'daki indirme adresleri: GitHub sürüm dosyaları (indirme sayfası ve uygulamalar oradan indirir)
+          PUBLIC_DOWNLOAD_BASE: https://github.com/abdulsamedkayaduman/melid/releases/download/{tag}
+          GH_REPO: abdulsamedkayaduman/melid
+          GH_RELEASE_TOKEN: ${{ secrets.GH_RELEASE_TOKEN }}
         run: |
           VERSION=$(node -p 'require("./package.json").version')
           cd dist && sha256sum * > SHA256SUMS.txt && cat SHA256SUMS.txt && cd ..
@@ -237,6 +239,12 @@ jobs:
               ci/publish-update.sh "$VERSION" update-notes.md
             else
               echo "::warning::PACKAGE_TOKEN secret'ı yok: sürüm yayınlandı ama cihazlara güncelleme bildirimi gitmeyecek (docs/ci.md)"
+            fi
+            # GitHub sürümü: indirme sayfası ve güncellemeler (latest.json) buradan
+            if [ -n "$GH_RELEASE_TOKEN" ]; then
+              ci/github-release.sh "$TAG" "Melid $TAG" notes.md dist/* $( [ -f latest.json ] && echo latest.json )
+            else
+              echo "::warning::GH_RELEASE_TOKEN secret'ı yok: sürüm GitHub'a yüklenmedi, indirme sayfası ve güncellemeler eski sürümde kalır"
             fi
           else
             {

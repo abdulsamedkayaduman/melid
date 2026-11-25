@@ -22,10 +22,9 @@ services:
       # Ters vekil arkasında istemci IP'si başlıklardan alınır (deneme sınırı, yönetici IP'si).
       # 1: X-Forwarded-For; cloudflare: Cloudflare'den gelen isteklerde CF-Connecting-IP
       TRUST_PROXY: ${TRUST_PROXY:-1}
-    # Yerel ağdan doğrudan erişim (uygulamadaki "Yerel ağda ara" bunu bulur). Bu port internete açılmamalı:
-    # vekil başlıkları doğrudan gelen isteklerde taklit edilebilir. Yalnız vekil kullanılıyorsa bu iki satırı silin.
-    ports:
-      - "3150:3150"
+    # Port dışarı açılmaz: istekler yalnız ters vekilden (Traefik) gelir. Vekili atlayan istek IP başlıklarını
+    # taklit edebilirdi. Vekilsiz, yerel ağda kullanacaksanız (uygulamadaki "Yerel ağda ara" 3150'yi bulur):
+    #   ports: ["3150:3150"]  ve  TRUST_PROXY=0
     volumes:
       - sshdeck-sync-data:/data
 volumes:

@@ -72,8 +72,9 @@ Veriler `sshdeck-sync-data` adlı birimde (`/data`) durur; yeniden dağıtımda 
 3. **Domains**: alan adı, servis `sync`, container port `3150`.
 4. **Deploy**. Kontrol: `https://<alan-adı>/api/info` -> `{"app":"SSHDeck","api":2,"register":true,"invite":false}`.
 
-`TRUST_PROXY=1` compose'ta varsayılan. Compose, yerel ağ taraması için 3150 portunu da açar: bu port internete açılmamalı
-(doğrudan gelen istekte vekil başlıkları taklit edilebilir). Yalnız vekil kullanılıyorsa `ports` satırlarını silin.
+`TRUST_PROXY=1` compose'ta varsayılan (Cloudflare arkasında `cloudflare`). Compose portu dışarı açmaz: istekler yalnız
+Traefik'ten gelir (vekili atlayan istek IP başlıklarını taklit edebilirdi). Vekilsiz yerel ağ kurulumu için
+`ports: ["3150:3150"]` ekleyip `TRUST_PROXY=0` yapın; uygulamadaki **Yerel ağda ara** o zaman sunucuyu bulur.
 
 Düz Docker: `cd server && MELID_ADMIN_KEY=... docker compose up -d --build`.
 
