@@ -535,16 +535,22 @@ function registerIpc() {
         : { title: 'Xshell oturumları (.xsh / .xts)', defaultPath: xsDir, properties: ['openFile', 'multiSelections', 'showHiddenFiles'], filters: [{ name: 'Xshell', extensions: ['xsh', 'xts'] }] });
       if (r.canceled) return null;
       try { parsed = importers.parseXshellPaths(r.filePaths); } catch (e) { throw new Error(`Xshell oturumları okunamadı: ${e.message}`); }
-      // Şifreli parolalar: Windows'ta bu kullanıcının kimliğiyle kendiliğinden; olmazsa (başka bilgisayarda dışa aktarılmış,
-      // Xshell ana parolası, Linux/macOS) bilgiler sorulur. Boş bırakılırsa parolasız aktarılır.
+      // Şifreli parolalar: Windows'ta bu kullanıcının kimliğiyle kendiliğinden; çözülemeyen kalırsa (başka bilgisayarda
+      // dışa aktarılmış, Xshell ana parolası, Linux/macOS) bilgiler sorulur. İptal/X: hiçbir şey aktarılmaz.
+      const total = parsed.filter((x) => x._xshell).length;
       const pending = () => parsed.filter((x) => x._xshell && x.password == null).length;
       if (pending()) {
         const me = windowsIdentity();
         if (me) importers.applyXshellPasswords(parsed, me);
-        for (let tries = 0; pending() && tries < 3; tries++) {
-          const ans = await uiRequest('xshellCreds', { pending: pending(), total: parsed.filter((x) => x._xshell).length, retry: tries > 0, me });
-          if (!ans || (!ans.master && !ans.sid)) break;
+        let last = null; let prev = me || {};
+        for (let i = 0; pending() && i < 20; i++) {
+          const ans = await uiRequest('xshellCreds', { pending: pending(), total, solved: total - pending(), last, prev, triedMe: !!me });
+          if (ans == null) return null;
+          if (ans.skip) break;
+          const before = pending();
           importers.applyXshellPasswords(parsed, ans);
+          last = { solved: before - pending() };
+          prev = { user: ans.user, sid: ans.sid };
         }
       }
     } else throw new Error('Bilinmeyen içe aktarma türü');

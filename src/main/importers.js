@@ -167,8 +167,9 @@ function parseXsh(buf, rel) {
 }
 
 /**
- * [CONNECTION:SSH] FwdReqCount + FwdReq_<i>_Port (dinlenen port), _Host / _HostPort (hedef). Yön alanı belgelenmemiş:
- * FwdReq_<i>_Type (0/1/2 ya da local/remote/dynamic) varsa ondan, yoksa hedef yoksa SOCKS, varsa yerel sayılır.
+ * [CONNECTION:SSH] FwdReqCount + FwdReq_<i>_Port (dinlenen port), _Source (dinlenen adres), _Host / _HostPort (hedef),
+ * _Incoming (0: Outgoing = yerel -L, 1: Incoming = uzak -R; Xshell 8 dışa aktarmasından doğrulandı). Hedefi olmayan
+ * kural SOCKS (-D) sayılır. Eski biçimler için _Type da okunur.
  */
 function parseXshellForwards(sec) {
   const out = [];
@@ -178,8 +179,10 @@ function parseXshellForwards(sec) {
     const bindPort = Number(g('port'));
     if (!bindPort) continue;
     const t = g('type').toLowerCase();
+    const incoming = g('incoming');
     const dstHost = g('host'); const dstPort = Number(g('hostport'));
-    const type = /^(1|r|remote)/.test(t) ? 'R' : /^(2|d|dynamic|socks)/.test(t) ? 'D' : t ? 'L' : (!dstHost && !dstPort ? 'D' : 'L');
+    const type = incoming === '1' || /^(1|r|remote)/.test(t) ? 'R'
+      : incoming === '2' || /^(2|d|dynamic|socks)/.test(t) || (!dstHost && !dstPort) ? 'D' : 'L';
     const fw = { id: `xs${i}`, type, bindHost: normHost(g('source') || g('bindaddress') || g('listenhost')), bindPort, enabled: true };
     if (type !== 'D') {
       if (!dstHost || !dstPort) continue;
@@ -267,7 +270,8 @@ function applyXshellPasswords(list, creds) {
     if (s.password) { ok++; continue; }
     if (!keys.length && !(parseFloat(s._xshell.version) < 5.1)) continue;
     const pw = decryptXshellPassword(s._xshell.enc, s._xshell.version, keys);
-    if (pw != null) { s.password = pw; ok++; }
+    // Parolası bilinen oturum doğrudan parolayla bağlanır (otomatik kip önce agent ve ~/.ssh anahtarlarını dener)
+    if (pw != null) { s.password = pw; s.authType = 'password'; ok++; }
   }
   return { total, ok };
 }
@@ -319,8 +323,9 @@ function parseXshellPaths(paths) {
     else if (/\.xts$/i.test(p)) {
       for (const z of readZip(fs.readFileSync(p))) {
         if (!/\.xsh$/i.test(z.name)) continue;
-        // .xts entries usually start with "Xshell/Sessions/..." or "Sessions/..."; strip that prefix
-        const rel = z.name.replace(/\\/g, '/').replace(/^(?:.*\/)?Sessions\//i, '');
+        // .xts girdileri "Xshell/Sessions/...", "Sessions/..." ya da (Xshell 8) "Xshell/..." ile başlar; önek grup değildir
+        const n = z.name.replace(/\\/g, '/');
+        const rel = /(^|\/)Sessions\//i.test(n) ? n.replace(/^(?:.*\/)?Sessions\//i, '') : n.replace(/^Xshell\//i, '');
         const s = parseXsh(z.data, rel); if (s) out.push(s);
       }
     } else if (/\.xsh$/i.test(p)) { const s = parseXsh(fs.readFileSync(p), path.basename(p)); if (s) out.push(s); }

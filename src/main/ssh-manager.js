@@ -1,7 +1,7 @@
 'use strict';
 // SSH connection manager: connections (with jump hosts), shells, SFTP, transfers, port forwards.
 // Deliberately free of Electron imports so it can be tested with plain Node.
-const { Client, utils } = require('ssh2');
+const { Client, utils, createAgent } = require('ssh2');
 const net = require('net');
 const fs = require('fs');
 const fsp = require('fs/promises');
@@ -60,6 +60,20 @@ function findAgent() {
   if (process.platform !== 'win32') return null;
   try { if (fs.existsSync(WIN_AGENT_PIPE)) return WIN_AGENT_PIPE; } catch {}
   return 'pageant';
+}
+
+/**
+ * Agent gerçekten yanıt veriyor mu: anahtar sayısı ya da -1 (yok / çalışmıyor). Windows'ta OpenSSH agent hizmeti yokken
+ * 'pageant' seçilir; Pageant da çalışmıyorsa ssh2 "Failed to retrieve identities from agent" ile bağlantıyı düşürür.
+ * "Otomatik" kimlik doğrulama bu yüzden agent'ı önce yoklar.
+ */
+function probeAgent(sock, timeout = 2000) {
+  return new Promise((resolve) => {
+    let done = false;
+    const finish = (n) => { if (!done) { done = true; clearTimeout(t); resolve(n); } };
+    const t = setTimeout(() => finish(-1), timeout);
+    try { createAgent(sock).getIdentities((err, keys) => finish(err ? -1 : (keys || []).length)); } catch { finish(-1); }
+  });
 }
 
 function expandHome(p) {
@@ -274,7 +288,9 @@ class SshManager extends EventEmitter {
       if (parsed instanceof Error) { if (required) throw new Error(`Anahtar okunamadı: ${parsed.message}`); return; }
       methods.push({ type: 'publickey', username, key: buf, passphrase: pass });
     };
-    const agentSock = findAgent();
+    let agentSock = findAgent();
+    // Otomatik kipte çalışmayan agent atlanır (yoksa bağlantı agent hatasıyla düşer, parolaya hiç sıra gelmez)
+    if (agentSock && auth !== 'agent' && (await probeAgent(agentSock)) < 1) agentSock = null;
     // Agent yönlendirme yalnız istenen komutta açılır (doğrudan aktarım); bağlantıda kendiliğinden açılmaz
     if (agentSock) { cfg.agent = agentSock; cfg.agentForward = true; }
     if (auth === 'key') {

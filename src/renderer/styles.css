@@ -652,6 +652,7 @@ dl.kv.sync-dirs { margin: 0 0 14px; grid-template-columns: 60px 1fr; }
 .rec-row > div { flex: 1; min-width: 0; }
 .rec-row .hint { margin: 2px 0 0; font-size: 12px; }
 .warn-text { color: var(--busy); }
+.ok-text, .hint.ok-text { color: var(--ok); }
 .rec-code { margin: 14px 0; padding: 14px; text-align: center; font-size: 17px; letter-spacing: .5px; border: 1px dashed var(--accent2); border-radius: 8px; background: var(--bg); user-select: all; word-break: break-all; }
 .rec-show .row { display: flex; gap: 8px; }
 

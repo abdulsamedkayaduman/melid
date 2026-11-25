@@ -72,6 +72,9 @@ const zip = (entries) => {
 fs.writeFileSync(path.join(dir, 'export.xts'), zip([['Xshell/Sessions/Grup A/sv1.xsh', xsh('10.1.1.1', 'admin')], ['Xshell/Sessions/sv2.xsh', xsh('10.1.1.2', 'root')], ['Xshell/readme.txt', Buffer.from('x')]]));
 const xt = im.parseXshellPaths([path.join(dir, 'export.xts')]);
 assert.deepEqual(xt.map((s) => [s.name, s.group, s.host, s.username]), [['sv1', 'Grup A', '10.1.1.1', 'admin'], ['sv2', 'Xshell', '10.1.1.2', 'root']]);
+// Xshell 8 dışa aktarması: girdiler "Xshell/<grup>/..." (Sessions yok); "Xshell" öneki grup değildir
+fs.writeFileSync(path.join(dir, 'x8.xts'), zip([['Xshell/A-home/pi.xsh', xsh('10.2.0.1', 'pi')], ['Xshell/MAYA/PROD/db.xsh', xsh('10.2.0.2', 'root')], ['Xshell/kok.xsh', xsh('10.2.0.3', 'u')]]));
+assert.deepEqual(im.parseXshellPaths([path.join(dir, 'x8.xts')]).map((s) => [s.name, s.group]), [['pi', 'A-home'], ['db', 'MAYA/PROD'], ['kok', 'Xshell']]);
 fs.rmSync(dir, { recursive: true, force: true });
 console.log('OK xshell (.xsh klasörü, UTF-16, .xts)');
 
@@ -91,16 +94,17 @@ console.log('OK xshell (.xsh klasörü, UTF-16, .xts)');
   ];
   assert.deepEqual(im.applyXshellPasswords(list, { user: 'DESKTOP-1\\samed', sid: ' ' + sid + ' ' }), { total: 5, ok: 4 }, 'kullanıcı + SID (whoami küçük harf)');
   assert.deepEqual(list.map((x) => x.password), ['altı-ŞİFRE', 'yedi', 'beş', undefined, 'eski']);
+  assert.deepEqual(list.map((x) => x.authType), ['password', 'password', 'password', 'auto', 'password'], 'parolası çözülen oturum parola türünde');
   assert.deepEqual(im.applyXshellPasswords(list, { master: 'yanlis' }), { total: 5, ok: 4 }, 'yanlış ana parola kabul edilmez');
   assert.deepEqual(im.applyXshellPasswords(list, { master: 'xshellAna' }), { total: 5, ok: 5 });
   assert.equal(list[3].password, 'ana');
 
-  const fw = im.parseXsh(sess('7.0', '', 'FwdReqCount=4\r\nFwdReq_0_Port=8080\r\nFwdReq_0_Host=localhost\r\nFwdReq_0_HostPort=80\r\n'
-    + 'FwdReq_1_Type=1\r\nFwdReq_1_Port=9000\r\nFwdReq_1_Host=10.0.0.5\r\nFwdReq_1_HostPort=22\r\nFwdReq_1_Desc=geri\r\n'
+  const fw = im.parseXsh(sess('7.0', '', 'FwdReqCount=4\r\nFwdReq_0_Incoming=0\r\nFwdReq_0_Source=192.168.1.5\r\nFwdReq_0_Port=8080\r\nFwdReq_0_Host=localhost\r\nFwdReq_0_HostPort=80\r\n'
+    + 'FwdReq_1_Incoming=1\r\nFwdReq_1_Source=localhost\r\nFwdReq_1_Port=9000\r\nFwdReq_1_Host=10.0.0.5\r\nFwdReq_1_HostPort=22\r\nFwdReq_1_Description=geri\r\n'
     + 'FwdReq_2_Port=1080\r\nFwdReq_3_Port=5432\r\nFwdReq_3_Host=db\r\n'), 'f.xsh');
   assert.equal(fw._xshell, undefined, 'boş parola alanı');
   assert.deepEqual(fw.forwards, [
-    { id: 'xs0', type: 'L', bindHost: '127.0.0.1', bindPort: 8080, enabled: true, dstHost: '127.0.0.1', dstPort: 80 },
+    { id: 'xs0', type: 'L', bindHost: '192.168.1.5', bindPort: 8080, enabled: true, dstHost: '127.0.0.1', dstPort: 80 },
     { id: 'xs1', type: 'R', bindHost: '127.0.0.1', bindPort: 9000, enabled: true, dstHost: '10.0.0.5', dstPort: 22 },
     { id: 'xs2', type: 'D', bindHost: '127.0.0.1', bindPort: 1080, enabled: true },
   ], 'yerel, uzak, SOCKS; hedefi eksik tünel atlanır');
