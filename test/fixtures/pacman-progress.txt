@@ -1,15 +1,45 @@
 [?25lloading packages...
 looking for conflicting packages...
 
-Packages (1) sshdeck-1.4.1-1
+Packages (1) melid-1.4.1-1
 
 Total Installed Size:  287.86 MiB
 
 :: Proceed with installation? [Y/n] 
-(0/1) checking keys in keyring                     [----------------------]   0%(1/1) checking keys in keyring                     [######################] 100%
-(0/1) checking package integrity                   [----------------------]   0%(1/1) checking package integrity                   [######################] 100%
-(0/1) loading package files                        [----------------------]   0%(1/1) loading package files                        [######################] 100%
-(0/1) checking for file conflicts                  [----------------------]   0%(1/1) checking for file conflicts                  [######################] 100%
+(0/1) checking keys in keyring                     [----------------------]   0%
+(1/1) checking keys in keyring                     [######################] 100%
+
+(0/1) checking package integrity                   [----------------------]   0%
+(1/1) checking package integrity                   [######################] 100%
+
+(0/1) loading package files                        [----------------------]   0%
+(1/1) loading package files                        [######################] 100%
+
+(0/1) checking for file conflicts                  [----------------------]   0%
+(1/1) checking for file conflicts                  [######################] 100%
+
 :: Processing package changes...
-(1/1) installing sshdeck                           [----------------------]   0%(1/1) installing sshdeck                           [----------------------]   0%(1/1) installing sshdeck                           [----------------------]   0%(1/1) installing sshdeck                           [----------------------]   0%(1/1) installing sshdeck                           [----------------------]   0%(1/1) installing sshdeck                           [----------------------]   0%(1/1) installing sshdeck                           [----------------------]   0%(1/1) installing sshdeck                           [----------------------]   0%(1/1) installing sshdeck                           [----------------------]   0%(1/1) installing sshdeck                           [----------------------]   0%(1/1) installing sshdeck                           [----------------------]   0%(1/1) installing sshdeck                           [----------------------]   0%(1/1) installing sshdeck                           [----------------------]   0%(1/1) installing sshdeck                           [----------------------]   0%(1/1) installing sshdeck                           [----------------------]   0%(1/1) installing sshdeck                           [----------------------]   0%(1/1) installing sshdeck                           [----------------------]   0%(1/1) installing sshdeck                           [----------------------]   4%(1/1) installing sshdeck                           [#---------------------]   8%(1/1) installing sshdeck                           [##################----]  83%(1/1) installing sshdeck                           [#####################-]  98%(1/1) installing sshdeck                           [######################] 100%
+(1/1) installing melid                           [----------------------]   0%
+(1/1) installing melid                           [----------------------]   0%
+(1/1) installing melid                           [----------------------]   0%
+(1/1) installing melid                           [----------------------]   0%
+(1/1) installing melid                           [----------------------]   0%
+(1/1) installing melid                           [----------------------]   0%
+(1/1) installing melid                           [----------------------]   0%
+(1/1) installing melid                           [----------------------]   0%
+(1/1) installing melid                           [----------------------]   0%
+(1/1) installing melid                           [----------------------]   0%
+(1/1) installing melid                           [----------------------]   0%
+(1/1) installing melid                           [----------------------]   0%
+(1/1) installing melid                           [----------------------]   0%
+(1/1) installing melid                           [----------------------]   0%
+(1/1) installing melid                           [----------------------]   0%
+(1/1) installing melid                           [----------------------]   0%
+(1/1) installing melid                           [----------------------]   0%
+(1/1) installing melid                           [----------------------]   4%
+(1/1) installing melid                           [#---------------------]   8%
+(1/1) installing melid                           [##################----]  83%
+(1/1) installing melid                           [#####################-]  98%
+(1/1) installing melid                           [######################] 100%
+
 [?25h

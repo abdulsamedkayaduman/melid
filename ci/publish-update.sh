@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# Sürüm dosyalarını Forgejo generic paket deposuna (sshdeck/<sürüm>/) yükler ve imzalı
+# Sürüm dosyalarını Forgejo generic paket deposuna (sshdeck/<sürüm>/; eski sürümler bu yola baktığı için ad değişmedi) yükler ve imzalı
 # sshdeck/latest/latest.json'ı yeniler. Uygulamalar bunu anonim okur (depo özel olsa da paketler açık).
 # Kullanım: publish-update.sh <sürüm> <notlar-dosyası>
 # Ortam: PACKAGE_TOKEN (package yazma yetkili token), UPDATE_SIGNING_KEY, GITHUB_SERVER_URL, GITHUB_REPOSITORY
-#       PUBLIC_DOWNLOAD_BASE (isteğe bağlı): latest.json'daki indirme adreslerinin tabanı, ör. https://sshdeck.ornek.com/indir
+#       PUBLIC_DOWNLOAD_BASE (isteğe bağlı): latest.json'daki indirme adreslerinin tabanı, ör. https://melid.ornek.com/indir
 #       (eşitleme sunucusu UPDATE_UPSTREAM ile bu depoyu dışarıya aktarır). Yoksa doğrudan paket deposu adresleri.
 set -euo pipefail
 version=$1 notes=$2
@@ -20,8 +20,8 @@ put() { # <yerel dosya> <paket sürümü> <dosya adı>; aynı adla varsa önce s
 
 pub=${PUBLIC_DOWNLOAD_BASE:-$base}
 node ci/update-feed.js "$version" "$notes" "${pub%/}/$version" dist > latest.json
-for f in "SSHDeck-$version-kurulum.exe" "SSHDeck-$version-tasinabilir.exe" "SSHDeck-$version.AppImage" "sshdeck-$version.pacman" "SSHDeck-$version.apk" \
-         "SSHDeck-$version-mac-arm64.tar.gz" "SSHDeck-$version-mac-x64.tar.gz"; do
+for f in "Melid-$version-kurulum.exe" "Melid-$version-tasinabilir.exe" "Melid-$version.AppImage" "melid-$version.pacman" "Melid-$version.apk" \
+         "Melid-$version-mac-arm64.tar.gz" "Melid-$version-mac-x64.tar.gz"; do
     [ -f "dist/$f" ] || continue
     put "dist/$f" "$version" "$f"
 done

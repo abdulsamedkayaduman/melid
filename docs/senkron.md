@@ -7,7 +7,7 @@ Uçtan uca şifrelidir: sunucu verileri çözemez.
 
 Uygulamalarda hesap penceresinde `sshdeck.abdulsamed.net` hazır gelir; herkes e-posta adresiyle hesap açabilir.
 Aynı sunucu `https://sshdeck.abdulsamed.net/` adresinde tanıtım ve indirme sayfasını, `/guncelleme/latest.json` ve
-`/indir/<sürüm>/<dosya>` adreslerinde uygulama güncellemelerini sunar (Dokploy `sshdeck-server`, `main`'e her push'ta
+`/indir/<sürüm>/<dosya>` adreslerinde uygulama güncellemelerini sunar (Dokploy `melid-server`, `main`'e her push'ta
 yeniden dağıtılır; Cloudflare tüneli → Traefik → konteyner).
 
 ## Sunucuyu çalıştırmak
@@ -15,16 +15,16 @@ yeniden dağıtılır; Cloudflare tüneli → Traefik → konteyner).
 `server/sync-server.js` bağımlılıksızdır (yalnız Node 18+); yanında `server/pages/` (ana sayfa ve yönetici sayfası) durur.
 
 ```
-PORT=3150 HOST=0.0.0.0 DATA_DIR=/var/lib/sshdeck-sync SSHDECK_ADMIN_KEY='uzun-rastgele-parola' node server/sync-server.js
+PORT=3150 HOST=0.0.0.0 DATA_DIR=/var/lib/melid-sync MELID_ADMIN_KEY='uzun-rastgele-parola' node server/sync-server.js
 ```
 
 | Değişken | Anlamı |
 |---|---|
-| `SSHDECK_REGISTER` | `open` (varsayılan: herkes hesap açabilir), `invite` (`SSHDECK_SYNC_INVITE` davet koduyla), `closed` |
-| `SSHDECK_SYNC_INVITE` | `invite` kipinde davet kodu |
-| `SSHDECK_MAX_USERS` | en fazla hesap (1000) |
-| `SSHDECK_ADMIN_KEY` | yönetici sayfası parolası; boşsa `SSHDECK_SYNC_INVITE`, ikisi de boşsa sayfa kapalı |
-| `SSHDECK_ADMIN_IPS` | yönetici sayfasını açabilecek adresler, virgülle; CIDR olabilir (`203.0.113.7, 2001:db8::/56`). Boşsa yalnız yerel ağ |
+| `MELID_REGISTER` | `open` (varsayılan: herkes hesap açabilir), `invite` (`MELID_SYNC_INVITE` davet koduyla), `closed` |
+| `MELID_SYNC_INVITE` | `invite` kipinde davet kodu |
+| `MELID_MAX_USERS` | en fazla hesap (1000) |
+| `MELID_ADMIN_KEY` | yönetici sayfası parolası; boşsa `MELID_SYNC_INVITE`, ikisi de boşsa sayfa kapalı |
+| `MELID_ADMIN_IPS` | yönetici sayfasını açabilecek adresler, virgülle; CIDR olabilir (`203.0.113.7, 2001:db8::/56`). Boşsa yalnız yerel ağ |
 | `UPDATE_FEED_URL` | imzalı `latest.json`'ın adresi, ör. `https://github.com/<kullanıcı>/<depo>/releases/latest/download/latest.json`; `/guncelleme/latest.json` buradan alınır (5 dk bellekte) |
 | `UPDATE_UPSTREAM` | ya da sürüm dosyalarının iç adresi (Forgejo generic paket deposu `.../generic/sshdeck`); akış ve `/indir/*` buradan aktarılır |
 | `TRUST_PROXY` | `1`: vekil arkasında istemci IP'si `X-Forwarded-For`'un en sağındaki girdisi. `cloudflare`: o girdi bir Cloudflare adresiyse `CF-Connecting-IP` (Cloudflare'i atlayan istek taklit edemez) |
@@ -32,23 +32,23 @@ PORT=3150 HOST=0.0.0.0 DATA_DIR=/var/lib/sshdeck-sync SSHDECK_ADMIN_KEY='uzun-ra
 
 - Hesap açarken e-posta zorunlu (doğrulanmaz; yalnız yöneticinin kullanıcıya ulaşması için). Aynı IP'den günde en fazla 5 hesap.
   1.9.0 ve öncesi uygulamalar e-posta göndermediği için yeni hesap açamaz (giriş çalışır).
-- Sürekli çalışması için örnek systemd birimi: `server/sshdeck-sync.service`.
+- Sürekli çalışması için örnek systemd birimi: `server/melid-sync.service`.
 - Yedek: `DATA_DIR` klasörünü yedeklemek yeter (`users.json`, `tokens.json`, `vaults/`, `secret.json`).
 
 Uygulamada: araç çubuğundaki bulut düğmesi → **Hesap oluştur** (ilk cihaz) → diğer cihazlarda **Giriş yap**.
 Android: Ayarlar → **Hesap ve eşitleme** (aynı hesap, aynı kasa). Davet kodu alanı yalnız sunucu isterse görünür.
 
-Şemasız yazılan adres: alan adıysa `https://` (`sshdeck.ornek.com` → `https://sshdeck.ornek.com`); IP, tek parçalı ad ya da
+Şemasız yazılan adres: alan adıysa `https://` (`melid.ornek.com` → `https://melid.ornek.com`); IP, tek parçalı ad ya da
 `.local/.lan/.home/.internal` ise `http://` + 3150 (`192.168.1.50` → `http://192.168.1.50:3150`). **Yerel ağda ara** düğmesi,
-bu cihazın yerel IPv4 ağlarındaki (en fazla /24) adreslerde 3150 portunu tarar ve `/api/info` yanıtı SSHDeck olanları listeler
+bu cihazın yerel IPv4 ağlarındaki (en fazla /24) adreslerde 3150 portunu tarar ve `/api/info` yanıtı Melid olanları listeler
 (masaüstü: `scanLan()` sync.js, Android: `SyncCore.scan()`).
 
 ## Ana sayfa ve yönetici sayfası
 
 - `/`: tanıtım ve indirme sayfası (`server/pages/home.html`). İndirme bağlantılarını `/guncelleme/latest.json`'dan okur,
   ziyaretçinin işletim sistemini öne alır.
-- `/admin`: yönetici sayfası (`server/pages/admin.html`). Yalnız `SSHDECK_ADMIN_IPS`'teki adreslerden açılır, diğerlerine 404
-  döner; ayrıca `SSHDECK_ADMIN_KEY` ister. Hesap ve cihaz sayısı, son 7 günde etkin olanlar, toplam kasa boyutu, sunucu
+- `/admin`: yönetici sayfası (`server/pages/admin.html`). Yalnız `MELID_ADMIN_IPS`'teki adreslerden açılır, diğerlerine 404
+  döner; ayrıca `MELID_ADMIN_KEY` ister. Hesap ve cihaz sayısı, son 7 günde etkin olanlar, toplam kasa boyutu, sunucu
   açıldığından beri eşitleme/giriş/hatalı giriş sayıları; hesap başına kullanıcı adı, e-posta, son görülme, son değişiklik,
   kasa sürümü/boyutu, oturum açık cihazlar (istemciler kendini `X-SSHDeck-Client` başlığıyla tanıtır). Hesap silinebilir.
   Kasa içerikleri şifreli olduğundan oturum adı, adres ya da parola burada hiçbir zaman görünmez.
@@ -67,7 +67,7 @@ Veriler `sshdeck-sync-data` adlı birimde (`/data`) durur; yeniden dağıtımda 
 
 **Dokploy:**
 1. Create Service > **Compose** (Docker Compose). Kaynak: bu depo, dal `main`, **Compose Path** `./server/docker-compose.yml`.
-2. **Environment**: `SSHDECK_ADMIN_KEY=<uzun rastgele parola>` (ör. `openssl rand -base64 24`), `SSHDECK_ADMIN_IPS=<ev IP'niz>`,
+2. **Environment**: `MELID_ADMIN_KEY=<uzun rastgele parola>` (ör. `openssl rand -base64 24`), `MELID_ADMIN_IPS=<ev IP'niz>`,
    isteğe bağlı `UPDATE_UPSTREAM`.
 3. **Domains**: alan adı, servis `sync`, container port `3150`.
 4. **Deploy**. Kontrol: `https://<alan-adı>/api/info` -> `{"app":"SSHDeck","api":2,"register":true,"invite":false}`.
@@ -75,9 +75,9 @@ Veriler `sshdeck-sync-data` adlı birimde (`/data`) durur; yeniden dağıtımda 
 `TRUST_PROXY=1` compose'ta varsayılan. Compose, yerel ağ taraması için 3150 portunu da açar: bu port internete açılmamalı
 (doğrudan gelen istekte vekil başlıkları taklit edilebilir). Yalnız vekil kullanılıyorsa `ports` satırlarını silin.
 
-Düz Docker: `cd server && SSHDECK_ADMIN_KEY=... docker compose up -d --build`.
+Düz Docker: `cd server && MELID_ADMIN_KEY=... docker compose up -d --build`.
 
-Yedek: `docker run --rm -v <proje>_sshdeck-sync-data:/d -v $PWD:/b alpine tar czf /b/sshdeck-sync.tgz -C /d .`
+Yedek: `docker run --rm -v <proje>_sshdeck-sync-data:/d -v $PWD:/b alpine tar czf /b/melid-sync.tgz -C /d .`
 (birim adı `docker volume ls` ile görülür; Dokploy proje adını önek yapar).
 
 ## Güvenlik modeli

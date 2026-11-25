@@ -26,10 +26,10 @@ export function showLock(st0) {
   const el = h('div.lock-screen', null,
     h('div.lock-box', null,
       h('div.lock-logo', null, icon('lock', 34)),
-      h('h2', null, 'SSHDeck kilitli'),
+      h('h2', null, 'Melid kilitli'),
       h('p', null, 'Devam etmek için ana parolanızı girin.'),
       pw, err, okBtn, bioBtn,
-      h('small.lock-forgot', null, 'Parolayı unuttuysanız tek yol uygulama verilerini silmektir: Android Ayarlar > Uygulamalar > SSHDeck > Depolama > Verileri temizle (oturumlar ve anahtarlar silinir; hesapla eşitliyorsanız tekrar giriş yapınca geri gelir).')));
+      h('small.lock-forgot', null, 'Parolayı unuttuysanız tek yol uygulama verilerini silmektir: Android Ayarlar > Uygulamalar > Melid > Depolama > Verileri temizle (oturumlar ve anahtarlar silinir; hesapla eşitliyorsanız tekrar giriş yapınca geri gelir).')));
   pw.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); submit(); } });
   let busy = false;
   const finish = () => {

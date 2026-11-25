@@ -1,4 +1,4 @@
-# SSHDeck eşitleme sunucusu. Bağımlılık yok: yalnız Node, sunucu dosyası ve iki sayfa.
+# Melid eşitleme sunucusu. Bağımlılık yok: yalnız Node, sunucu dosyası ve iki sayfa.
 FROM node:22-alpine
 WORKDIR /app
 COPY sync-server.js ./

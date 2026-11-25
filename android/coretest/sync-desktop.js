@@ -24,7 +24,7 @@ const names = (st) => st.sessions.map((s) => s.name).sort().join(',');
     const gk = generateKey(st.sshDir, { name: 'id_masaustu', type: 'ed25519' });
     fs.writeFileSync(path.join(work, 'desk-key.json'), JSON.stringify({ fp: gk.fingerprint }));
     st.setSyncKeys(true);
-    const sync = new AccountSync(st, { client: 'SSHDeck test linux' });
+    const sync = new AccountSync(st, { client: 'Melid test linux' });
     st.saveSession({ name: 'masaüstü', host: 'web.example', username: 'root', password: 'gizli-ğ', keyPath: '/home/x/.ssh/id_ed25519', localDir: '/home/x' });
     st.saveSession({ name: 'anahtarlı', host: 'k.example', authType: 'key', keyPath: gk.privatePath });
     st.saveSettings({ snippets: [{ id: 's1', name: 'disk', command: 'df -h', run: true }], fontFamily: 'Masaüstü Fontu', fontSize: 15 });

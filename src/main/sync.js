@@ -53,7 +53,7 @@ const normServer = (s) => {
   if (!u) throw new Error('Sunucu adresi gerekli');
   if (!/^https?:\/\//i.test(u)) {
     const host = (/^(\[[^\]]+\]|[^:/[]+)/.exec(u) || [''])[0];
-    // Yerel adres (ör. 192.168.1.50): http + varsayılan sunucu portu. Alan adı (ör. sshdeck.ornek.com): https
+    // Yerel adres (ör. 192.168.1.50): http + varsayılan sunucu portu. Alan adı (ör. melid.ornek.com): https
     u = LOCAL_NAME.test(host) ? 'http://' + u.replace(/^(\[[^\]]+\]|[^:/[]+)(?=\/|$)/, '$1:' + DEFAULT_PORT) : 'https://' + u;
   }
   try { u = new URL(u).origin; } catch { throw new Error('Sunucu adresi geçersiz'); }
@@ -114,7 +114,7 @@ async function scanLan({ port = DEFAULT_PORT, targets = lanTargets(), timeout = 
 class AccountSync extends EventEmitter {
   constructor(store, { fetchImpl = globalThis.fetch, interval = 5 * 60000, debounce = 2000, client = '' } = {}) {
     super();
-    this.client = client; // sunucu istatistiklerinde görünen istemci adı (ör. "SSHDeck 1.5.0 linux")
+    this.client = client; // sunucu istatistiklerinde görünen istemci adı (ör. "Melid 1.5.0 linux")
     this.store = store;
     this.fetch = fetchImpl;
     this.interval = interval;
@@ -167,7 +167,7 @@ class AccountSync extends EventEmitter {
     server = normServer(server);
     user = String(user || '').trim().toLowerCase();
     const info = await this._req('GET', '/api/info', null, null, server);
-    if (info.app !== 'SSHDeck') throw new Error('Bu bir SSHDeck eşitleme sunucusu değil');
+    if (info.app !== 'SSHDeck') throw new Error('Bu bir Melid eşitleme sunucusu değil');
     const salt = crypto.randomBytes(16).toString('base64');
     const { authKey, wrapKey } = await deriveKeys(password, salt, KDF_ITER);
     const vk = crypto.randomBytes(32);

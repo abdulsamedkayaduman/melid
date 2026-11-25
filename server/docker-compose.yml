@@ -1,7 +1,7 @@
-# SSHDeck eşitleme sunucusu — Dokploy (Docker Compose) veya düz `docker compose up -d`
+# Melid eşitleme sunucusu — Dokploy (Docker Compose) veya düz `docker compose up -d`
 #
 # Dokploy: Compose Path = ./server/docker-compose.yml
-#   Environment sekmesi (en az): SSHDECK_ADMIN_KEY=<uzun rastgele parola>, SSHDECK_ADMIN_IPS=<ev IP'niz>
+#   Environment sekmesi (en az): MELID_ADMIN_KEY=<uzun rastgele parola>, MELID_ADMIN_IPS=<ev IP'niz>
 #   Domains sekmesi: servis "sync", port 3150, HTTPS açık
 # Ayrıntı: docs/senkron.md
 services:
@@ -9,13 +9,13 @@ services:
     build: .
     restart: unless-stopped
     environment:
-      # open: herkes hesap açabilir | invite: SSHDECK_SYNC_INVITE davet koduyla | closed: yeni hesap açılamaz
-      SSHDECK_REGISTER: ${SSHDECK_REGISTER:-open}
-      SSHDECK_SYNC_INVITE: ${SSHDECK_SYNC_INVITE:-}
-      SSHDECK_MAX_USERS: ${SSHDECK_MAX_USERS:-1000}
+      # open: herkes hesap açabilir | invite: MELID_SYNC_INVITE davet koduyla | closed: yeni hesap açılamaz
+      MELID_REGISTER: ${MELID_REGISTER:-open}
+      MELID_SYNC_INVITE: ${MELID_SYNC_INVITE:-}
+      MELID_MAX_USERS: ${MELID_MAX_USERS:-1000}
       # Yönetici paneli (/admin): parola + yalnız bu adreslerden (virgülle; CIDR olabilir). Parola boşsa panel kapalı.
-      SSHDECK_ADMIN_KEY: ${SSHDECK_ADMIN_KEY:-}
-      SSHDECK_ADMIN_IPS: ${SSHDECK_ADMIN_IPS:-}
+      MELID_ADMIN_KEY: ${MELID_ADMIN_KEY:-}
+      MELID_ADMIN_IPS: ${MELID_ADMIN_IPS:-}
       # Güncellemeler: imzalı latest.json'ın adresi (GitHub sürümleri) ya da sürüm dosyalarının iç adresi (Forgejo paketleri)
       UPDATE_FEED_URL: ${UPDATE_FEED_URL:-}
       UPDATE_UPSTREAM: ${UPDATE_UPSTREAM:-}

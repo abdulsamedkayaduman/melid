@@ -208,6 +208,25 @@ const I = {
   palette: 'M12 22a10 10 0 1 1 10-10c0 3-2 4-4 4h-2a2 2 0 0 0-1 3.7A2 2 0 0 1 12 22zM7.5 11h.01M10 7h.01M14 7h.01M16.5 11h.01',
   font: 'M4 20l6-16h4l6 16M7 14h10',
 };
+// Melid mührü (melid-brand/svg/melid-icon.svg; küçük boyutta melid-icon-small.svg). Sabit, güvenilir SVG metni.
+const BRAND_SVG = {
+  full: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128"><rect width="128" height="128" rx="28" fill="#C2410C"/><circle cx="64" cy="64" r="44" fill="#FB923C"/><circle cx="64" cy="64" r="44" fill="none" stroke="#FFFFFF" stroke-width="4"/><circle cx="64" cy="64" r="34" fill="none" stroke="#FFFFFF" stroke-width="2.5" stroke-dasharray="3 6" stroke-linecap="round"/><polyline points="48,52 60,64 48,76" stroke="#FFFFFF" stroke-width="7" fill="none" stroke-linecap="round" stroke-linejoin="round"/><rect x="64" y="70" width="18" height="7" rx="3.5" fill="#FFFFFF"/></svg>',
+  small: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128"><rect width="128" height="128" rx="28" fill="#C2410C"/><circle cx="64" cy="64" r="44" fill="#FB923C"/><polyline points="48,52 60,64 48,76" stroke="#FFFFFF" stroke-width="10" fill="none" stroke-linecap="round" stroke-linejoin="round"/><rect x="64" y="69" width="20" height="10" rx="5" fill="#FFFFFF"/></svg>',
+};
+export function brandIcon(size = 24) {
+  const svg = new DOMParser().parseFromString(BRAND_SVG[size > 32 ? 'full' : 'small'], 'image/svg+xml').documentElement;
+  svg.setAttribute('width', size); svg.setAttribute('height', size);
+  svg.classList.add('brand-ic');
+  return document.importNode(svg, true);
+}
+/** "melid" yazı logosu: küçük harf, eş aralıklı kalın yazı (marka: JetBrains Mono Bold) */
+export function wordmark() {
+  const el = document.createElement('span');
+  el.className = 'wordmark';
+  el.textContent = 'melid';
+  return el;
+}
+
 export function icon(name, size = 16) {
   const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
   svg.setAttribute('viewBox', '0 0 24 24');

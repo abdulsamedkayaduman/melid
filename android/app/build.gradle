@@ -21,11 +21,11 @@ def appVersion = new groovy.json.JsonSlurper().parse(rootProject.file('../packag
 def (vMaj, vMin, vPat) = appVersion.tokenize('.-')[0..2].collect { it as int }
 
 android {
-    namespace 'dev.sshdeck.app'
+    namespace 'dev.melid.app'
     compileSdk 35
 
     defaultConfig {
-        applicationId 'dev.sshdeck.app'
+        applicationId 'dev.melid.app'
         minSdk 29
         targetSdk 35
         versionCode vMaj * 10000 + vMin * 100 + vPat
@@ -63,7 +63,7 @@ android {
     }
 
     applicationVariants.all { v ->
-        v.outputs.all { outputFileName = "SSHDeck-${v.versionName}-${v.buildType.name}.apk" }
+        v.outputs.all { outputFileName = "Melid-${v.versionName}-${v.buildType.name}.apk" }
     }
 }
 

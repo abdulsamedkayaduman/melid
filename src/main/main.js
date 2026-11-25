@@ -17,7 +17,29 @@ const { runSessions, runOne, execTask, statsTask } = require('./conncheck');
 const { spawn } = require('child_process');
 const { fileURLToPath } = require('url');
 
+// İç ad eski kalır: işletim sistemi anahtarlığındaki şifreleme anahtarı ("SSHDeck Safe Storage") uygulama adına bağlı;
+// değişirse kayıtlı parolalar çözülemez. Görünen ad (Melid) package.json productName ve pencere/menü metinlerinden gelir.
 app.setName('SSHDeck');
+migrateDataDir();
+
+/** Veri klasörü Melid adını taşır; ilk açılışta eski SSHDeck klasörleri (ayarlar, oturum kayıtları) taşınır. */
+function migrateDataDir() {
+  const move = (from, to) => {
+    try {
+      if (fs.existsSync(to) || !fs.existsSync(from)) return;
+      try { fs.renameSync(from, to); } catch { fs.cpSync(from, to, { recursive: true, preserveTimestamps: true }); fs.rmSync(from, { recursive: true, force: true }); }
+      console.log(`Veri klasörü taşındı: ${from} -> ${to}`);
+    } catch (e) { console.error(`Veri klasörü taşınamadı (${from}):`, e.message); }
+  };
+  const appData = app.getPath('appData');
+  const userData = path.join(appData, 'Melid');
+  move(path.join(appData, 'SSHDeck'), userData);
+  app.setPath('userData', userData);
+  // Oturum kayıtlarının varsayılan klasörü: yalnız kullanıcı başka bir klasör seçmediyse taşınır
+  let customLogDir = '';
+  try { customLogDir = JSON.parse(fs.readFileSync(path.join(userData, 'settings.json'), 'utf8')).logDir || ''; } catch {}
+  if (!customLogDir) try { move(path.join(app.getPath('documents'), 'SSHDeck'), path.join(app.getPath('documents'), 'Melid')); } catch {}
+}
 let win = null;
 let store = null;
 let manager = null;
@@ -60,7 +82,7 @@ async function verifyHostKey({ host, port, type, fingerprint }) {
 // ---------- remote file editing ----------
 const editWatchers = new Map(); // connId -> [watcher]
 async function editRemote(connId, remotePath) {
-  const dir = path.join(os.tmpdir(), 'sshdeck-edit', crypto.randomBytes(4).toString('hex'));
+  const dir = path.join(os.tmpdir(), 'melid-edit', crypto.randomBytes(4).toString('hex'));
   await fsp.mkdir(dir, { recursive: true });
   const local = path.join(dir, path.posix.basename(remotePath));
   await manager.fastGet(connId, remotePath, local);
@@ -138,7 +160,7 @@ function resolveKey(s) {
 }
 
 const logger = new TermLogger();
-const logDir = () => expandHome(store.settings.logDir) || path.join(app.getPath('documents'), 'SSHDeck', 'kayitlar');
+const logDir = () => expandHome(store.settings.logDir) || path.join(app.getPath('documents'), 'Melid', 'kayitlar');
 function logShellData(connId, data, sid) {
   if (!store.settings.logEnabled) return;
   const c = manager.conns.get(connId);
@@ -216,7 +238,7 @@ async function compareDirs(connId, localDir, remoteDir, exclude) {
 }
 
 // ---------- native drag out to the OS (file manager, desktop, ...) ----------
-const DRAG_ROOT = path.join(os.tmpdir(), 'sshdeck-drag');
+const DRAG_ROOT = path.join(os.tmpdir(), 'melid-drag');
 let dragIcon = null;
 function getDragIcon() {
   if (!dragIcon) {
@@ -296,7 +318,7 @@ function updateState() {
 function announceUpdate(info) {
   send('update:available', updateState());
   if (!Notification.isSupported()) return;
-  const n = new Notification({ title: `SSHDeck ${info.version} çıktı`, body: 'Yeni sürümü görmek ve kurmak için tıklayın.', icon: path.join(__dirname, '..', '..', 'build', 'icon.png') });
+  const n = new Notification({ title: `Melid ${info.version} çıktı`, body: 'Yeni sürümü görmek ve kurmak için tıklayın.', icon: path.join(__dirname, '..', '..', 'build', 'icon.png') });
   n.on('click', () => { if (win) { if (win.isMinimized()) win.restore(); win.focus(); send('update:show'); } });
   n.show();
 }
@@ -386,7 +408,7 @@ function registerIpc() {
     sessions: store.publicSessions(),
     settings: store.publicSettings(),
     home: os.homedir(),
-    logDefaultDir: path.join(app.getPath('documents'), 'SSHDeck', 'kayitlar'),
+    logDefaultDir: path.join(app.getPath('documents'), 'Melid', 'kayitlar'),
     secrets: store.secretsBackend(),
     platform: process.platform,
     version: app.getVersion(),
@@ -570,19 +592,19 @@ function registerIpc() {
   h('account:recover', (o) => accountCall(() => account.recover(o)));
   h('account:recoverySave', async (rc) => {
     const r = await dialog.showSaveDialog(win, {
-      title: 'Kurtarma anahtarını kaydet', defaultPath: path.join(app.getPath('documents'), `sshdeck-kurtarma-${rc.user}.txt`),
+      title: 'Kurtarma anahtarını kaydet', defaultPath: path.join(app.getPath('documents'), `melid-kurtarma-${rc.user}.txt`),
       filters: [{ name: 'Metin', extensions: ['txt'] }],
     });
     if (r.canceled || !r.filePath) return null;
     const text = [
-      'SSHDeck hesap kurtarma anahtarı',
+      'Melid hesap kurtarma anahtarı',
       '',
       `Sunucu: ${rc.server}`,
       `Kullanıcı: ${rc.user}`,
       `Anahtar: ${rc.code}`,
       `Oluşturulma: ${new Date(rc.created || Date.now()).toLocaleString('tr-TR')}`,
       '',
-      'Hesap parolanızı unutursanız SSHDeck giriş penceresinde "Parolamı unuttum" ile bu anahtarla yeni parola',
+      'Hesap parolanızı unutursanız Melid giriş penceresinde "Parolamı unuttum" ile bu anahtarla yeni parola',
       'belirleyebilirsiniz; bağlantılarınız ve parolalarınız korunur. Bu dosyayı parola yöneticisi ya da şifreli bir',
       'diskte saklayın: anahtarı ele geçiren biri hesabınıza girebilir. Yeni anahtar oluşturunca bu geçersiz olur.',
       '',
@@ -617,8 +639,8 @@ function registerIpc() {
       if (passphrase == null) return { ok: false };
     }
     const r = await dialog.showSaveDialog(win, {
-      title: 'Yedeği dışa aktar', defaultPath: path.join(os.homedir(), `sshdeck-yedek-${new Date().toISOString().slice(0, 10)}.json`),
-      filters: [{ name: 'SSHDeck yedeği', extensions: ['json'] }],
+      title: 'Yedeği dışa aktar', defaultPath: path.join(os.homedir(), `melid-yedek-${new Date().toISOString().slice(0, 10)}.json`),
+      filters: [{ name: 'Melid yedeği', extensions: ['json'] }],
     });
     if (r.canceled) return { ok: false };
     await fsp.writeFile(r.filePath, JSON.stringify(store.exportData({ passphrase: passphrase || undefined }), null, 2), { mode: 0o600 });
@@ -627,12 +649,12 @@ function registerIpc() {
   h('backup:import', async () => {
     const r = await dialog.showOpenDialog(win, {
       title: 'Yedeği içe aktar', defaultPath: os.homedir(), properties: ['openFile'],
-      filters: [{ name: 'SSHDeck yedeği', extensions: ['json'] }],
+      filters: [{ name: 'Melid yedeği', extensions: ['json'] }],
     });
     if (r.canceled) return null;
     let obj;
     try { obj = JSON.parse(await fsp.readFile(r.filePaths[0], 'utf8')); } catch (e) { throw new Error(`Yedek okunamadı: ${e.message}`); }
-    if (!obj || obj.app !== 'SSHDeck' || !Array.isArray(obj.sessions)) throw new Error('Bu bir SSHDeck yedek dosyası değil');
+    if (!obj || obj.app !== 'SSHDeck' || !Array.isArray(obj.sessions)) throw new Error('Bu bir Melid yedek dosyası değil');
     // local master must be unlocked to store secrets
     if (store.masterEnabled() && !store.isUnlocked()) {
       const pw = await uiRequest('password', { title: 'Ana parola', label: 'İçe aktarmak için ana parolanızı girin' });
@@ -687,7 +709,7 @@ function registerIpc() {
     const list = (names || []).map(safeName);
     if (!list.length) throw new Error('Seçim yok');
     const base = safeName(name || (list.length === 1 ? list[0] : path.posix.basename(dir) || 'arsiv') + '.tar.gz');
-    const out = tmp ? `/tmp/sshdeck-${crypto.randomBytes(6).toString('hex')}-${base}` : path.posix.join(dir, base);
+    const out = tmp ? `/tmp/melid-${crypto.randomBytes(6).toString('hex')}-${base}` : path.posix.join(dir, base);
     const r = await manager.exec(connId, `cd ${shq(dir)} && tar czf ${shq(out)} -- ${list.map(shq).join(' ')}`, { timeout: 600000 });
     if (r.code !== 0) throw new Error(`Sıkıştırılamadı: ${(r.stderr || '').trim().split('\n').slice(-2).join(' ') || 'çıkış kodu ' + r.code}`);
     return { path: out, name: base };
@@ -837,11 +859,11 @@ function setMacMenu() {
   if (process.platform !== 'darwin') return;
   const sep = { type: 'separator' };
   Menu.setApplicationMenu(Menu.buildFromTemplate([
-    { label: 'SSHDeck', submenu: [
-      { role: 'about', label: 'SSHDeck Hakkında' }, sep,
+    { label: 'Melid', submenu: [
+      { role: 'about', label: 'Melid Hakkında' }, sep,
       { role: 'services', label: 'Servisler' }, sep,
-      { role: 'hide', label: 'SSHDeck\'i Gizle' }, { role: 'hideOthers', label: 'Diğerlerini Gizle' }, { role: 'unhide', label: 'Tümünü Göster' }, sep,
-      { role: 'quit', label: 'SSHDeck\'ten Çık' },
+      { role: 'hide', label: 'Melid\'i Gizle' }, { role: 'hideOthers', label: 'Diğerlerini Gizle' }, { role: 'unhide', label: 'Tümünü Göster' }, sep,
+      { role: 'quit', label: 'Melid\'ten Çık' },
     ] },
     { label: 'Düzen', submenu: [
       { role: 'undo', label: 'Geri Al' }, { role: 'redo', label: 'Yinele' }, sep,
@@ -861,7 +883,7 @@ function createWindow() {
     minWidth: 900,
     minHeight: 560,
     backgroundColor: UI_BG[store.settings.uiTheme] || UI_BG.dark,
-    title: 'SSHDeck',
+    title: 'Melid',
     icon: path.join(__dirname, '..', '..', 'build', 'icon.png'),
     autoHideMenuBar: true,
     webPreferences: {
@@ -877,7 +899,7 @@ function createWindow() {
   win.webContents.setWindowOpenHandler(({ url }) => { if (/^https?:/.test(url)) shell.openExternal(url); return { action: 'deny' }; });
   win.webContents.on('will-navigate', (e) => e.preventDefault());
   win.webContents.on('before-input-event', (_e, input) => {
-    if (input.type === 'keyDown' && input.key === 'F12' && process.env.SSHDECK_DEV) win.webContents.toggleDevTools();
+    if (input.type === 'keyDown' && input.key === 'F12' && process.env.MELID_DEV) win.webContents.toggleDevTools();
   });
   let closingConfirmed = false, closeAsking = false;
   win.on('close', (e) => {
@@ -888,7 +910,7 @@ function createWindow() {
       closeAsking = true;
       dialog.showMessageBox(win, {
         type: 'question', buttons: ['Kapat', 'Vazgeç'], defaultId: 1, cancelId: 1,
-        title: 'SSHDeck', message: `${manager.conns.size} açık bağlantı var. Kapatılsın mı?`,
+        title: 'Melid', message: `${manager.conns.size} açık bağlantı var. Kapatılsın mı?`,
         checkboxLabel: 'Bir daha sorma (Ayarlar\'dan tekrar açılabilir)',
       }).then(({ response, checkboxChecked }) => {
         closeAsking = false;
@@ -907,7 +929,7 @@ function createWindow() {
 
 // Tek kopya: ikinci kez açılınca yeni pencere açılmaz, açık olan öne getirilir.
 // Güncelleme sonrası yeniden başlatılan kopya (RELAUNCH_ARG) eski kopya kapanana kadar kilidi bekler.
-const RELAUNCH_ARG = '--sshdeck-relaunch';
+const RELAUNCH_ARG = '--melid-relaunch';
 async function singleInstance() {
   const relaunched = process.argv.includes(RELAUNCH_ARG);
   for (let i = 0; ; i++) {
@@ -954,7 +976,7 @@ app.whenReady().then(async () => {
       send('sessions:updated', store.publicSessions(), err);
     },
   });
-  account = new AccountSync(store, { client: `SSHDeck ${app.getVersion()} ${{ win32: 'Windows', darwin: 'macOS' }[process.platform] || 'Linux'}` });
+  account = new AccountSync(store, { client: `Melid ${app.getVersion()} ${{ win32: 'Windows', darwin: 'macOS' }[process.platform] || 'Linux'}` });
   account.on('status', (st) => send('account:status', st));
   account.on('changed', () => { applyNativeTheme(); send('account:changed', { sessions: store.publicSessions(), settings: store.publicSettings() }); });
   registerIpc();

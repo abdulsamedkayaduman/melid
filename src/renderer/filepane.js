@@ -413,7 +413,7 @@ export class FilePane {
         if (ev.altKey) { ev.preventDefault(); this.startNativeDrag(items); return; }
         inDrag = { pane: this, items };
         ev.dataTransfer.effectAllowed = 'copy';
-        ev.dataTransfer.setData('x-sshdeck-files', String(items.length));
+        ev.dataTransfer.setData('x-melid-files', String(items.length));
         // Yerel dosyalar dosya yöneticisine de bırakılabilsin (Linux dosya yöneticileri file:// adresini kopyalar)
         if (this.side === 'local') ev.dataTransfer.setData('text/uri-list', items.map((it) => fileUrl(it.path)).join('\r\n'));
         if (items.length > 1) {

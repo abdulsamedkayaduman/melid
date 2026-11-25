@@ -15,7 +15,7 @@ assert.equal(s('\x1b(B\x1b[?2004htext\x1b[K\x07\n'), 'text\n');
 assert.equal(safeName('a/b:c'), 'a_b_c');
 assert.equal(safeName('..'), 'oturum');
 
-const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'sshdeck-log-'));
+const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'melid-log-'));
 const lg = new TermLogger();
 const f = lg.write('c1:main', '\x1b[31mkırmızı\x1b[0m\r\n', { dir, name: 'Sunucu 1', strip: true });
 lg.write('c1:main', 'ikinci\r\n', { dir, name: 'Sunucu 1', strip: true });

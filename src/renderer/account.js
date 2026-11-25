@@ -23,7 +23,7 @@ export function syncTimeText(t) {
 
 export const STATE_TEXT = { idle: 'Bekliyor', syncing: 'Eşitleniyor…', ok: 'Eşitlendi', error: 'Hata', locked: 'Ana parola kilitli', auth: 'Tekrar giriş gerekli' };
 
-export const KEYS_HINT = 'Açıkken bu cihazın SSH anahtarları (~/.ssh ve hesaptan gelenler) uçtan uca şifreli olarak hesaba yüklenir, diğer cihazların anahtarları buraya gelir. Anahtarlar ~/.ssh\'ye yazılmaz; SSHDeck bağlanırken kullanır. Kapalıysa bu cihaz anahtar göndermez ve almaz.';
+export const KEYS_HINT = 'Açıkken bu cihazın SSH anahtarları (~/.ssh ve hesaptan gelenler) uçtan uca şifreli olarak hesaba yüklenir, diğer cihazların anahtarları buraya gelir. Anahtarlar ~/.ssh\'ye yazılmaz; Melid bağlanırken kullanır. Kapalıysa bu cihaz anahtar göndermez ve almaz.';
 
 export async function accountDialog(app) {
   const st = await api.account.status();
@@ -51,7 +51,7 @@ async function loginDialog(app, { reauth } = {}) {
   const field = (label, control, cls) => h('label.field' + (cls || ''), null, h('span', null, label), control);
   const warn = h('div.hint.warn', { hidden: true }, 'Bu adres internette ve şifresiz (http). Kasa uçtan uca şifreli olsa da giriş bilgisi ağda açık gider; https kullanın.');
   const err = h('div.upd-err');
-  // Yerel ağ taraması: alt ağdaki adreslerde 3150 portu açık SSHDeck sunucusu aranır
+  // Yerel ağ taraması: alt ağdaki adreslerde 3150 portu açık Melid sunucusu aranır
   const found = h('div.scan-list', { hidden: true });
   const scanBtn = h('button.btn', { type: 'button', title: 'Yerel ağdaki adreslerde 3150 portunu tarar', onclick: () => scan() }, icon('search', 14), 'Yerel ağda ara');
   const scan = async () => {

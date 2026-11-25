@@ -1,4 +1,4 @@
-# SSHDeck — Claude Code notları
+# Melid — Claude Code notları
 
 Linux, Windows ve macOS için Xshell + Xftp tarzı SSH terminali ve SFTP istemcisi. Electron 44, `ssh2`, `@xterm/xterm` 6.
 Arayüz dili Türkçe; kullanıcıya görünen tüm metinler Türkçe kalmalı.
@@ -13,17 +13,17 @@ Bekleyen işler için `YAPILACAKLAR.md` (otomatik güncelleme, AUR paketi, elect
   (shell, bölünmüş kabuklar, exec/kaynak bilgisi, SFTP, aktarım/iptal/sürdürme, uzak ağaç tarama, anahtar üretip yükleme,
   -L/-R/-D tüneller, jump host, parolalı anahtar, parola tekrar deneme, hata mesajları, uzak->uzak ve doğrudan aktarım)
   Docker yoksa: root'la ayrı bir sshd (örn. 127.0.0.1:3161, `deck`/`deckpass`, test/.work/userkey.pub) açıp
-  `env -u SSH_AUTH_SOCK SSHDECK_TEST_PORT=3161 node test/core.test.js`. `ci/test-sshd.sh`'yi geliştirme makinesinde
+  `env -u SSH_AUTH_SOCK MELID_TEST_PORT=3161 node test/core.test.js`. `ci/test-sshd.sh`'yi geliştirme makinesinde
   çalıştırmayın: çalışan tüm sshd'leri durdurur
   + sunucusuz: `test/importers.test.js` (WindTerm/Xshell), `test/store.test.js`, `test/termlog.test.js` (ANSI temizleme),
   `test/sync.test.js` (hesap eşitlemesi: gerçek eşitleme sunucusu + iki cihaz), `test/conncheck.test.js` (bellek içi ssh2 sunucusu)
 - `npm run dist` — `dist/` içine `.pacman` ve `.AppImage` (pacman için `bsdtar` gerekir: `sudo pacman -S libarchive`).
   `npmRebuild:false` — ssh2'nin opsiyonel native `cpu-features` modülü derlenmez (ssh2 onsuz saf-JS çalışır)
-- `npm run dist:win` — Windows 10/11 x64: `SSHDeck-<sürüm>-kurulum.exe` (NSIS) + `SSHDeck-<sürüm>-tasinabilir.exe`.
+- `npm run dist:win` — Windows 10/11 x64: `Melid-<sürüm>-kurulum.exe` (NSIS) + `Melid-<sürüm>-tasinabilir.exe`.
   Linux'ta NSIS kurulumu için `wine` gerekir; wine'sız yalnız `npx electron-builder --win portable zip` çalışır.
   İmzasız: SmartScreen ilk açılışta uyarır ("Ek bilgi" -> "Yine de çalıştır")
 
-- `npm run dist:mac` — macOS arm64 + x64: `SSHDeck-<sürüm>-mac-<mimari>.tar.gz`. Linux'ta üretilir; `.zip` sembolik bağları bozar,
+- `npm run dist:mac` — macOS arm64 + x64: `Melid-<sürüm>-mac-<mimari>.tar.gz`. Linux'ta üretilir; `.zip` sembolik bağları bozar,
   `.dmg` için Mac gerekir. İmzasız: ilk kurulum adımları `docs/ci.md`
 
 CI: `.forgejo/workflows/derle.yml` (Forgejo Actions; elle başlatma veya `vX.Y.Z` etiketi) testler + Linux + Windows + macOS +
@@ -59,9 +59,9 @@ src/main/sync.js         Hesap eşitlemesi (AccountSync): giriş/kayıt/çıkı�
                          scanLan(): yerel ağda 3150 portu açık sunucu arama. Kurtarma anahtarı: createRecovery/recover.
                          Hazır komutlar kasada komut başına (snippets haritası; store.js stampSnippets/snippetMap). İsteğe bağlı SSH anahtarı eşitlemesi
                          (settings.syncKeys, cihaza özgü; kasada keys, oturumda keyFp; gelen anahtarlar store.keys). Sunucu: server/sync-server.js (bağımsız,
-                         bağımlılıksız; server/Dockerfile + docker-compose.yml, Dokploy). Kayıt herkese açık (SSHDECK_REGISTER),
-                         e-posta zorunlu; / tanıtım+indirme (server/pages/home.html), /admin yönetici (SSHDECK_ADMIN_IPS +
-                         SSHDECK_ADMIN_KEY), /guncelleme ve /indir: UPDATE_UPSTREAM'den sürüm dosyaları. Genel sunucu
+                         bağımlılıksız; server/Dockerfile + docker-compose.yml, Dokploy). Kayıt herkese açık (MELID_REGISTER),
+                         e-posta zorunlu; / tanıtım+indirme (server/pages/home.html), /admin yönetici (MELID_ADMIN_IPS +
+                         MELID_ADMIN_KEY), /guncelleme ve /indir: UPDATE_UPSTREAM'den sürüm dosyaları. Genel sunucu
                          sshdeck.abdulsamed.net (DEFAULT_SERVER; Dokploy main'e push'ta yeniden dağıtır). Ayrıntı: docs/senkron.md
 src/main/conncheck.js    Toplu işler: ayrı, sormayan SshManager ile oturumlara bağlanır (runOne/runSessions), önce TCP yoklaması
                          + gerekirse ping ile erişim teşhisi (reach: dns/ip/port/ssh), sonra iş: denetim (sınıflandırma
@@ -72,7 +72,7 @@ src/main/conncheck.js    Toplu işler: ayrı, sormayan SshManager ile oturumlara
 src/main/termlog.js      Oturum kaydı: TermLogger (oturum adına göre klasör, dosya başına kabuk) + parçalı ANSI temizleyici
 src/main/keys.js         ~/.ssh anahtarlarını listeleme, ssh2 utils ile anahtar üretme (OpenSSH biçimi)
 src/main/socks.js        -D için minimal SOCKS5 (CONNECT, kimlik doğrulamasız)
-src/main/store.js        sessions.json / settings.json / known_hosts.json (~/.config/SSHDeck).
+src/main/store.js        sessions.json / settings.json / known_hosts.json (~/.config/Melid).
                          Parola alanları safeStorage ile şifreli; renderer'a sırlar gitmez, sadece has_password bayrağı.
                          Opsiyonel ana parola: setMasterPassword/unlock/lock (AES-256-GCM + PBKDF2-SHA512, açılışta unlock);
                          etkinken sırlar enc:'mpw' ile, master anahtarı yalnız bellekte. exportData/importData: yedek
@@ -128,9 +128,9 @@ X11'de hiç dönmeyebilir: okumalar `clipLimit` süre sınırından geçmeli. Do
 Ayrıntılar: `android/README.md`. Arayüz WebView'da (`app/src/main/assets/www`, bundler yok, xterm dosyaları
 derlemede `../node_modules`'tan kopyalanır); SSH Java'da: JSch (mwiede) + BouncyCastle.
 
-- `android/app/src/main/java/dev/sshdeck/core/` Android'den bağımsız (ssh-manager.js'in karşılığı) —
+- `android/app/src/main/java/dev/melid/core/` Android'den bağımsız (ssh-manager.js'in karşılığı) —
   `bash android/coretest/run.sh` ile JVM'de geçici sshd + ssh2 sunucusuna karşı test edilir.
-- Köprü: JS `SSHDeckNative.call(id, metot, json)` -> `window.__nreply`; olaylar `window.__nevent` (Bridge.java).
+- Köprü: JS `MelidNative.call(id, metot, json)` -> `window.__nreply`; olaylar `window.__nevent` (Bridge.java).
   Yeni çağrı: `Bridge.dispatch` içine `case` + JS'te `N.call('metot', {...})`.
 - Güncelleme: `Updater.java` (masaüstüyle aynı imzalı latest.json; JobScheduler + bildirim, PackageInstaller).
 - Uygulama kilidi: `app/AppLock.java` (ana parola PBKDF2 doğrulayıcısı `lock.json`, biyometrik = kullanıcı doğrulaması
@@ -142,6 +142,18 @@ derlemede `../node_modules`'tan kopyalanır); SSH Java'da: JSch (mwiede) + Bounc
   `SyncTest.java` + `sync-desktop.js` gerçek sunucuya karşı sınar. Protokol değişirse ikisi birlikte değişmeli.
 - Derleme: `cd android && ./gradlew assembleRelease` (JDK 17 + SDK; `local.properties`, imza için
   `keystore.properties` + `sshdeck-release.jks` — git dışı, kaybolmamalı). Değişiklikten sonra `./gradlew lintDebug`.
+
+## Ad: Melid (eski adı SSHDeck)
+
+Uygulama 1.10'da SSHDeck'ten Melid'e geçti (marka dosyaları: `build/`, Android `res/mipmap-*`, `server/pages/static/`).
+Şunlar **bilerek eski adla kaldı**, değiştirmeyin:
+- `app.setName('SSHDeck')` (main.js): anahtarlıktaki şifreleme anahtarı ("SSHDeck Safe Storage") uygulama adına bağlı;
+  değişirse kayıtlı parolalar çözülemez. Veri klasörü yine de `Melid` (`migrateDataDir()` eski `SSHDeck` klasörünü taşır).
+- HKDF/doğrulama dizeleri `sshdeck-auth`, `sshdeck-wrap`, `sshdeck-recovery-*`, `sshdeck-master-ok`.
+- Protokol: `/api/info` `app: 'SSHDeck'`, `X-SSHDeck-Client` başlığı, güncelleme akışında `app: 'sshdeck'`,
+  yedek dosyasında `app: 'SSHDeck'` (eski sürümler okuyabilsin).
+- Forgejo paket yolu `generic/sshdeck` (1.9 ve öncesi buraya bakar), Docker birimi `sshdeck-sync-data`, domain
+  `sshdeck.abdulsamed.net`, yerel imza dosyası `sshdeck-release.jks`.
 
 ## Kurallar
 

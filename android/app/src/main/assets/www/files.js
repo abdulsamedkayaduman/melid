@@ -1,4 +1,4 @@
-// SFTP dosya yöneticisi (sekme başına bir tane). İndirilenler telefonda İndirilenler/SSHDeck klasörüne gider.
+// SFTP dosya yöneticisi (sekme başına bir tane). İndirilenler telefonda İndirilenler/Melid klasörüne gider.
 import { h, icon, formatSize, formatDate, uid } from './util.js';
 import * as N from './native.js';
 import { actionSheet, promptText, confirm, toast, sheet } from './dialogs.js';
@@ -332,7 +332,7 @@ export class FilesView {
     if (!x) return;
     const pct = x.total ? Math.floor(100 * x.done / x.total) : 0;
     const label = x.state === 'run' ? `${x.dir === 'down' ? 'İndiriliyor' : 'Yükleniyor'} · ${formatSize(x.done)}${x.total ? ' / ' + formatSize(x.total) + ` (%${pct})` : ''}`
-      : x.state === 'done' ? (x.dir === 'down' ? 'İndirildi → İndirilenler/SSHDeck' : 'Yüklendi')
+      : x.state === 'done' ? (x.dir === 'down' ? 'İndirildi → İndirilenler/Melid' : 'Yüklendi')
       : x.state === 'cancelled' ? 'İptal edildi' : (x.message || 'Hata');
     const btn = x.state === 'run'
       ? h('button.tb', { onclick: () => this.call('cancelXfer', { t: id }) }, icon('x', 18))
@@ -364,7 +364,7 @@ export class FilesView {
     if (ev.state === 'done') {
       if (x.dir === 'up' && x.target === this.path) this.refresh();
       if (x.dir === 'down' && x.open) this.call('openDownloaded', { t: ev.id, name: x.file || x.name }).catch((e) => toast(e.message, { type: 'err' }));
-      else if (x.dir === 'down') toast(`${x.name} indirildi (İndirilenler/SSHDeck)`, { type: 'ok' });
+      else if (x.dir === 'down') toast(`${x.name} indirildi (İndirilenler/Melid)`, { type: 'ok' });
       setTimeout(() => this.removeXfer(ev.id), 20000);
     } else if (ev.state === 'error') {
       toast(`${x.name}: ${ev.message}`, { type: 'err' });

@@ -1,0 +1,26 @@
+# Melid eşitleme sunucusu — systemd birimi (örnek)
+# Kurulum:
+#   sudo useradd -r -m -d /var/lib/melid-sync melid-sync
+#   sudo cp server/sync-server.js /opt/melid-sync/
+#   sudo cp server/melid-sync.service /etc/systemd/system/   (davet kodunu değiştirin)
+#   sudo systemctl enable --now melid-sync
+[Unit]
+Description=Melid eşitleme sunucusu
+After=network.target
+
+[Service]
+User=melid-sync
+Environment=PORT=3150
+Environment=HOST=0.0.0.0
+Environment=DATA_DIR=/var/lib/melid-sync
+Environment=MELID_SYNC_INVITE=buraya-uzun-rastgele-bir-davet-kodu
+ExecStart=/usr/bin/node /opt/melid-sync/sync-server.js
+Restart=on-failure
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/melid-sync
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

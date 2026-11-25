@@ -21,7 +21,7 @@ const u = require('../src/main/updater');
   const { publicKey, privateKey } = crypto.generateKeyPairSync('ed25519');
   const pub = publicKey.export({ type: 'spki', format: 'der' }).subarray(12).toString('base64');
   const pem = privateKey.export({ type: 'pkcs8', format: 'pem' });
-  const data = Buffer.from('SSHDeck güncelleme deneme dosyası\n'.repeat(5000));
+  const data = Buffer.from('Melid güncelleme deneme dosyası\n'.repeat(5000));
   const info = {
     app: 'sshdeck', version: '9.9.9', date: '2026-10-09T10:00:00Z', notes: '- yeni şey',
     files: { 'linux-appimage': { name: 'a.AppImage', url: '', sha256: crypto.createHash('sha256').update(data).digest('hex'), size: data.length } },
@@ -60,7 +60,7 @@ const u = require('../src/main/updater');
   await assert.rejects(u.check('1.0.0', { url: `http://127.0.0.1:${deadPort}/latest.json`, pubKey: pub }), /ulaşılamadı/);
   console.log('OK check');
 
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'sshdeck-upd-'));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'melid-upd-'));
   const prog = [];
   const out = await u.download(info.files['linux-appimage'], path.join(dir, 'a.AppImage'), { onProgress: (d, t) => prog.push([d, t]) });
   assert(fs.readFileSync(out).equals(data));

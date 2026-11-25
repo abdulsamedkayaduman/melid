@@ -11,7 +11,7 @@ const { createSyncServer } = require('../server/sync-server');
 
 const noKeyring = { available: () => false, encrypt: (s) => s, decrypt: (s) => s };
 const tmp = (p) => fs.mkdtempSync(path.join(os.tmpdir(), p));
-const device = () => { const st = new Store(tmp('sshdeck-dev-'), noKeyring); return { st, sync: new AccountSync(st, { debounce: 10 }) }; };
+const device = () => { const st = new Store(tmp('melid-dev-'), noKeyring); return { st, sync: new AccountSync(st, { debounce: 10 }) }; };
 const names = (st) => st.sessions.map((s) => s.name).sort().join(',');
 
 (async () => {
@@ -28,7 +28,7 @@ const names = (st) => st.sessions.map((s) => s.name).sort().join(',');
   assert(!mergeVaults(m, m).deleted.b, '180 günden eski silme kaydı atılır');
   console.log('OK birleştirme kuralları');
 
-  const dataDir = tmp('sshdeck-srv-');
+  const dataDir = tmp('melid-srv-');
   const srv = http.createServer(createSyncServer({ dataDir, invite: 'davet-123' }));
   await new Promise((r) => srv.listen(0, '127.0.0.1', r));
   const server = `127.0.0.1:${srv.address().port}`;
@@ -149,7 +149,7 @@ const names = (st) => st.sessions.map((s) => s.name).sort().join(',');
   assert.match(await adminPage.text(), /Yönetici girişi/);
   const stats = (key) => fetch(`http://${server}/api/admin/stats`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ key }) });
   assert.equal((await stats('yanlis')).status, 403);
-  const D = new AccountSync(new Store(tmp('sshdeck-dev-'), noKeyring), { client: 'SSHDeck test linux' });
+  const D = new AccountSync(new Store(tmp('melid-dev-'), noKeyring), { client: 'Melid test linux' });
   await D.login({ server, user: 'samed', password: 'yeniParola' });
   const st = await (await stats('davet-123')).json();
   assert.equal(st.totals.users, 1);
@@ -157,11 +157,11 @@ const names = (st) => st.sessions.map((s) => s.name).sort().join(',');
   assert.equal(u.user, 'samed');
   assert.equal(u.email, 'samed@ornek.com', 'e-posta yönetici panelinde');
   assert(u.version >= 1 && u.size > 0 && u.updated > 0);
-  assert(u.devices.some((d) => d.client === 'SSHDeck test linux'), 'istemci adı kaydedildi');
+  assert(u.devices.some((d) => d.client === 'Melid test linux'), 'istemci adı kaydedildi');
   assert(st.totals.syncs > 0 && st.totals.failedLogins > 0);
   assert(!JSON.stringify(st).includes('web-prod'), 'istatistikte kasa içeriği yok');
   // Yönetici parolası olmayan sunucuda panel yok
-  const closed = http.createServer(createSyncServer({ dataDir: tmp('sshdeck-srv-') }));
+  const closed = http.createServer(createSyncServer({ dataDir: tmp('melid-srv-') }));
   await new Promise((r) => closed.listen(0, '127.0.0.1', r));
   assert.equal((await fetch(`http://127.0.0.1:${closed.address().port}/api/admin/stats`, { method: 'POST', body: '{"key":""}' })).status, 404);
   assert.equal((await fetch(`http://127.0.0.1:${closed.address().port}/admin`)).status, 404);
@@ -170,14 +170,14 @@ const names = (st) => st.sessions.map((s) => s.name).sort().join(',');
   // --- SSH anahtarları: yalnız "anahtarları eşitle" açık cihazlar gönderir/alır; kapalı cihaz kasadakilere dokunmaz ---
   const { generateKey } = require('../src/main/keys');
   const keyDev = async (sshDir, on) => {
-    const st = new Store(tmp('sshdeck-dev-'), noKeyring);
+    const st = new Store(tmp('melid-dev-'), noKeyring);
     st.sshDir = sshDir || null;
     const sync = new AccountSync(st, { debounce: 10 });
     st.setSyncKeys(on);
     await sync.login({ server, user: 'samed', password: 'yeniParola' });
     return { st, sync };
   };
-  const sshDir = tmp('sshdeck-ssh-');
+  const sshDir = tmp('melid-ssh-');
   const gk = generateKey(sshDir, { name: 'id_test', type: 'ed25519', comment: 'k1' });
   const K1 = await keyDev(sshDir, true);
   const sid = K1.st.saveSession({ name: 'anahtarli', host: 'k.example', authType: 'key', keyPath: gk.privatePath });
@@ -233,7 +233,7 @@ const names = (st) => st.sessions.map((s) => s.name).sort().join(',');
   assert.equal((await K1.sync.info()).recovery, rc.created);
   const usersFile = fs.readFileSync(path.join(dataDir, 'users.json'), 'utf8');
   assert(!usersFile.includes(rc.code.replace(/-/g, '')), 'sunucuda kod düz durmaz');
-  const R = { st: new Store(tmp('sshdeck-dev-'), noKeyring) }; R.sync = new AccountSync(R.st);
+  const R = { st: new Store(tmp('melid-dev-'), noKeyring) }; R.sync = new AccountSync(R.st);
   await assert.rejects(R.sync.recover({ server, user: 'samed', code: 'AAAA-AAAA-AAAA-AAAA-AAAA-AAAA-AAAA-AAAA', password: 'kurtarildi-1' }), /kurtarma anahtarı yanlış/);
   await R.sync.recover({ server, user: 'samed', code: rc.code.toLowerCase().replace(/-/g, ' '), password: 'kurtarildi-1' });
   assert(R.st.sessions.some((x) => x.name === 'anahtarli'), 'kurtarılan hesapta oturumlar yerinde');
@@ -248,10 +248,10 @@ const names = (st) => st.sessions.map((s) => s.name).sort().join(',');
   assert.equal((await R2.sync.info()).recovery, null);
   console.log('OK kurtarma anahtarı');
 
-  // --- yerel ağ taraması: portu açık olan SSHDeck sunucusu bulunur, başka hizmet ve kapalı adres atlanır ---
+  // --- yerel ağ taraması: portu açık olan Melid sunucusu bulunur, başka hizmet ve kapalı adres atlanır ---
   const port = srv.address().port;
   const other = http.createServer((q, s2) => s2.end('{"app":"baska"}'));
-  await new Promise((r) => other.listen(port, '127.0.0.2', r)); // aynı portta SSHDeck olmayan hizmet
+  await new Promise((r) => other.listen(port, '127.0.0.2', r)); // aynı portta Melid olmayan hizmet
   const found = await scanLan({ port, targets: ['127.0.0.3', '127.0.0.2', '127.0.0.1', '127.0.0.4'], timeout: 500 });
   assert.deepEqual(found, [{ server: `http://127.0.0.1:${port}`, host: '127.0.0.1', register: true }]);
   assert.equal(normServer('192.168.1.50'), 'http://192.168.1.50:3150', 'portsuz adrese varsayılan port');
@@ -268,15 +268,15 @@ const names = (st) => st.sessions.map((s) => s.name).sort().join(',');
 
   // --- herkese açık kayıt, e-posta, hesap silme, IP sınırı, yönetici IP'si (vekil arkasında), güncelleme aktarımı ---
   const upstream = http.createServer((q, s2) => {
-    if (q.url === '/sshdeck/latest/latest.json') return s2.end('{"payload":"e30=","sig":"x"}');
-    if (q.url === '/sshdeck/1.2.3/SSHDeck-1.2.3.apk') { s2.writeHead(200, { 'Content-Length': 5 }); return s2.end('APK!!'); }
+    if (q.url === '/melid/latest/latest.json') return s2.end('{"payload":"e30=","sig":"x"}');
+    if (q.url === '/melid/1.2.3/Melid-1.2.3.apk') { s2.writeHead(200, { 'Content-Length': 5 }); return s2.end('APK!!'); }
     s2.writeHead(404); s2.end();
   });
   await new Promise((r) => upstream.listen(0, '127.0.0.1', r));
-  const openDir = tmp('sshdeck-srv-');
+  const openDir = tmp('melid-srv-');
   const pub = http.createServer(createSyncServer({
     dataDir: openDir, register: 'open', adminKey: 'yonetici-parolasi', adminIps: '203.0.113.7, 2001:db8::/48', trustProxy: 'cloudflare',
-    updateUpstream: `http://127.0.0.1:${upstream.address().port}/sshdeck/`,
+    updateUpstream: `http://127.0.0.1:${upstream.address().port}/melid/`,
   }));
   await new Promise((r) => pub.listen(0, '127.0.0.1', r));
   const P = `127.0.0.1:${pub.address().port}`;
@@ -325,13 +325,13 @@ const names = (st) => st.sessions.map((s) => s.name).sort().join(',');
   // güncelleme aktarımı
   const feed = await fetch(`http://${P}/guncelleme/latest.json`);
   assert.equal(feed.status, 200); assert.equal((await feed.json()).payload, 'e30=');
-  const apk = await fetch(`http://${P}/indir/1.2.3/SSHDeck-1.2.3.apk`);
+  const apk = await fetch(`http://${P}/indir/1.2.3/Melid-1.2.3.apk`);
   assert.equal(apk.status, 200); assert.equal(await apk.text(), 'APK!!');
-  assert.match(apk.headers.get('content-disposition'), /SSHDeck-1\.2\.3\.apk/);
+  assert.match(apk.headers.get('content-disposition'), /Melid-1\.2\.3\.apk/);
   assert.equal((await fetch(`http://${P}/indir/1.2.3/yok.apk`)).status, 404);
   assert.equal((await fetch(`http://${P}/indir/1.2.3/..%2Fsecret`)).status, 404);
   // TRUST_PROXY=1 kipinde CF-Connecting-IP hiç sayılmaz
-  const plain = http.createServer(createSyncServer({ dataDir: tmp('sshdeck-srv-'), adminKey: 'k', adminIps: '203.0.113.7', trustProxy: true }));
+  const plain = http.createServer(createSyncServer({ dataDir: tmp('melid-srv-'), adminKey: 'k', adminIps: '203.0.113.7', trustProxy: true }));
   await new Promise((r) => plain.listen(0, '127.0.0.1', r));
   const PL = `http://127.0.0.1:${plain.address().port}`;
   assert.equal((await fetch(`${PL}/admin`, { headers: viaCf('203.0.113.7') })).status, 404);
@@ -345,7 +345,7 @@ const names = (st) => st.sessions.map((s) => s.name).sort().join(',');
     s2.writeHead(404); s2.end();
   });
   await new Promise((r) => gh.listen(0, '127.0.0.1', r));
-  const fsrv = http.createServer(createSyncServer({ dataDir: tmp('sshdeck-srv-'), updateFeedUrl: `http://127.0.0.1:${gh.address().port}/releases/latest/download/latest.json` }));
+  const fsrv = http.createServer(createSyncServer({ dataDir: tmp('melid-srv-'), updateFeedUrl: `http://127.0.0.1:${gh.address().port}/releases/latest/download/latest.json` }));
   await new Promise((r) => fsrv.listen(0, '127.0.0.1', r));
   const FU = `http://127.0.0.1:${fsrv.address().port}/guncelleme/latest.json`;
   const [f1, f2] = await Promise.all([fetch(FU), fetch(FU)]);

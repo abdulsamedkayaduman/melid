@@ -4,15 +4,15 @@
   --panel: #181b21;
   --panel2: #1e222a;
   --hover: #252a33;
-  --sel: #22406b;
-  --sel-soft: #203656;
+  --sel: #7a3412;
+  --sel-soft: #43230f;
   --border: #272c35;
   --border2: #323844;
   --text: #d9dce2;
   --text2: #a9afbb;
   --muted: #737b89;
-  --accent: #4f9dff;
-  --accent2: #2f7de0;
+  --accent: #FB923C;
+  --accent2: #C2410C;
   --ok: #3fc07f;
   --busy: #e0b04a;
   --err: #ec5b52;
@@ -27,8 +27,8 @@
 /* Arayüz temaları (Ayarlar > Arayüz teması). Terminal renkleri ayrı: THEMES (dialogs.js) */
 :root[data-ui=light] {
   --bg: #f4f5f7; --bg2: #ffffff; --panel: #eceef2; --panel2: #e3e6eb; --hover: #d9dde4;
-  --sel: #2f7de0; --sel-soft: #d3e3fa; --border: #d5d9e0; --border2: #c5cad3;
-  --text: #1f2328; --text2: #454b55; --muted: #7a818c; --accent: #2f7de0; --accent2: #1f6bd0;
+  --sel: #EA580C; --sel-soft: #fde2cf; --border: #d5d9e0; --border2: #c5cad3;
+  --text: #1f2328; --text2: #454b55; --muted: #7a818c; --accent: #EA580C; --accent2: #C2410C;
   --ok: #1f9d5c; --busy: #b07d0a; --err: #d0453c; --sel-text: var(--text);
   --scroll: #c3c8d0; --scroll-h: #aab0ba; --overlay: #28303c66; color-scheme: light;
 }
@@ -123,6 +123,8 @@ kbd { font-family: var(--mono); font-size: 11px; padding: 2px 6px; border-radius
 .brand { display: flex; align-items: center; gap: 7px; font-size: 15px; letter-spacing: .2px; margin-right: 6px; color: var(--text); }
 .brand .ic { color: var(--accent); }
 .brand b, h1 b { color: var(--accent); font-weight: 700; }
+.brand .brand-ic { flex: none; }
+.wordmark { font-family: var(--mono); font-weight: 700; letter-spacing: .02em; text-transform: lowercase; }
 .quick { display: flex; align-items: center; gap: 6px; height: 30px; width: min(420px, 36vw); padding: 0 10px; border-radius: var(--radius); background: var(--bg2); border: 1px solid var(--border2); color: var(--muted); }
 .quick:focus-within { border-color: var(--accent2); color: var(--accent); }
 .quick-input { flex: 1; border: 0; background: none; outline: none; height: 100%; color: var(--text); font-family: var(--mono); font-size: 12px; user-select: text; }
@@ -362,7 +364,8 @@ table.files.hide-size .c-size, table.files.hide-mtime .c-date, table.files.hide-
 /* welcome */
 .welcome { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; overflow: auto; background: radial-gradient(1000px 500px at 50% -10%, color-mix(in srgb, var(--accent) 14%, var(--bg)) 0%, var(--bg) 60%); }
 .w-inner { text-align: center; max-width: 700px; padding: 30px; }
-.w-logo { width: 72px; height: 72px; margin: 0 auto 10px; border-radius: 18px; display: flex; align-items: center; justify-content: center; background: linear-gradient(145deg, var(--accent2), color-mix(in srgb, var(--accent2) 60%, #000)); color: #fff; box-shadow: 0 10px 40px color-mix(in srgb, var(--accent2) 25%, transparent); }
+.w-logo { width: 72px; height: 72px; margin: 0 auto 10px; border-radius: 18px; display: flex; align-items: center; justify-content: center; box-shadow: 0 10px 40px color-mix(in srgb, #C2410C 30%, transparent); }
+.w-tag { margin: 0 0 6px; color: var(--accent); font-family: var(--mono); font-size: 13px; letter-spacing: .08em; }
 .welcome h1 { font-size: 30px; margin: 8px 0 4px; font-weight: 600; letter-spacing: .3px; }
 .w-recent { display: flex; flex-direction: column; gap: 4px; max-width: 560px; margin: 22px auto 0; text-align: left; }
 .w-recent:empty { display: none; }

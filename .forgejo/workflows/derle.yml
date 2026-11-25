@@ -75,7 +75,7 @@ jobs:
       - run: npx electron-builder --linux AppImage pacman --publish never
       - uses: https://data.forgejo.org/forgejo/upload-artifact@v4
         with:
-          name: sshdeck-linux
+          name: melid-linux
           retention-days: 14
           path: |
             dist/*.AppImage
@@ -101,7 +101,7 @@ jobs:
       - run: npx electron-builder --win --publish never
       - uses: https://data.forgejo.org/forgejo/upload-artifact@v4
         with:
-          name: sshdeck-windows
+          name: melid-windows
           retention-days: 14
           path: dist/*.exe
 
@@ -125,7 +125,7 @@ jobs:
       - run: npx electron-builder --mac --publish never
       - uses: https://data.forgejo.org/forgejo/upload-artifact@v4
         with:
-          name: sshdeck-mac
+          name: melid-mac
           retention-days: 14
           path: dist/*.tar.gz
 
@@ -181,7 +181,7 @@ jobs:
           (cd android && ./gradlew assembleRelease lintRelease)
           rm -f "$ANDROID_KEYSTORE_FILE"
           mkdir -p dist
-          for f in android/app/build/outputs/apk/release/SSHDeck-*-release.apk; do
+          for f in android/app/build/outputs/apk/release/Melid-*-release.apk; do
             "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --print-certs "$f" | grep -i 'SHA-256'
             cp "$f" "dist/$(basename "$f" -release.apk).apk"
           done
@@ -194,7 +194,7 @@ jobs:
           path: android/app/build/reports/lint-results-*.html
       - uses: https://data.forgejo.org/forgejo/upload-artifact@v4
         with:
-          name: sshdeck-android
+          name: melid-android
           retention-days: 14
           path: dist/*.apk
 
@@ -210,7 +210,7 @@ jobs:
           fetch-depth: 0
       - uses: https://data.forgejo.org/forgejo/download-artifact@v4
         with:
-          pattern: sshdeck-*
+          pattern: melid-*
           path: dist
           merge-multiple: true
       - name: Forgejo sürümü
@@ -228,7 +228,7 @@ jobs:
             [ "$TAG" = "v$VERSION" ] || { echo "::error::Etiket ($TAG) package.json sürümüyle (v$VERSION) aynı değil"; exit 1; }
             PREV=$(git describe --tags --abbrev=0 --match 'v*' "$TAG^" 2>/dev/null || true)
             { echo "## Değişiklikler"; echo; git log --format='- %s' ${PREV:+$PREV..}"$TAG"; } > notes.md
-            ci/forgejo-release.sh "$TAG" "SSHDeck $TAG" notes.md false dist/*
+            ci/forgejo-release.sh "$TAG" "Melid $TAG" notes.md false dist/*
             # uygulamalardaki güncelleme bildirimi bu dosyaya bakar (yalnız etiketli sürümler)
             # kullanıcıya görünen notlar: sürüm ve CI commit'leri hariç
             git log --format='- %s' ${PREV:+$PREV..}"$TAG" | grep -Ev '^- (Sürüm [0-9]|CI:)' > update-notes.md || true
@@ -245,5 +245,5 @@ jobs:
               echo
               git log -1 --format='%s%n%n%b'
             } > notes.md
-            ROLLING=1 ci/forgejo-release.sh gelistirme "SSHDeck $VERSION (geliştirme, ${GITHUB_SHA::7})" notes.md true dist/*
+            ROLLING=1 ci/forgejo-release.sh gelistirme "Melid $VERSION (geliştirme, ${GITHUB_SHA::7})" notes.md true dist/*
           fi

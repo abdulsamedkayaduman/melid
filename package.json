@@ -1,11 +1,11 @@
 {
-  "name": "sshdeck",
+  "name": "melid",
   "version": "1.9.0",
-  "description": "Linux, Windows ve macOS için Xshell/Xftp tarzı SSH terminali ve SFTP dosya yöneticisi",
+  "description": "Melid: Linux, Windows, macOS ve Android için SSH terminali ve SFTP dosya yöneticisi",
   "main": "src/main/main.js",
   "scripts": {
     "start": "electron .",
-    "dev": "SSHDECK_DEV=1 electron .",
+    "dev": "MELID_DEV=1 electron .",
     "dist": "electron-builder --linux AppImage pacman",
     "dist:appimage": "electron-builder --linux AppImage",
     "test": "bash test/run.sh",
@@ -29,10 +29,10 @@
     "electron": "^44.4.5",
     "electron-builder": "^26.15.3"
   },
-  "productName": "SSHDeck",
+  "productName": "Melid",
   "build": {
-    "appId": "dev.sshdeck.app",
-    "productName": "SSHDeck",
+    "appId": "dev.melid.app",
+    "productName": "Melid",
     "npmRebuild": false,
     "files": [
       "src/**/*",
@@ -45,15 +45,15 @@
     ],
     "linux": {
       "category": "Network;RemoteAccess",
-      "icon": "build/icon.png",
+      "icon": "build/icons",
       "target": [
         "AppImage",
         "pacman"
       ],
       "desktop": {
         "entry": {
-          "Name": "SSHDeck",
-          "Comment": "SSH terminal ve SFTP istemcisi",
+          "Name": "Melid",
+          "Comment": "SSH · SFTP: terminal ve dosya yöneticisi",
           "Keywords": "ssh;sftp;terminal;xshell;xftp;"
         }
       },
@@ -68,7 +68,7 @@
       ]
     },
     "win": {
-      "icon": "build/icon.png",
+      "icon": "build/icon.ico",
       "target": [
         {
           "target": "nsis",
@@ -85,10 +85,10 @@
       ]
     },
     "mac": {
-      "icon": "build/icon.png",
+      "icon": "build/icon.icns",
       "category": "public.app-category.developer-tools",
       "identity": null,
-      "artifactName": "SSHDeck-${version}-mac-${arch}.${ext}",
+      "artifactName": "Melid-${version}-mac-${arch}.${ext}",
       "target": [
         {
           "target": "tar.gz",
@@ -104,20 +104,21 @@
       "perMachine": false,
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
-      "shortcutName": "SSHDeck",
-      "artifactName": "SSHDeck-${version}-kurulum.${ext}",
+      "shortcutName": "Melid",
+      "artifactName": "Melid-${version}-kurulum.${ext}",
       "language": "1055",
       "installerLanguages": [
         "tr_TR"
       ]
     },
     "portable": {
-      "artifactName": "SSHDeck-${version}-tasinabilir.${ext}"
+      "artifactName": "Melid-${version}-tasinabilir.${ext}"
     },
     "publish": null,
     "asarUnpack": [
       "node_modules/ssh2/util/pagent.exe"
     ]
   },
-  "homepage": "https://sshdeck.abdulsamed.net"
+  "homepage": "https://sshdeck.abdulsamed.net",
+  "desktopName": "melid.desktop"
 }

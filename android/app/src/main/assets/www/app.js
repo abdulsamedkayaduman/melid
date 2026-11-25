@@ -1,5 +1,5 @@
-// SSHDeck Android arayüzü: oturum listesi, sekmeler, gezinme ve native olay yönlendirme.
-import { h, icon, parseQuick, parseConnText } from './util.js';
+// Melid Android arayüzü: oturum listesi, sekmeler, gezinme ve native olay yönlendirme.
+import { h, icon, brandIcon, wordmark, parseQuick, parseConnText } from './util.js';
 import * as N from './native.js';
 import { sheet, actionSheet, promptText, confirm, toast, handleAsk, closeTop, modalOpen, UI_THEMES } from './dialogs.js';
 import { SessionTab } from './tab.js';
@@ -78,7 +78,7 @@ class App {
     };
     window.__npause = () => { this.pausedAt = Date.now(); };
     N.call('appInfo').then((i) => { this.info = i; }).catch(() => {});
-    N.on('update', (st) => { this.setUpdate(st); if (st.newer && !st.skipped) toast(`SSHDeck ${st.version} çıktı`); });
+    N.on('update', (st) => { this.setUpdate(st); if (st.newer && !st.skipped) toast(`Melid ${st.version} çıktı`); });
     N.on('updateShow', () => updateSheet(this));
     N.call('updateState').then((st) => { if (st.version) this.setUpdate(st); if (st.show) updateSheet(this); }).catch(() => {});
   }
@@ -183,7 +183,7 @@ class App {
     this.home = {
       el: h('div.view', null,
         h('div.topbar', null,
-          h('div.logo', null, h('i', null, icon('terminal', 18)), 'SSHDeck'),
+          h('div.logo', null, brandIcon(30), wordmark()),
           sessBtn,
           h('button.tb', { onclick: () => this.toggleSearch() }, icon('search', 21)),
           h('button.tb', { onclick: () => this.push(settingsView(this)) }, icon('gear', 21))),
@@ -218,7 +218,7 @@ class App {
     const u = this.update;
     if (u && u.newer && !u.skipped) {
       out.push(h('div.upd-banner', { onclick: () => updateSheet(this) }, icon('upload', 20),
-        h('div.txt', null, h('b', null, `SSHDeck ${u.version} çıktı`), h('small', null, 'Yenilikleri görmek ve kurmak için dokunun')), icon('chevron', 18)));
+        h('div.txt', null, h('b', null, `Melid ${u.version} çıktı`), h('small', null, 'Yenilikleri görmek ve kurmak için dokunun')), icon('chevron', 18)));
     }
     if (this.tabs.length) {
       out.push(h('div.sec-title', null, 'Açık bağlantılar'));
@@ -243,7 +243,7 @@ class App {
     const list = this.sessions.filter((s) => !s.temporary && (!q || [s.name, s.host, s.username, s.group].some((v) => String(v || '').toLocaleLowerCase('tr').includes(q))));
     if (!this.sessions.filter((s) => !s.temporary).length) {
       out.push(h('div.empty', null, h('div.big', null, icon('server', 32)), h('h3', null, 'Henüz oturum yok'),
-        h('p', null, 'Bir sunucu ekleyin ya da bilgisayardaki SSHDeck\'in yedeğini içe aktarın.'),
+        h('p', null, 'Bir sunucu ekleyin ya da bilgisayardaki Melid\'in yedeğini içe aktarın.'),
         h('div.btns', null,
           h('button.btn.primary', { onclick: () => this.newSession() }, icon('plus', 18), 'Yeni oturum'),
           h('button.btn', { onclick: () => this.quickConnect() }, icon('bolt', 18), 'Hızlı bağlan'),
@@ -530,7 +530,7 @@ class App {
 }
 
 const app = new App();
-window.sshdeck = app;
+window.melid = app;
 app.init().catch((e) => {
   console.error(e);
   document.body.append(h('pre', { style: { color: 'tomato', padding: '16px', whiteSpace: 'pre-wrap' } }, 'Başlatma hatası: ' + e.message + '\n' + e.stack));

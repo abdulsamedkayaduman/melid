@@ -1,11 +1,11 @@
-// Tarayıcıda arayüz geliştirme/test için sahte native katman (APK'da kullanılmaz: SSHDeckNative vardır).
+// Tarayıcıda arayüz geliştirme/test için sahte native katman (APK'da kullanılmaz: MelidNative vardır).
 const emit = (type, data) => setTimeout(() => window.__nevent([[type, data]]), 0);
 const reply = (id, err, res) => setTimeout(() => window.__nreply(id, err, res === undefined ? null : res), 30);
 const b64 = (s) => btoa(String.fromCharCode(...new TextEncoder().encode(s)));
 
-const LS = 'sshdeck-mock';
+const LS = 'melid-mock';
 let db = null;
-if (!window.SSHDeckNative) { try { db = JSON.parse(localStorage.getItem(LS)); } catch { /* yok */ } }
+if (!window.MelidNative) { try { db = JSON.parse(localStorage.getItem(LS)); } catch { /* yok */ } }
 db = db || {
   sessions: [
     { id: 's1', name: 'web-1', group: 'Prod', host: '10.0.0.5', port: 22, username: 'root', authType: 'password', password: 'x' },
@@ -14,7 +14,7 @@ db = db || {
       forwards: [{ id: 'f1', type: 'L', bindHost: '127.0.0.1', bindPort: 8080, dstHost: '127.0.0.1', dstPort: 80, enabled: true }] },
   ],
   settings: {},
-  keys: [{ id: 'k1', name: 'id_ed25519', type: 'ssh-ed25519', public: 'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIMockKeyMockKeyMockKey sshdeck@android', fingerprint: 'SHA256:mockmockmockmockmock', created: Date.now() }],
+  keys: [{ id: 'k1', name: 'id_ed25519', type: 'ssh-ed25519', public: 'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIMockKeyMockKeyMockKey melid@android', fingerprint: 'SHA256:mockmockmockmockmock', created: Date.now() }],
   known: {},
 };
 const save = () => { try { localStorage.setItem(LS, JSON.stringify(db)); } catch { /* yok */ } };
@@ -31,8 +31,8 @@ const prompt = (c) => emit('data', { c, s: 'main', d: b64('\x1b[1;32mroot@mock\x
 
 const FS = {
   '/root': [['projeler', 'd'], ['.bashrc', 'f', 3771], ['notlar.txt', 'f', 120], ['yedek.tar.gz', 'f', 734003200], ['foto.png', 'f', 2048], ['link', 'l', 10]],
-  '/root/projeler': [['sshdeck', 'd'], ['README.md', 'f', 2048]],
-  '/root/projeler/sshdeck': [['main.js', 'f', 10240]],
+  '/root/projeler': [['melid', 'd'], ['README.md', 'f', 2048]],
+  '/root/projeler/melid': [['main.js', 'f', 10240]],
   '/': [['root', 'd'], ['etc', 'd'], ['var', 'd'], ['home', 'd']],
 };
 
@@ -116,10 +116,10 @@ async function handle(id, m, a) {
     case 'keyInspect': return { encrypted: false, type: 'ssh-ed25519', public: 'ssh-ed25519 AAAA', fingerprint: 'SHA256:x' };
     case 'keyDelete': db.keys = db.keys.filter((k) => k.id !== a.id); save(); return null;
     case 'keyRename': db.keys.find((k) => k.id === a.id).name = a.name; save(); return null;
-    case 'keyExportPrivate': return 'İndirilenler/SSHDeck/' + a.name;
+    case 'keyExportPrivate': return 'İndirilenler/Melid/' + a.name;
     case 'pickTextFile': return null;
     case 'importBackup': return { added: 0, updated: 0, withPassword: 0, found: 0 };
-    case 'exportBackup': return 'İndirilenler/SSHDeck/sshdeck-yedek.json';
+    case 'exportBackup': return 'İndirilenler/Melid/melid-yedek.json';
     case 'clipboardSet': try { await navigator.clipboard.writeText(a.text); } catch { /* yok */ } return null;
     case 'clipboardGet': try { return await navigator.clipboard.readText(); } catch { return 'echo pano'; }
     case 'updateState': case 'updateCheck': case 'updateSkip': {

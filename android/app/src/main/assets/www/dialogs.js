@@ -178,7 +178,7 @@ export async function handleAsk(a, settings) {
 
 // ---------------------------------------------------------------- temalar (masaüstü dialogs.js ile aynı)
 export const THEMES = {
-  'deck-dark': { name: 'Deck Koyu', background: '#101217', foreground: '#d7dae0', cursor: '#4f9dff', selectionBackground: '#2b4a78', black: '#1b1e25', red: '#e5534b', green: '#57c785', yellow: '#e0b44a', blue: '#4f9dff', magenta: '#c678dd', cyan: '#46c1c9', white: '#c9ccd3', brightBlack: '#5c6370', brightRed: '#ff6b63', brightGreen: '#72de9e', brightYellow: '#f5cd6b', brightBlue: '#79b5ff', brightMagenta: '#dd9af0', brightCyan: '#6fdde3', brightWhite: '#ffffff' },
+  'deck-dark': { name: 'Melid Koyu', background: '#101217', foreground: '#d7dae0', cursor: '#FB923C', selectionBackground: '#5a3016', black: '#1b1e25', red: '#e5534b', green: '#57c785', yellow: '#e0b44a', blue: '#4f9dff', magenta: '#c678dd', cyan: '#46c1c9', white: '#c9ccd3', brightBlack: '#5c6370', brightRed: '#ff6b63', brightGreen: '#72de9e', brightYellow: '#f5cd6b', brightBlue: '#79b5ff', brightMagenta: '#dd9af0', brightCyan: '#6fdde3', brightWhite: '#ffffff' },
   xshell: { name: 'Klasik (Xshell)', background: '#000000', foreground: '#c0c0c0', cursor: '#c0c0c0', selectionBackground: '#3a3a70', black: '#000000', red: '#cd0000', green: '#00cd00', yellow: '#cdcd00', blue: '#1e90ff', magenta: '#cd00cd', cyan: '#00cdcd', white: '#e5e5e5', brightBlack: '#7f7f7f', brightRed: '#ff0000', brightGreen: '#00ff00', brightYellow: '#ffff00', brightBlue: '#5c5cff', brightMagenta: '#ff00ff', brightCyan: '#00ffff', brightWhite: '#ffffff' },
   dracula: { name: 'Dracula', background: '#282a36', foreground: '#f8f8f2', cursor: '#f8f8f2', selectionBackground: '#44475a', black: '#21222c', red: '#ff5555', green: '#50fa7b', yellow: '#f1fa8c', blue: '#bd93f9', magenta: '#ff79c6', cyan: '#8be9fd', white: '#f8f8f2', brightBlack: '#6272a4', brightRed: '#ff6e6e', brightGreen: '#69ff94', brightYellow: '#ffffa5', brightBlue: '#d6acff', brightMagenta: '#ff92df', brightCyan: '#a4ffff', brightWhite: '#ffffff' },
   solarized: { name: 'Solarized Dark', background: '#002b36', foreground: '#93a1a1', cursor: '#93a1a1', selectionBackground: '#274642', black: '#073642', red: '#dc322f', green: '#859900', yellow: '#b58900', blue: '#268bd2', magenta: '#d33682', cyan: '#2aa198', white: '#eee8d5', brightBlack: '#586e75', brightRed: '#cb4b16', brightGreen: '#93a1a1', brightYellow: '#839496', brightBlue: '#657b83', brightMagenta: '#6c71c4', brightCyan: '#93a1a1', brightWhite: '#fdf6e3' },
@@ -186,8 +186,8 @@ export const THEMES = {
 };
 
 export const UI_THEMES = {
-  dark: { name: 'Koyu', swatch: ['#0f1115', '#1e222a', '#4f9dff'] },
-  light: { name: 'Açık', swatch: ['#f4f5f7', '#e3e6eb', '#2f7de0'], light: true },
+  dark: { name: 'Koyu', swatch: ['#0f1115', '#1e222a', '#FB923C'] },
+  light: { name: 'Açık', swatch: ['#f4f5f7', '#e3e6eb', '#EA580C'], light: true },
   orange: { name: 'Turuncu', swatch: ['#15110d', '#292018', '#ff8f3f'] },
   red: { name: 'Kırmızı', swatch: ['#140e10', '#2b1d22', '#ff5c70'] },
   pink: { name: 'Pembe', swatch: ['#fdf1f6', '#f5d8e5', '#df5390'], light: true },

@@ -4,18 +4,21 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex">
-<title>SSHDeck Yönetim</title>
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect width='24' height='24' rx='5' fill='%234f9dff'/%3E%3Cpath d='M6 8l4 4-4 4M12 16h6' stroke='white' stroke-width='2' fill='none' stroke-linecap='round'/%3E%3C/svg%3E">
+<title>Melid Yönetim</title>
+<link rel="icon" href="/favicon.ico" sizes="32x32">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<meta name="theme-color" content="#C2410C">
 <style>
-:root { --bg: #0f1115; --bg2: #171a20; --line: #262a33; --fg: #d7dae0; --dim: #8b919c; --acc: #4f9dff; --ok: #57c785; --err: #e5534b; color-scheme: dark; }
-@media (prefers-color-scheme: light) { :root { --bg: #f4f5f7; --bg2: #ffffff; --line: #e1e4e9; --fg: #1d2129; --dim: #646b77; --acc: #2f7de0; --ok: #2a9a6d; --err: #d0453d; color-scheme: light; } }
+:root { --bg: #0f1115; --bg2: #171a20; --line: #262a33; --fg: #d7dae0; --dim: #8b919c; --acc: #FB923C; --acc2: #C2410C; --ok: #57c785; --err: #e5534b; color-scheme: dark; }
+@media (prefers-color-scheme: light) { :root { --bg: #f4f5f7; --bg2: #ffffff; --line: #e1e4e9; --fg: #1d2129; --dim: #646b77; --acc: #EA580C; --acc2: #9A3412; --ok: #2a9a6d; --err: #d0453d; color-scheme: light; } }
 * { box-sizing: border-box; }
 body { margin: 0; background: var(--bg); color: var(--fg); font: 14px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
 main { max-width: 1040px; margin: 0 auto; padding: 32px 16px 48px; }
 header { display: flex; align-items: center; gap: 12px; margin-bottom: 24px; }
 header h1 { font-size: 20px; margin: 0; font-weight: 600; }
 header .sp { flex: 1; }
-.logo { width: 32px; height: 32px; border-radius: 8px; background: var(--acc); display: grid; place-items: center; }
+.mark { flex: none; border-radius: 8px; }
 .card { background: var(--bg2); border: 1px solid var(--line); border-radius: 10px; }
 .login { max-width: 380px; margin: 10vh auto 0; padding: 24px; }
 .login h2 { margin: 0 0 4px; font-size: 18px; }
@@ -23,7 +26,7 @@ header .sp { flex: 1; }
 input { width: 100%; padding: 9px 11px; border-radius: 7px; border: 1px solid var(--line); background: var(--bg); color: var(--fg); font: inherit; }
 input:focus { outline: 2px solid var(--acc); outline-offset: -1px; }
 button { padding: 8px 14px; border-radius: 7px; border: 1px solid var(--line); background: var(--bg2); color: var(--fg); font: inherit; cursor: pointer; }
-button.primary { background: var(--acc); border-color: var(--acc); color: #fff; }
+button.primary { background: #C2410C; border-color: #C2410C; color: #fff; }
 button:disabled { opacity: .6; cursor: default; }
 .row { display: flex; gap: 8px; margin-top: 12px; }
 .row button { flex: 1; }
@@ -54,8 +57,8 @@ button.del { padding: 4px 10px; font-size: 12px; color: var(--err); }
 <body>
 <main>
   <header>
-    <div class="logo"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round"><path d="M6 8l4 4-4 4M12 16h6"/></svg></div>
-    <h1>SSHDeck yönetim</h1>
+    <svg class="mark" width="32" height="32" viewBox="0 0 128 128" aria-hidden="true"><rect width="128" height="128" rx="28" fill="#C2410C"/><circle cx="64" cy="64" r="44" fill="#FB923C"/><polyline points="48,52 60,64 48,76" stroke="#FFFFFF" stroke-width="10" fill="none" stroke-linecap="round" stroke-linejoin="round"/><rect x="64" y="69" width="20" height="10" rx="5" fill="#FFFFFF"/></svg>
+    <h1>Melid yönetim</h1>
     <span class="sp"></span>
     <button id="refresh" hidden>Yenile</button>
     <button id="logout" hidden>Çıkış</button>
@@ -63,7 +66,7 @@ button.del { padding: 4px 10px; font-size: 12px; color: var(--err); }
 
   <form id="login" class="card login" hidden>
     <h2>Yönetici girişi</h2>
-    <p>Sunucudaki SSHDECK_ADMIN_KEY ile girin.</p>
+    <p>Sunucudaki MELID_ADMIN_KEY ile girin.</p>
     <input id="code" type="password" autocomplete="current-password" placeholder="Yönetici parolası" autofocus>
     <div class="row"><button class="primary" id="go" type="submit">Giriş</button></div>
     <div class="err" id="err"></div>
@@ -84,7 +87,7 @@ button.del { padding: 4px 10px; font-size: 12px; color: var(--err); }
 <script>
 (function () {
   var $ = function (id) { return document.getElementById(id); };
-  var KEY = 'sshdeckAdminKey';
+  var KEY = 'melidAdminKey';
   var code = '';
   try { code = sessionStorage.getItem(KEY) || ''; } catch (e) {}
 

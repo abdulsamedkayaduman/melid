@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Android SSH çekirdeğini (dev.sshdeck.core) masaüstü JVM'de test eder:
+# Android SSH çekirdeğini (dev.melid.core) masaüstü JVM'de test eder:
 #  - yetkisiz geçici bir OpenSSH sshd (anahtar, shell, exec, SFTP, tüneller, jump)
 #  - parola / keyboard-interactive akışları için ssh2 (Node) sunucusu
 # Kullanım: bash android/coretest/run.sh   (JDK 17 + /usr/sbin/sshd gerekir)
@@ -42,18 +42,18 @@ PW=$!
 # hesap eşitlemesi: gerçek sunucu (SyncTest + sync-desktop.js)
 SYNC_PORT=3157
 rm -rf $W/syncdata
-PORT=$SYNC_PORT HOST=127.0.0.1 DATA_DIR=$W/syncdata SSHDECK_REGISTER=invite SSHDECK_SYNC_INVITE=davet node ../../server/sync-server.js > $W/sync.log 2>&1 &
+PORT=$SYNC_PORT HOST=127.0.0.1 DATA_DIR=$W/syncdata MELID_REGISTER=invite MELID_SYNC_INVITE=davet node ../../server/sync-server.js > $W/sync.log 2>&1 &
 SY=$!
 trap 'kill $(cat $W/sshd.pid) 2>/dev/null; kill $PW $SY 2>/dev/null' EXIT
 sleep 0.5
 
 rm -rf $W/classes && mkdir -p $W/classes
-javac -nowarn -encoding UTF-8 -d $W/classes -cp "$CP" ../app/src/main/java/dev/sshdeck/core/*.java CoreTest.java SyncTest.java
+javac -nowarn -encoding UTF-8 -d $W/classes -cp "$CP" ../app/src/main/java/dev/melid/core/*.java CoreTest.java SyncTest.java
 # masaüstü store.js ile şifreli yedek üret -> Java çözer; Java'nın şifrelediğini Node çözer
 node -e '
 const fs=require("fs"),os=require("os"),path=require("path");
 const { Store } = require("../../src/main/store");
-const st = new Store(fs.mkdtempSync(path.join(os.tmpdir(),"sshdeck-bk-")), { available:()=>false, encrypt:s=>s, decrypt:s=>s });
+const st = new Store(fs.mkdtempSync(path.join(os.tmpdir(),"melid-bk-")), { available:()=>false, encrypt:s=>s, decrypt:s=>s });
 st.saveSession({ name:"yedek", host:"h", username:"u", password:"gizli-ğ" });
 fs.writeFileSync(process.argv[1], JSON.stringify(st.exportData({ passphrase:"yedekP" })));
 ' "$W/backup.json"

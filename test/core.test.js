@@ -6,12 +6,12 @@ const path = require('path');
 const assert = require('assert');
 const os = require('os');
 // Hedef sunucu: test/run.sh bir Docker konteyneri açar. Başka sunucu için ortam değişkenleri:
-const H = process.env.SSHDECK_TEST_HOST || '127.0.0.1';
-const P = Number(process.env.SSHDECK_TEST_PORT || 2222);
-const U = process.env.SSHDECK_TEST_USER || 'deck';
-const PASS = process.env.SSHDECK_TEST_PASS || 'deckpass';
-const KEY = process.env.SSHDECK_TEST_KEY || path.join(__dirname, '.work', 'userkey');
-const KEYPASS = process.env.SSHDECK_TEST_KEYPASS || 'kpass';
+const H = process.env.MELID_TEST_HOST || '127.0.0.1';
+const P = Number(process.env.MELID_TEST_PORT || 2222);
+const U = process.env.MELID_TEST_USER || 'deck';
+const PASS = process.env.MELID_TEST_PASS || 'deckpass';
+const KEY = process.env.MELID_TEST_KEY || path.join(__dirname, '.work', 'userkey');
+const KEYPASS = process.env.MELID_TEST_KEYPASS || 'kpass';
 
 const sessions = {
   pw: { id: 'pw', host: H, port: P, username: U, authType: 'password', password: PASS },
@@ -56,7 +56,7 @@ const wait = (ms) => new Promise((r) => setTimeout(r, ms));
   const home = await m.home('t1');
   assert(home.startsWith('/'), 'home');
   await m.remove('t1', home + '/up').catch(() => {});
-  const L = path.join(os.tmpdir(), 'sshdeck-test-local'); fs.rmSync(L, { recursive: true, force: true });
+  const L = path.join(os.tmpdir(), 'melid-test-local'); fs.rmSync(L, { recursive: true, force: true });
   fs.mkdirSync(L + '/src/sub', { recursive: true });
   fs.writeFileSync(L + '/src/a.txt', 'hello');
   fs.writeFileSync(L + '/src/sub/big.bin', Buffer.alloc(5 * 1024 * 1024, 7));
@@ -164,18 +164,18 @@ const wait = (ms) => new Promise((r) => setTimeout(r, ms));
   // (dosyada aramak zamanlamaya bağlı olurdu); sshd'nin satırı kabul ettiğini aktarımın başarısı gösterir.
   const exec0 = m.exec;
   let addCmd = '';
-  m.exec = function (id, cmd, o) { if (/printf .*sshdeck-gecici-/.test(cmd)) addCmd = cmd; return exec0.call(this, id, cmd, o); };
+  m.exec = function (id, cmd, o) { if (/printf .*melid-gecici-/.test(cmd)) addCmd = cmd; return exec0.call(this, id, cmd, o); };
   await m.transfer('t9', { tid: 'w1', direction: 'relay', direct: 'key', srcConnId: 't1', items: [{ src: home + '/dsrc', dst: home + '/ddst/dsrc' }] });
   m.exec = exec0;
   const tmpLine = addCmd.replace(/'\\''/g, "'");
   assert(tmpLine.includes(`'restrict,command="mkdir -p '${home}/ddst' && tar -C '${home}/ddst' -xf -",expiry-time="`), addCmd);
-  assert(/expiry-time="\d{12}" ssh-ed25519 \S+ sshdeck-gecici-[0-9a-f]{12}'/.test(tmpLine), tmpLine);
+  assert(/expiry-time="\d{12}" ssh-ed25519 \S+ melid-gecici-[0-9a-f]{12}'/.test(tmpLine), tmpLine);
   let ld = events[events.length - 1];
   const why = events.find((e) => e.tid === 'w1' && e.fallback)?.fallback;
   assert.deepEqual([ld.state, ld.via, ld.keys], ['done', 'doğrudan (geçici anahtar)', { ok: true }], JSON.stringify(ld) + (why ? ` (doğrudan olmadı: ${why})` : ''));
   assert.equal(await md5(home + '/ddst/dsrc/deep/big.bin'), await md5(home + '/dsrc/deep/big.bin'));
   assert.equal((await m.exec('t9', 'cat ~/.ssh/authorized_keys')).stdout, akBefore, 'geçici anahtar silinmeli');
-  assert.equal((await m.exec('t9', 'ls -d /tmp/sshdeck.* 2>/dev/null | wc -l')).stdout.trim(), '0', 'geçici klasör silinmeli');
+  assert.equal((await m.exec('t9', 'ls -d /tmp/melid.* 2>/dev/null | wc -l')).stdout.trim(), '0', 'geçici klasör silinmeli');
   // hedefe jump host üzerinden bağlı: doğrudan denenmez, bu bilgisayar üzerinden
   await m.connect('t8', sessions.key);
   await m.transfer('t8', { tid: 'w2', direction: 'relay', direct: 'key', srcConnId: 't1', items: [{ src: home + '/dsrc', dst: home + '/ddst2' }] });
@@ -192,7 +192,7 @@ const wait = (ms) => new Promise((r) => setTimeout(r, ms));
   if (require('child_process').spawnSync('ssh-agent', ['-k']).error) console.log('ATLANDI agent yönlendirme (ssh-agent yok)');
   else {
     const cp = require('child_process');
-    const ad = fs.mkdtempSync(path.join(os.tmpdir(), 'sshdeck-agent-'));
+    const ad = fs.mkdtempSync(path.join(os.tmpdir(), 'melid-agent-'));
     cp.execFileSync('ssh-keygen', ['-q', '-t', 'ed25519', '-N', '', '-f', ad + '/k']);
     const sock = ad + '/sock';
     const agent = cp.spawn('ssh-agent', ['-D', '-a', sock], { stdio: 'ignore' });
@@ -218,7 +218,7 @@ const wait = (ms) => new Promise((r) => setTimeout(r, ms));
   m.disconnect('t9');
 
   // 2d. anahtar üret + sunucuya yükle + o anahtarla bağlan
-  const KD = path.join(os.tmpdir(), 'sshdeck-test-keys'); fs.rmSync(KD, { recursive: true, force: true });
+  const KD = path.join(os.tmpdir(), 'melid-test-keys'); fs.rmSync(KD, { recursive: true, force: true });
   const nk = require('../src/main/keys.js').generateKey(KD, { name: 'yeni', comment: 'test@deck' });
   assert.equal(await m.installPublicKey('t1', nk.publicKey), 'added');
   assert.equal(await m.installPublicKey('t1', nk.publicKey), 'exists');

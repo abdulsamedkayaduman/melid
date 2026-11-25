@@ -1,7 +1,7 @@
-// Java köprüsü (MainActivity'deki SSHDeckNative). Tarayıcıda (geliştirme) mock.js devreye girer.
+// Java köprüsü (MainActivity'deki MelidNative). Tarayıcıda (geliştirme) mock.js devreye girer.
 import mock from './mock.js';
 
-const N = window.SSHDeckNative || mock;
+const N = window.MelidNative || mock;
 
 let seq = 0;
 const pending = new Map();
@@ -9,7 +9,7 @@ window.__nreply = (id, err, res) => {
   const p = pending.get(id);
   if (!p) return;
   pending.delete(id);
-  if (err != null) p.reject(new Error(err === 'SSHDECK_LOCKED' ? 'Uygulama kilitli' : err)); else p.resolve(res);
+  if (err != null) p.reject(new Error(err === 'MELID_LOCKED' ? 'Uygulama kilitli' : err)); else p.resolve(res);
 };
 
 const listeners = new Map();
@@ -41,4 +41,4 @@ export const write = (c, s, data) => N.write(c, s, data);
 export const resize = (c, s, cols, rows) => N.resize(c, s, cols, rows);
 export const answer = (askId, value) => N.answer(askId, value == null ? 'null' : JSON.stringify(value));
 export const termInput = (on) => N.termInput(!!on);
-export const isMock = !window.SSHDeckNative;
+export const isMock = !window.MelidNative;

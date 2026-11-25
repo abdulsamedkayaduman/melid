@@ -11,16 +11,16 @@ const [version, notesFile, baseUrl, dist] = process.argv.slice(2);
 const key = process.env.UPDATE_SIGNING_KEY;
 if (!key) { console.error('UPDATE_SIGNING_KEY yok'); process.exit(1); }
 const names = {
-  'win-setup': `SSHDeck-${version}-kurulum.exe`,
-  'win-portable': `SSHDeck-${version}-tasinabilir.exe`,
-  'linux-appimage': `SSHDeck-${version}.AppImage`,
-  'linux-pacman': `sshdeck-${version}.pacman`,
-  android: `SSHDeck-${version}.apk`,
+  'win-setup': `Melid-${version}-kurulum.exe`,
+  'win-portable': `Melid-${version}-tasinabilir.exe`,
+  'linux-appimage': `Melid-${version}.AppImage`,
+  'linux-pacman': `melid-${version}.pacman`,
+  android: `Melid-${version}.apk`,
 };
 // Uygulamaların kendisi kurmadığı, yalnız indirme sayfasında listelenen dosyalar (yoksa atlanır)
 const optional = {
-  'mac-arm64': `SSHDeck-${version}-mac-arm64.tar.gz`,
-  'mac-x64': `SSHDeck-${version}-mac-x64.tar.gz`,
+  'mac-arm64': `Melid-${version}-mac-arm64.tar.gz`,
+  'mac-x64': `Melid-${version}-mac-x64.tar.gz`,
 };
 const files = {};
 for (const [kind, name] of Object.entries(names)) {

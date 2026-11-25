@@ -54,7 +54,7 @@ async function loginSheet(app, reauth, st0) {
   const err = h('div.form-err');
   const intro = h('p.hint', { style: { marginTop: 0 } });
 
-  // Yerel ağ taraması: Wi-Fi'deki adreslerde 3150 portu açık SSHDeck sunucusu aranır
+  // Yerel ağ taraması: Wi-Fi'deki adreslerde 3150 portu açık Melid sunucusu aranır
   const found = h('div.scan-list', { hidden: true });
   const scanBtn = h('button.btn.sm', { type: 'button', onclick: () => scan() }, icon('search', 16), 'Yerel ağda ara');
   const scan = async () => {
@@ -90,7 +90,7 @@ async function loginSheet(app, reauth, st0) {
     intro.textContent = m === 'register'
       ? 'Hesap parolası bağlantılarınızı şifreler ve hiçbir zaman sunucuya gönderilmez. Unutursanız sunucudaki veriler kurtarılamaz.'
       : reauth ? 'Hesap parolası başka bir cihazda değiştirildi; yeni parolayla tekrar giriş yapın.'
-        : 'Bilgisayardaki SSHDeck hesabınızla giriş yapın: oturumlar, kayıtlı parolalar ve hazır komutlar iki yönlü eşitlenir. Bu telefondaki oturumlar hesaptakilerle birleştirilir.';
+        : 'Bilgisayardaki Melid hesabınızla giriş yapın: oturumlar, kayıtlı parolalar ve hazır komutlar iki yönlü eşitlenir. Bu telefondaki oturumlar hesaptakilerle birleştirilir.';
     err.textContent = '';
   };
   setMode('login');
@@ -221,9 +221,9 @@ async function manageSheet(app, st) {
 }
 
 // ---------------------------------------------------------------- kurtarma anahtarı (masaüstüyle aynı biçim)
-const recText = (rc) => ['SSHDeck hesap kurtarma anahtarı', '', `Sunucu: ${rc.server}`, `Kullanıcı: ${rc.user}`, `Anahtar: ${rc.code}`,
+const recText = (rc) => ['Melid hesap kurtarma anahtarı', '', `Sunucu: ${rc.server}`, `Kullanıcı: ${rc.user}`, `Anahtar: ${rc.code}`,
   `Oluşturulma: ${new Date(rc.created || Date.now()).toLocaleString('tr-TR')}`, '',
-  'Hesap parolanızı unutursanız SSHDeck giriş ekranında "Hesap parolamı unuttum" ile bu anahtarla yeni parola belirleyebilirsiniz;',
+  'Hesap parolanızı unutursanız Melid giriş ekranında "Hesap parolamı unuttum" ile bu anahtarla yeni parola belirleyebilirsiniz;',
   'bağlantılarınız ve parolalarınız korunur. Bu dosyayı güvenli bir yerde saklayın: anahtarı ele geçiren biri hesabınıza girebilir.', ''].join('\n');
 
 async function recoveryFlow(info) {
@@ -247,7 +247,7 @@ async function recoveryFlow(info) {
         h('div.rec-code.mono', null, rc.code),
         h('div.btns-row', null,
           h('button.btn', { type: 'button', onclick: async () => { await N.call('clipboardSet', { text: rc.code }); toast('Kopyalandı'); } }, icon('copy', 18), 'Kopyala'),
-          h('button.btn', { type: 'button', onclick: async () => { try { await N.call('saveTextDownload', { name: `sshdeck-kurtarma-${rc.user}.txt`, text: recText(rc) }); toast('İndirilenler/SSHDeck klasörüne kaydedildi', { type: 'ok' }); } catch (e) { toast(e.message, { type: 'err' }); } } }, icon('download', 18), 'Dosyaya kaydet')),
+          h('button.btn', { type: 'button', onclick: async () => { try { await N.call('saveTextDownload', { name: `melid-kurtarma-${rc.user}.txt`, text: recText(rc) }); toast('İndirilenler/Melid klasörüne kaydedildi', { type: 'ok' }); } catch (e) { toast(e.message, { type: 'err' }); } } }, icon('download', 18), 'Dosyaya kaydet')),
         h('p.hint', { style: { color: 'var(--busy)' } }, 'Anahtarı ele geçiren biri hesap parolanızı değiştirip bağlantılarınıza erişebilir.')),
       buttons: [{ label: 'Kaydettim', value: true, primary: true }],
     });

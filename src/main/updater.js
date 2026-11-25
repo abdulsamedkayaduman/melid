@@ -9,8 +9,8 @@ const crypto = require('crypto');
 const fs = require('fs');
 const fsp = require('fs/promises');
 
-// SSHDECK_UPDATE_URL: deneme için başka bir kaynak (imza yine gömülü anahtarla doğrulanır)
-const FEED_URL = process.env.SSHDECK_UPDATE_URL || 'https://sshdeck.abdulsamed.net/guncelleme/latest.json';
+// MELID_UPDATE_URL: deneme için başka bir kaynak (imza yine gömülü anahtarla doğrulanır)
+const FEED_URL = process.env.MELID_UPDATE_URL || 'https://sshdeck.abdulsamed.net/guncelleme/latest.json';
 // Ed25519 açık anahtarı (ham 32 bayt, base64) — Android'de de aynısı (Updater.java)
 const PUBLIC_KEY = 'JZZUOZm0s+7S9kpAprN5IKx+6fMm07tbSeq5jkCy2Fo=';
 
@@ -112,7 +112,7 @@ async function download(file, dest, { onProgress, signal } = {}) {
 
 // ---- kurulum ilerlemesi ----
 // pacman ilerleme çubuğunu yalnız terminale yazar: `script` ile sanal terminalde, LC_ALL=C ile (İngilizce, ayrıştırılabilir)
-// çalıştırılır. Satırlar: "(1/1) installing sshdeck   [####---]  45%" ve ":: Running post-transaction hooks...".
+// çalıştırılır. Satırlar: "(1/1) installing melid   [####---]  45%" ve ":: Running post-transaction hooks...".
 // Genel yüzde: ön denetimler 0-10, kurulum 10-95, kancalar 95-99.
 const PACMAN_STEPS = [
   [/checking keys/, 'Anahtarlar denetleniyor', 0, 2],

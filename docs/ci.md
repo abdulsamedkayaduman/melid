@@ -7,10 +7,10 @@
 | Job | Container | Çıktı |
 |-----|-----------|-------|
 | `test` | `node:22-bookworm` | birim testleri + `test/core.test.js` (Docker yerine `ci/test-sshd.sh` container içinde sshd açar) |
-| `linux` | `node:22-bookworm` | `SSHDeck-<sürüm>.AppImage`, `sshdeck-<sürüm>.pacman` |
-| `windows` | `electronuserland/builder:22-wine-05.26` | `SSHDeck-<sürüm>-kurulum.exe`, `SSHDeck-<sürüm>-tasinabilir.exe` (NSIS kaldırıcısı için wine gerekir) |
-| `mac` | `node:22-bookworm` | `SSHDeck-<sürüm>-mac-arm64.tar.gz`, `SSHDeck-<sürüm>-mac-x64.tar.gz` (imzasız; ayrıntı aşağıda) |
-| `android` | `node:22-bookworm` + JDK 17 | SSH çekirdeği testleri (`android/coretest`), lint, imzalı `SSHDeck-<sürüm>.apk` |
+| `linux` | `node:22-bookworm` | `Melid-<sürüm>.AppImage`, `melid-<sürüm>.pacman` |
+| `windows` | `electronuserland/builder:22-wine-05.26` | `Melid-<sürüm>-kurulum.exe`, `Melid-<sürüm>-tasinabilir.exe` (NSIS kaldırıcısı için wine gerekir) |
+| `mac` | `node:22-bookworm` | `Melid-<sürüm>-mac-arm64.tar.gz`, `Melid-<sürüm>-mac-x64.tar.gz` (imzasız; ayrıntı aşağıda) |
+| `android` | `node:22-bookworm` + JDK 17 | SSH çekirdeği testleri (`android/coretest`), lint, imzalı `Melid-<sürüm>.apk` |
 | `yayinla` | `node:22-bookworm` | Forgejo sürümü (Releases) + `SHA256SUMS.txt` |
 
 `linux`, `windows`, `mac`, `android` paralel çalışır; hepsi `test`'i bekler.
@@ -58,7 +58,7 @@ hâlâ Forgejo'daki `latest.json`'a bakar; o dosya da her sürümde yenilenir, b
 - Android: açılışta/geri dönüşte (6 saatte bir) ve arka planda 12 saatte bir (JobScheduler) denetler; bildirim +
   ana ekranda şerit. Kurulum PackageInstaller ile; ilk seferde "bilinmeyen uygulamaları yükle" izni istenir.
 - Ayarlardan "Şimdi denetle" ve otomatik denetimi kapatma. "Bu sürümü atla" yalnız o sürümü susturur.
-- Deneme için masaüstünde `SSHDECK_UPDATE_URL`, Android'de `updateUrl` ayarı başka kaynak gösterebilir
+- Deneme için masaüstünde `MELID_UPDATE_URL`, Android'de `updateUrl` ayarı başka kaynak gösterebilir
   (imza yine aynı anahtarla doğrulanır).
 
 ## macOS paketi
@@ -70,10 +70,10 @@ Paket Linux'ta üretilir, Mac runner gerekmez. `.zip` kullanılmaz: Linux'ta sem
 İlk kurulum:
 
 ```
-tar xzf SSHDeck-<sürüm>-mac-arm64.tar.gz     # Intel Mac için -x64
-mv SSHDeck.app /Applications/
-xattr -cr /Applications/SSHDeck.app
-codesign --force --deep --sign - /Applications/SSHDeck.app
+tar xzf Melid-<sürüm>-mac-arm64.tar.gz     # Intel Mac için -x64
+mv Melid.app /Applications/
+xattr -cr /Applications/Melid.app
+codesign --force --deep --sign - /Applications/Melid.app
 ```
 
 Uygulama içi güncelleme macOS'ta kurulum yapmaz: yeni sürüm bildirilir, "İndirme sayfasını aç" ile paket elle indirilir

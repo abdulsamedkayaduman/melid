@@ -1,4 +1,4 @@
-# SSHDeck testleri için tek kullanımlık SSH sunucusu (parola + anahtar, tünellere izinli)
+# Melid testleri için tek kullanımlık SSH sunucusu (parola + anahtar, tünellere izinli)
 FROM alpine:3.20
 RUN apk add --no-cache openssh bash coreutils \
  && ssh-keygen -A \

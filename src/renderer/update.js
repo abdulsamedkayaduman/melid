@@ -13,7 +13,7 @@ export async function updateDialog(app, { check = false } = {}) {
     app.setUpdate(st);
   }
   if (!st.newer) {
-    toast(st.version ? `SSHDeck güncel (v${st.current})` : 'Sunucuda henüz yayınlanmış bir sürüm yok', 'ok');
+    toast(st.version ? `Melid güncel (v${st.current})` : 'Sunucuda henüz yayınlanmış bir sürüm yok', 'ok');
     return;
   }
 
@@ -26,7 +26,7 @@ export async function updateDialog(app, { check = false } = {}) {
     h('div.upd-ver', null, h('span', null, `v${st.current}`), icon('arrowRight', 14), h('b', null, `v${st.version}`), date ? h('span.muted', null, `· ${date}`) : null),
     st.notes ? h('pre.upd-notes', null, st.notes) : null,
     h('div.hint', null, st.canInstall
-      ? `${st.kindLabel} indirilecek (${formatSize(st.size)}). Kurulumdan sonra SSHDeck yeniden açılır; açık bağlantılar kapanır.`
+      ? `${st.kindLabel} indirilecek (${formatSize(st.size)}). Kurulumdan sonra Melid yeniden açılır; açık bağlantılar kapanır.`
       : 'Bu kurulum kendiliğinden güncellenemiyor (geliştirme sürümü, macOS ya da tanınmayan paket). Yeni sürümü indirme sayfasından alıp kurun.'),
     prog, err);
 
@@ -67,7 +67,7 @@ export async function updateDialog(app, { check = false } = {}) {
           cancelBtn.disabled = true;
           prog.classList.toggle('indeterminate', percent == null);
           if (percent != null) bar.style.width = percent + '%';
-          stat.textContent = `${step || 'Kuruluyor…'}${percent != null ? ` (%${percent})` : ''} · SSHDeck bitince yeniden açılacak`;
+          stat.textContent = `${step || 'Kuruluyor…'}${percent != null ? ` (%${percent})` : ''} · Melid bitince yeniden açılacak`;
           return;
         }
         const pct = total ? Math.min(100, (100 * done) / total) : 0;

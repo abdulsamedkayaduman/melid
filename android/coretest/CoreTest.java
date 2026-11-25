@@ -1,9 +1,9 @@
-import dev.sshdeck.core.Backup;
-import dev.sshdeck.core.Forwards;
-import dev.sshdeck.core.Host;
-import dev.sshdeck.core.Keys;
-import dev.sshdeck.core.Sftp;
-import dev.sshdeck.core.SshCore;
+import dev.melid.core.Backup;
+import dev.melid.core.Forwards;
+import dev.melid.core.Host;
+import dev.melid.core.Keys;
+import dev.melid.core.Sftp;
+import dev.melid.core.SshCore;
 
 import org.json.JSONArray;
 import org.json.JSONObject;
@@ -169,7 +169,7 @@ public class CoreTest {
         System.out.println("sftp");
         String home = sftp.home("c1");
         ok(home.startsWith("/"), "ev dizini: " + home);
-        String dir = home + "/.sshdeck-coretest";
+        String dir = home + "/.melid-coretest";
         try { sftp.remove("c1", dir); } catch (Exception ignored) { }
         sftp.mkdir("c1", dir);
         sftp.writeText("c1", dir + "/a.txt", "selam dünya\n");
@@ -294,7 +294,7 @@ public class CoreTest {
 
         System.out.println("anahtar üretme");
         for (String t : new String[]{"ed25519", "ecdsa", "rsa"}) {
-            JSONObject g = Keys.generate(t, "sshdeck-test");
+            JSONObject g = Keys.generate(t, "melid-test");
             JSONObject ins = Keys.inspect(g.getString("private"), null, "x");
             ok(ins.optString("fingerprint").equals(g.optString("fingerprint")), t + " üret + oku (" + g.optString("type") + ")");
             Files.writeString(new File(W, "authorized_keys").toPath(), g.getString("public") + "\n", java.nio.file.StandardOpenOption.APPEND);

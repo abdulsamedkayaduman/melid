@@ -1,4 +1,4 @@
-# SSHDeck
+# Melid
 
 Linux, Windows, macOS ve Android için açık kaynak SSH terminali ve SFTP dosya yöneticisi. Terminal, dosya aktarımı,
 tüneller ve toplu sunucu işleri tek pencerede; oturumlar cihazlar arasında uçtan uca şifreli eşitlenir.
@@ -35,10 +35,10 @@ Hazır paketler indirme sayfasında: https://sshdeck.abdulsamed.net
 macOS ilk kurulum:
 
 ```bash
-tar xzf SSHDeck-<sürüm>-mac-arm64.tar.gz
-mv SSHDeck.app /Applications/
-xattr -cr /Applications/SSHDeck.app
-codesign --force --deep --sign - /Applications/SSHDeck.app
+tar xzf Melid-<sürüm>-mac-arm64.tar.gz
+mv Melid.app /Applications/
+xattr -cr /Applications/Melid.app
+codesign --force --deep --sign - /Applications/Melid.app
 ```
 
 Uygulamalar yeni sürümü kendileri bildirir; Windows, Linux ve Android'de tek tıkla kurulur.

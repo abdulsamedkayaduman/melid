@@ -885,9 +885,9 @@ class SshManager extends EventEmitter {
     if (method === 'key' && /["\\\n\r]/.test(dstDir)) throw new Error('hedef klasör adı geçici anahtar için uygun değil');
     const names = t.items.map((it) => rpath.basename(it.src));
     const q = (x) => `'${String(x).replace(/'/g, `'\\''`)}'`;
-    const okA = await this.exec(A, 'command -v ssh >/dev/null && command -v tar >/dev/null && command -v bash >/dev/null && mktemp -d /tmp/sshdeck.XXXXXXXX');
+    const okA = await this.exec(A, 'command -v ssh >/dev/null && command -v tar >/dev/null && command -v bash >/dev/null && mktemp -d /tmp/melid.XXXXXXXX');
     const tmp = okA.stdout.trim();
-    if (okA.code !== 0 || !tmp.startsWith('/tmp/sshdeck.')) throw new Error('kaynakta ssh/tar/bash yok');
+    if (okA.code !== 0 || !tmp.startsWith('/tmp/melid.')) throw new Error('kaynakta ssh/tar/bash yok');
     // Geçici anahtar yalnız tar açabildiği için tar'ın korumaları önemli: GNU tar ../ ve sembolik bağlantıyla
     // klasör dışına yazmayı engeller (BusyBox tar o kadar sıkı değil) -> anahtar yönteminde GNU tar şart
     const okB = await this.exec(id, 'tar --version 2>/dev/null | head -1');
@@ -904,7 +904,7 @@ class SshManager extends EventEmitter {
       await this.exec(A, `pkill -f ${q(tmp)} ; rm -rf ${q(tmp)}`).catch(() => {});
       if (!marker) return;
       const ak = '"$HOME/.ssh/authorized_keys"';
-      await this.exec(id, `f=${ak}; [ -f "$f" ] && grep -vF ${q(marker)} "$f" > "$f.sshdeck" && cat "$f.sshdeck" > "$f"; rm -f "$f.sshdeck"`).catch(() => {});
+      await this.exec(id, `f=${ak}; [ -f "$f" ] && grep -vF ${q(marker)} "$f" > "$f.melid" && cat "$f.melid" > "$f"; rm -f "$f.melid"`).catch(() => {});
       const problems = [];
       try {
         const r = await this.exec(id, `{ grep -F ${q(marker)} ${ak} 2>/dev/null || true; } | wc -l`);
@@ -918,7 +918,7 @@ class SshManager extends EventEmitter {
     })());
     rec.abort = cleanup;
     try {
-      await this.exec(A, `umask 077; cat > ${q(tmp + '/kh')}`, { stdin: `sshdeck-hedef ${keyType(hk)} ${hk.toString('base64')}\n` });
+      await this.exec(A, `umask 077; cat > ${q(tmp + '/kh')}`, { stdin: `melid-hedef ${keyType(hk)} ${hk.toString('base64')}\n` });
       // İlerleme: hedefteki boyut saniyede bir ölçülür (GNU du; yoksa ilerleme sonda görünür)
       const sizeCmd = `du -sb -- ${names.map((n) => q(rpath.join(dstDir, n))).join(' ')} 2>/dev/null | awk '{s+=$1} END {print s+0}'`;
       const poll = setInterval(async () => {
@@ -929,7 +929,7 @@ class SshManager extends EventEmitter {
           'set -o pipefail',
           `trap 'rm -rf ${q(tmp)}' EXIT HUP INT TERM`,
           `tar -C ${q(srcDir)} -cf - -- ${names.map(q).join(' ')} | ssh -F /dev/null -p ${Number(B.port) || 22}${identity ? ` -i ${q(tmp + '/k')} -o IdentitiesOnly=yes` : ''}`
-            + ` -o BatchMode=yes -o ConnectTimeout=10 -o ServerAliveInterval=15 -o LogLevel=ERROR -o HostKeyAlias=sshdeck-hedef`
+            + ` -o BatchMode=yes -o ConnectTimeout=10 -o ServerAliveInterval=15 -o LogLevel=ERROR -o HostKeyAlias=melid-hedef`
             + ` -o UserKnownHostsFile=${q(tmp + '/kh')} -o GlobalKnownHostsFile=/dev/null -o StrictHostKeyChecking=yes`
             + ` -l ${q(B.username)} ${q(B.host)} ${q(extractCmd)}`,
         ].join('\n');
@@ -946,8 +946,8 @@ class SshManager extends EventEmitter {
         }
         const exp = (await this.exec(id, 'date -d "@$(( $(date +%s) + 1800 ))" +%Y%m%d%H%M 2>/dev/null')).stdout.trim();
         if (!/^\d{12}$/.test(exp)) throw new Error('hedefte süre sınırı hesaplanamadı (GNU date yok), geçici anahtar eklenmedi');
-        const kp = utils.generateKeyPairSync('ed25519', { comment: 'sshdeck' });
-        marker = 'sshdeck-gecici-' + crypto.randomBytes(6).toString('hex');
+        const kp = utils.generateKeyPairSync('ed25519', { comment: 'melid' });
+        marker = 'melid-gecici-' + crypto.randomBytes(6).toString('hex');
         const line = `restrict,command="${extractCmd}",expiry-time="${exp}" ${kp.public.trim().split(' ').slice(0, 2).join(' ')} ${marker}`;
         const ins = await this.exec(id, `umask 077; mkdir -p "$HOME/.ssh" && printf '%s\\n' ${q(line)} >> "$HOME/.ssh/authorized_keys" && echo OK`);
         if (!ins.stdout.includes('OK')) throw new Error('hedefe geçici anahtar eklenemedi');

@@ -1,8 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- Bildirim ikonu: Melid mührü (svg/melid-icon-mono-*.svg) tek renk; 128'lik çizim 24dp'ye ölçeklenir -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
-    android:width="24dp" android:height="24dp" android:viewportWidth="24" android:viewportHeight="24">
-    <path android:pathData="M5,6 L11,12 L5,18" android:strokeColor="#FFFFFFFF" android:strokeWidth="2.4"
+    android:width="24dp" android:height="24dp" android:viewportWidth="128" android:viewportHeight="128">
+    <path android:pathData="M64,18 A46,46 0 1,1 63.99,18 Z" android:strokeColor="#FFFFFFFF" android:strokeWidth="8"
+        android:fillColor="#00000000" />
+    <path android:pathData="M46,48 L62,64 L46,80" android:strokeColor="#FFFFFFFF" android:strokeWidth="11"
         android:strokeLineCap="round" android:strokeLineJoin="round" android:fillColor="#00000000" />
-    <path android:pathData="M13,18 L19,18" android:strokeColor="#FFFFFFFF" android:strokeWidth="2.4"
-        android:strokeLineCap="round" android:fillColor="#00000000" />
+    <path android:pathData="M68,72 L86,72 A5,5 0 0,1 86,82 L68,82 A5,5 0 0,1 68,72 Z" android:fillColor="#FFFFFFFF" />
 </vector>

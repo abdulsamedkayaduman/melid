@@ -11,7 +11,7 @@ export async function updateSheet(app, { check = false } = {}) {
     app.setUpdate(st);
   }
   if (!st.newer) {
-    toast(st.version ? `SSHDeck güncel (${st.current})` : 'Sunucuda henüz yayınlanmış bir sürüm yok');
+    toast(st.version ? `Melid güncel (${st.current})` : 'Sunucuda henüz yayınlanmış bir sürüm yok');
     return;
   }
   const bar = h('i');

@@ -224,11 +224,11 @@ export function settingsView(app) {
         row('key', 'SSH anahtarları', `${app.keys.length} anahtar`, icon('chevron', 18), () => app.push(keysView(app))),
         row('snippet', 'Hazır komutlar', `${(st.snippets || []).length} komut`, icon('chevron', 18), () => app.push(snippetsView(app))),
         row('lock', 'Bilinen sunucular', `${Object.keys(app.knownHosts).length} sunucu anahtarı`, icon('chevron', 18), () => app.push(knownHostsView(app))),
-        row('import', 'Masaüstü yedeğini içe aktar', 'SSHDeck (Linux) > Ayarlar > Yedekle ile alınan .json', null, () => importBackup(app)),
-        row('upload', 'Yedek dışa aktar', 'Masaüstü SSHDeck ile uyumlu; İndirilenler/SSHDeck', null, () => exportBackup(app))),
+        row('import', 'Masaüstü yedeğini içe aktar', 'Melid (Linux) > Ayarlar > Yedekle ile alınan .json', null, () => importBackup(app)),
+        row('upload', 'Yedek dışa aktar', 'Masaüstü Melid ile uyumlu; İndirilenler/Melid', null, () => exportBackup(app))),
       h('div.sec-title', null, 'Hakkında'),
       h('div.set-card', null,
-        row('info', 'SSHDeck Android', app.info ? `Sürüm ${app.info.version} · Android ${app.info.android}` : '', null, null),
+        row('info', 'Melid Android', app.info ? `Sürüm ${app.info.version} · Android ${app.info.android}` : '', null, null),
         row('upload', 'Güncellemeleri denetle', app.update?.newer ? `${app.update.version} kurulabilir` : 'Yeni sürüm çıkınca bildirim gelir', icon('chevron', 18), () => updateSheet(app, { check: true })),
         toggle('refresh', 'autoUpdate', 'Arka planda denetle', 'Açılışta ve 12 saatte bir', true)),
       h('div', { style: { height: '40px' } }));
@@ -254,7 +254,7 @@ export async function importBackup(app) {
   let bk;
   try { bk = JSON.parse(file.text); } catch { toast('Dosya JSON değil', { type: 'err' }); return; }
   if (!bk || !Array.isArray(bk.sessions)) {
-    toast('Bu bir SSHDeck yedek dosyası değil', { type: 'err' });
+    toast('Bu bir Melid yedek dosyası değil', { type: 'err' });
     return;
   }
   const hasSecrets = bk.encrypted && bk.sessions.some((s) => s.secrets);
@@ -293,7 +293,7 @@ export async function exportBackup(app) {
   const r = await sheet({
     title: 'Yedek dışa aktar',
     body: h('div', null, field('Yedek parolası', pw), field('Tekrar', pw2),
-      h('p.hint', null, 'Parola verirseniz kayıtlı parolalar bu parolayla şifrelenerek yedeğe eklenir. Dosya masaüstü SSHDeck ile içe aktarılabilir.'), err),
+      h('p.hint', null, 'Parola verirseniz kayıtlı parolalar bu parolayla şifrelenerek yedeğe eklenir. Dosya masaüstü Melid ile içe aktarılabilir.'), err),
     buttons: [{ label: 'Vazgeç', value: null }, { label: 'Dışa aktar', value: 'ok', primary: true }],
     onButton: async (v) => {
       if (!v) return true;
@@ -339,7 +339,7 @@ async function generateKey(app) {
   const type = h('select.input', null, [['ed25519', 'Ed25519 (önerilen)'], ['ecdsa', 'ECDSA P-256'], ['rsa', 'RSA 4096']].map(([v, l]) => h('option', { value: v }, l)));
   const name = h('input.input', { value: uniqueName(app, 'id_ed25519'), autocapitalize: 'off' });
   type.onchange = () => { name.value = uniqueName(app, 'id_' + type.value); };
-  const comment = h('input.input', { value: 'sshdeck@android', autocapitalize: 'off' });
+  const comment = h('input.input', { value: 'melid@android', autocapitalize: 'off' });
   const err = h('div.form-err');
   const r = await sheet({
     title: 'Yeni SSH anahtarı',
@@ -415,7 +415,7 @@ async function keyMenu(app, k, render) {
     const n = await promptText({ title: 'Yeniden adlandır', value: k.name, ok: 'Kaydet' });
     if (n && n.trim()) { await N.call('keyRename', { id: k.id, name: n.trim() }); await app.reload(); render(); }
   } else if (v === 'export') {
-    if (!await confirm({ title: 'Özel anahtar dışa aktarılsın mı?', message: 'Anahtar şifresiz olarak İndirilenler/SSHDeck klasörüne yazılır. Bu dosyaya erişen herkes sunucularınıza girebilir; işiniz bitince silin.', ok: 'Dışa aktar', danger: true })) return;
+    if (!await confirm({ title: 'Özel anahtar dışa aktarılsın mı?', message: 'Anahtar şifresiz olarak İndirilenler/Melid klasörüne yazılır. Bu dosyaya erişen herkes sunucularınıza girebilir; işiniz bitince silin.', ok: 'Dışa aktar', danger: true })) return;
     try { toast('Kaydedildi: ' + await N.call('keyExportPrivate', { id: k.id, name: k.name }), { type: 'ok' }); } catch (e) { toast(e.message, { type: 'err' }); }
   } else if (v === 'delete') {
     const users = app.sessions.filter((s) => s.keyId === k.id).map((s) => s.name);

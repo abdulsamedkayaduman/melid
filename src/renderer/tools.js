@@ -105,7 +105,7 @@ export async function keysDialog(app) {
     listEl.replaceChildren(...(keys.length ? keys.map((k) => h('div.key-row', null,
       icon('key', 15),
       h('div.key-main', null,
-        h('div', null, h('b', null, k.name), h('span.key-type', null, k.type.replace(/^ssh-/, '')), k.synced ? h('span.key-type', { title: 'Hesap eşitlemesiyle başka cihazdan geldi; SSHDeck içinde saklanır, ~/.ssh\'de dosyası yok' }, 'hesaptan') : null, k.comment ? h('span.muted', null, ' ' + k.comment) : null),
+        h('div', null, h('b', null, k.name), h('span.key-type', null, k.type.replace(/^ssh-/, '')), k.synced ? h('span.key-type', { title: 'Hesap eşitlemesiyle başka cihazdan geldi; Melid içinde saklanır, ~/.ssh\'de dosyası yok' }, 'hesaptan') : null, k.comment ? h('span.muted', null, ' ' + k.comment) : null),
         h('div.mono.key-fp', null, k.fingerprint), k.privatePath || k.synced ? null : h('div.hint.warn', null, 'Özel anahtar dosyası yok')),
       h('button.btn.sm', { type: 'button', title: 'Açık anahtarı panoya kopyala', onclick: () => { app.api.clipboard.write(k.publicKey); toast('Açık anahtar kopyalandı', 'ok'); } }, 'Kopyala'),
       app.active && app.active.state === 'connected'
@@ -123,13 +123,13 @@ export async function keysDialog(app) {
   const keys = await refresh();
   const has = (n) => keys.some((k) => k.name === n);
   const f = {
-    name: h('input.input', { value: has('id_ed25519') ? 'id_ed25519_sshdeck' : 'id_ed25519', spellcheck: false }),
+    name: h('input.input', { value: has('id_ed25519') ? 'id_ed25519_melid' : 'id_ed25519', spellcheck: false }),
     type: h('select.input', null, h('option', { value: 'ed25519' }, 'Ed25519 (önerilen)'), h('option', { value: 'rsa' }, 'RSA 4096'), h('option', { value: 'ecdsa' }, 'ECDSA 256')),
-    comment: h('input.input', { value: 'sshdeck', spellcheck: false }),
+    comment: h('input.input', { value: 'melid', spellcheck: false }),
     pass: h('input.input', { type: 'password', placeholder: 'boş bırakılabilir' }),
     pass2: h('input.input', { type: 'password' }),
   };
-  f.type.onchange = () => { if (/^id_(ed25519|rsa|ecdsa)(_sshdeck)?$/.test(f.name.value)) f.name.value = `id_${f.type.value}` + (keys.some((k) => k.name === `id_${f.type.value}`) ? '_sshdeck' : ''); };
+  f.type.onchange = () => { if (/^id_(ed25519|rsa|ecdsa)(_melid)?$/.test(f.name.value)) f.name.value = `id_${f.type.value}` + (keys.some((k) => k.name === `id_${f.type.value}`) ? '_melid' : ''); };
   const err = h('div.form-err');
   const generate = async () => {
     err.textContent = '';

@@ -45,7 +45,7 @@ console.log('OK windterm parola çözme');
 // Xshell: UTF-16LE .xsh in nested folders
 const xsh = (host, user, port = 22, proto = 'SSH') => Buffer.concat([Buffer.from([0xff, 0xfe]), Buffer.from(
   `[CONNECTION]\r\nHost=${host}\r\nPort=${port}\r\nProtocol=${proto}\r\n[CONNECTION:AUTHENTICATION]\r\nUserName=${user}\r\nPassword=abc==\r\n[SessionInfo]\r\nDescription=not\r\n`, 'utf16le')]);
-const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'sshdeck-imp-'));
+const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'melid-imp-'));
 fs.mkdirSync(path.join(dir, 'Müşteri', 'Test'), { recursive: true });
 fs.writeFileSync(path.join(dir, 'Müşteri', 'Test', 'app01.xsh'), xsh('192.168.1.10', 'deploy', 2200));
 fs.writeFileSync(path.join(dir, 'kök.xsh'), xsh('h1', 'u1'));

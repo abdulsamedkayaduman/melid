@@ -8,7 +8,7 @@ const { Store } = require('../src/main/store');
 
 // keyring yokmuş gibi davran (plain base64 yedeği) — ana parola bundan bağımsız çalışmalı
 const noKeyring = { available: () => false, encrypt: (s) => s, decrypt: (s) => s };
-const fresh = () => new Store(fs.mkdtempSync(path.join(os.tmpdir(), 'sshdeck-store-')), noKeyring);
+const fresh = () => new Store(fs.mkdtempSync(path.join(os.tmpdir(), 'melid-store-')), noKeyring);
 
 // --- ana parola ---
 let st = fresh();

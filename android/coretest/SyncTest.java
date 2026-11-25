@@ -1,4 +1,4 @@
-import dev.sshdeck.core.SyncCore;
+import dev.melid.core.SyncCore;
 
 import org.json.JSONArray;
 import org.json.JSONObject;
@@ -117,7 +117,7 @@ public class SyncTest {
 
         MemLocal L = new MemLocal();
         L.settings.put("fontSize", 11).put("uiTheme", "mint");
-        SyncCore.Client c = new SyncCore.Client(L, "SSHDeck test Android");
+        SyncCore.Client c = new SyncCore.Client(L, "Melid test Android");
         ok(expectError(() -> c.login("http://8.8.8.8:3150", "samed", "x")).contains("https gerekli"), "internette düz http reddedilir");
         ok(expectError(() -> c.login(server, "samed", "yanlis")).contains("parola yanlış"), "yanlış hesap parolası");
         c.login(server, "Samed", "hesapParolası-ş");
@@ -144,11 +144,11 @@ public class SyncTest {
         c.syncNow();
 
         MemLocal L2 = new MemLocal();
-        JSONObject gk = dev.sshdeck.core.Keys.generate("ed25519", "telefon");
+        JSONObject gk = dev.melid.core.Keys.generate("ed25519", "telefon");
         L2.keys = new JSONObject().put(gk.getString("fingerprint"), new JSONObject().put("name", "telefon-anahtari").put("type", gk.getString("type"))
                 .put("public", gk.getString("public")).put("private", gk.getString("private")).put("mtime", System.currentTimeMillis()));
         L2.saveSession(new JSONObject().put("id", "t1").put("name", "telefondan").put("host", "t").put("authType", "key").put("keyFp", gk.getString("fingerprint")));
-        SyncCore.Client c2 = new SyncCore.Client(L2, "SSHDeck test Android");
+        SyncCore.Client c2 = new SyncCore.Client(L2, "Melid test Android");
         ok(expectError(() -> c2.register(server, "telefon", "telefonParola1", "tel@ornek.com", "yanlis")).contains("Davet kodu yanlış"), "yanlış davet kodu");
         ok(expectError(() -> c2.register(server, "telefon", "telefonParola1", "", "davet")).contains("E-posta"), "e-posta zorunlu");
         c2.register(server, "telefon", "telefonParola1", "tel@ornek.com", "davet");

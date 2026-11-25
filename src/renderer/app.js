@@ -1,4 +1,4 @@
-import { h, icon, parseConnText, debounce, formatSize, IS_MAC, modKey, keyLabel } from './util.js';
+import { h, icon, brandIcon, wordmark, parseConnText, debounce, formatSize, IS_MAC, modKey, keyLabel } from './util.js';
 import { modal, promptText, confirmBox, hostKeyDialog, kbdDialog, contextMenu, toast, sessionEditor, settingsDialog, applyUiTheme } from './dialogs.js';
 import { SessionTab } from './tab.js';
 import { cleanErr } from './filepane.js';
@@ -62,7 +62,7 @@ class App {
   // Startup unlock: loops until the correct master password is entered, or the user skips.
   async promptUnlock() {
     for (;;) {
-      const pw = await promptText({ title: 'SSHDeck kilidi', label: 'Ana parolanızı girin (kayıtlı parolalara erişmek için)', password: true, ok: 'Kilidi aç', cancel: 'Atla' });
+      const pw = await promptText({ title: 'Melid kilidi', label: 'Ana parolanızı girin (kayıtlı parolalara erişmek için)', password: true, ok: 'Kilidi aç', cancel: 'Atla' });
       if (pw == null) { toast('Kilit açılmadı; kayıtlı parolalar bağlanırken sorulacak.', 'info', 5000); return; }
       if (await api.master.unlock(pw)) { this.settings.masterUnlocked = true; toast('Kilit açıldı', 'ok'); return; }
       toast('Ana parola yanlış', 'err');
@@ -101,7 +101,7 @@ class App {
     });
     this.btnFocus = tbtn('focus', 'Odak modu (Alt+Enter)', () => this.toggleFocus());
     const toolbar = h('header.toolbar', null,
-      h('div.brand', null, icon('terminal', 18), h('span', null, 'SSH', h('b', null, 'Deck'))),
+      h('div.brand', null, brandIcon(20), wordmark()),
       h('button.btn.primary.sm', { onclick: () => this.newSession(), title: 'Yeni oturum (Ctrl+Shift+N)' }, icon('plus', 14), 'Yeni oturum'),
       h('div.quick', null, icon('bolt', 14), this.quickInput),
       h('div.spacer'),
@@ -213,8 +213,9 @@ class App {
     const card = (ic, title, desc, fn) => h('button.w-card', { onclick: fn }, icon(ic, 22), h('b', null, title), h('span', null, desc));
     return h('div.welcome', null,
       h('div.w-inner', null,
-        h('div.w-logo', null, icon('terminal', 40)),
-        h('h1', null, 'SSH', h('b', null, 'Deck')),
+        h('div.w-logo', null, brandIcon(72)),
+        h('h1', null, wordmark()),
+        h('p.w-tag', null, 'SSH · SFTP'),
         h('p.muted', null, 'SSH terminali ve SFTP dosya yöneticisi bir arada.'),
         (this.recentEl = h('div.w-recent')),
         h('div.w-cards', null,
@@ -1122,7 +1123,7 @@ class App {
     });
     api.ssh.onExit((connId, sid) => this.tabByConn(connId)?.onShellExit(sid));
     api.onResume(() => { for (const t of this.tabs) t.onResume(); });
-    api.update.onAvailable((st) => { this.setUpdate(st); toast(`SSHDeck v${st.version} çıktı — durum çubuğundan güncelleyebilirsiniz`, 'info', 8000); });
+    api.update.onAvailable((st) => { this.setUpdate(st); toast(`Melid v${st.version} çıktı — durum çubuğundan güncelleyebilirsiniz`, 'info', 8000); });
     api.update.onShow(() => updateDialog(this));
     api.onSessionsUpdated((sessions, err) => {
       this.sessions = sessions;

@@ -52,7 +52,7 @@ const DEFAULT_SETTINGS = {
   uiTheme: 'dark',
   autoReconnect: true, // bağlantı beklenmedik koparsa yeniden dene
   logEnabled: false, // terminal çıktısını dosyaya kaydet
-  logDir: '', // boş = ~/Belgeler/SSHDeck/kayitlar
+  logDir: '', // boş = ~/Belgeler/Melid/kayitlar
   logStrip: true, // kayıtta ANSI renk/kontrol kodlarını temizle
   maxTransfers: 3, // aynı anda en fazla kaç aktarım (sekme başına)
   relayMethod: 'relay', // uzak -> uzak aktarımda son seçilen yöntem: 'relay' (bu bilgisayar) | 'key' | 'agent'

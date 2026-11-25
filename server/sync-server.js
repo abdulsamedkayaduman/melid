@@ -1,21 +1,21 @@
 #!/usr/bin/env node
 'use strict';
-// SSHDeck hesap/eşitleme sunucusu. Bağımlılıksız (yalnız Node). Uçtan uca şifreli: sunucu kasayı çözemez.
+// Melid hesap/eşitleme sunucusu. Bağımlılıksız (yalnız Node). Uçtan uca şifreli: sunucu kasayı çözemez.
 //
 // Sunucu ne görür: kullanıcı adı, e-posta, PBKDF2 tuzu, giriş anahtarının scrypt özeti, şifreli kasa anahtarı
 // (wrappedKey) ve şifreli kasa. Parolanın kendisi ve şifreleme anahtarı istemciden hiç çıkmaz.
 //
 // Sayfalar: /  tanıtım ve indirme sayfası (pages/home.html), /admin  yönetici paneli (pages/admin.html; yalnız
-// SSHDECK_ADMIN_IPS'ten ve SSHDECK_ADMIN_KEY ile). /guncelleme/latest.json ve /indir/<sürüm>/<dosya>: UPDATE_UPSTREAM
+// MELID_ADMIN_IPS'ten ve MELID_ADMIN_KEY ile). /guncelleme/latest.json ve /indir/<sürüm>/<dosya>: UPDATE_UPSTREAM
 // verilmişse oradaki sürüm dosyalarını dışarıya aktarır (imzalı akış; uygulamalar imzayı kendileri doğrular).
 //
 // Ortam değişkenleri:
 //   PORT (3150), HOST (0.0.0.0), DATA_DIR (./data)
-//   SSHDECK_REGISTER     open (varsayılan: herkes hesap açabilir) | invite (davet koduyla) | closed
-//   SSHDECK_SYNC_INVITE  invite kipinde davet kodu
-//   SSHDECK_MAX_USERS    en fazla hesap (1000)
-//   SSHDECK_ADMIN_KEY    yönetici paneli parolası (boşsa SSHDECK_SYNC_INVITE; ikisi de boşsa panel kapalı)
-//   SSHDECK_ADMIN_IPS    paneli açabilecek adresler, virgülle: 203.0.113.7, 192.168.0.0/16, 2001:db8::/48
+//   MELID_REGISTER     open (varsayılan: herkes hesap açabilir) | invite (davet koduyla) | closed
+//   MELID_SYNC_INVITE  invite kipinde davet kodu
+//   MELID_MAX_USERS    en fazla hesap (1000)
+//   MELID_ADMIN_KEY    yönetici paneli parolası (boşsa MELID_SYNC_INVITE; ikisi de boşsa panel kapalı)
+//   MELID_ADMIN_IPS    paneli açabilecek adresler, virgülle: 203.0.113.7, 192.168.0.0/16, 2001:db8::/48
 //                        (boşsa yalnız yerel ağ ve bu makine)
 //   UPDATE_FEED_URL      imzalı latest.json'ın adresi (ör. https://github.com/<kullanıcı>/<depo>/releases/latest/download/latest.json);
 //                        /guncelleme/latest.json buradan alınıp 5 dakika bellekte tutulur. İndirme adresleri akışın içinde.
@@ -53,7 +53,7 @@ function ipList(spec) {
     if (!x) continue;
     const [addr, bits] = x.split('/');
     const type = net.isIPv6(addr) ? 'ipv6' : net.isIPv4(addr) ? 'ipv4' : null;
-    if (!type) { console.error(`SSHDECK_ADMIN_IPS: geçersiz adres yok sayıldı: ${x}`); continue; }
+    if (!type) { console.error(`MELID_ADMIN_IPS: geçersiz adres yok sayıldı: ${x}`); continue; }
     if (bits) bl.addSubnet(addr, Number(bits), type); else bl.addAddress(addr, type);
   }
   return bl;
@@ -68,11 +68,18 @@ function createSyncServer({
 }) {
   const cfNets = ipList(CLOUDFLARE_NETS);
   const regMode = register || (invite ? 'invite' : 'open');
-  if (regMode === 'invite' && !invite) throw new Error('SSHDECK_REGISTER=invite için SSHDECK_SYNC_INVITE gerekli');
+  if (regMode === 'invite' && !invite) throw new Error('MELID_REGISTER=invite için MELID_SYNC_INVITE gerekli');
   const adminSecret = adminKey || invite;
   const adminNets = ipList(adminIps || PRIVATE_NETS);
-  const page = (n) => { try { return fs.readFileSync(path.join(pagesDir || path.join(__dirname, 'pages'), n), 'utf8'); } catch { return `<!doctype html><title>SSHDeck</title><p>${n} bulunamadı</p>`; } };
+  const page = (n) => { try { return fs.readFileSync(path.join(pagesDir || path.join(__dirname, 'pages'), n), 'utf8'); } catch { return `<!doctype html><title>Melid</title><p>${n} bulunamadı</p>`; } };
   const PAGES = { home: page('home.html'), admin: page('admin.html') };
+  // Favicon ve uygulama ikonları (pages/static, melid-brand/web)
+  const STATIC_TYPES = { '.png': 'image/png', '.svg': 'image/svg+xml', '.ico': 'image/x-icon' };
+  const STATIC = new Map();
+  try {
+    const dir = path.join(pagesDir || path.join(__dirname, 'pages'), 'static');
+    for (const n of fs.readdirSync(dir)) if (STATIC_TYPES[path.extname(n)]) STATIC.set('/' + n, { type: STATIC_TYPES[path.extname(n)], body: fs.readFileSync(path.join(dir, n)) });
+  } catch {}
 
   // Vekil arkasında herkes vekilin IP'siyle gelir: vekilin eklediği en sağdaki X-Forwarded-For girdisi kullanılır
   // (soldakileri istemci kendisi yazabilir). Cloudflare kipinde o girdi bir Cloudflare adresiyse gerçek istemci
@@ -104,7 +111,7 @@ function createSyncServer({
   const tokenHash = (t) => crypto.createHash('sha256').update(t).digest('hex');
   const started = Date.now();
   const counters = { syncs: 0, logins: 0, failedLogins: 0 }; // sunucu açıldığından beri
-  // İstemci kendini X-SSHDeck-Client başlığıyla tanıtır (ör. "SSHDeck 1.5.0 linux"); yalnız istatistik için
+  // İstemci kendini X-SSHDeck-Client başlığıyla tanıtır (ör. "Melid 1.5.0 linux"); yalnız istatistik için
   const clientName = (req) => String(req.headers['x-sshdeck-client'] || req.headers['user-agent'] || '').replace(/[^\w .:;/()+-]/g, '').slice(0, 60);
   const newToken = (user, req) => {
     const t = crypto.randomBytes(32).toString('base64url');
@@ -327,7 +334,7 @@ function createSyncServer({
       return { token: newToken(u, req), wrappedKey: rec.wrappedKey };
     },
 
-    // Yönetici paneli (/admin): yalnız SSHDECK_ADMIN_IPS'ten ve yönetici parolasıyla. Kasa içerikleri şifreli olduğundan
+    // Yönetici paneli (/admin): yalnız MELID_ADMIN_IPS'ten ve yönetici parolasıyla. Kasa içerikleri şifreli olduğundan
     // burada yalnız hesap bilgileri, sayılar, boyutlar ve zamanlar görünür.
     'POST /api/admin/stats': (req, b) => {
       adminCheck(req, b);
@@ -374,7 +381,7 @@ function createSyncServer({
   let urlFeed = null; let urlFeedWait = null;
   const fetchFeed = (u, hops = 0) => new Promise((resolve, reject) => {
     const target = new URL(u);
-    (target.protocol === 'https:' ? https : http).get(target, { timeout: 20000, headers: { 'User-Agent': 'SSHDeck-sync' } }, (r) => {
+    (target.protocol === 'https:' ? https : http).get(target, { timeout: 20000, headers: { 'User-Agent': 'Melid-sync' } }, (r) => {
       if ([301, 302, 303, 307, 308].includes(r.statusCode) && r.headers.location && hops < 5) {
         r.resume(); return resolve(fetchFeed(new URL(r.headers.location, target).toString(), hops + 1));
       }
@@ -443,9 +450,14 @@ function createSyncServer({
       const htmlHead = (status) => res.writeHead(status, {
         'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff',
         'Referrer-Policy': 'no-referrer', 'X-Frame-Options': 'DENY',
-        'Content-Security-Policy': `default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'self'; img-src data:; frame-ancestors 'none'; base-uri 'none'; form-action 'none'`,
+        'Content-Security-Policy': `default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'self'; img-src 'self' data:; frame-ancestors 'none'; base-uri 'none'; form-action 'none'`,
       });
       if (url.pathname === '/' || url.pathname === '/index.html') { htmlHead(200); return res.end(PAGES.home); }
+      const st = STATIC.get(url.pathname);
+      if (st) {
+        res.writeHead(200, { 'Content-Type': st.type, 'Content-Length': st.body.length, 'Cache-Control': 'public, max-age=86400', 'X-Content-Type-Options': 'nosniff' });
+        return res.end(req.method === 'HEAD' ? undefined : st.body);
+      }
       // Yönetici sayfası izinli adreslerin dışında hiç yokmuş gibi davranır
       if (url.pathname === '/admin' || url.pathname === '/admin/') {
         if (!adminSecret || !adminIpOk(req)) return reply(404, { error: 'Bulunamadı' });
@@ -487,11 +499,11 @@ if (require.main === module) {
   const env = process.env;
   const handler = createSyncServer({
     dataDir,
-    register: (env.SSHDECK_REGISTER || 'open').toLowerCase(),
-    invite: env.SSHDECK_SYNC_INVITE || '',
-    adminKey: env.SSHDECK_ADMIN_KEY || '',
-    adminIps: env.SSHDECK_ADMIN_IPS || '',
-    maxUsers: Number(env.SSHDECK_MAX_USERS) || 1000,
+    register: (env.MELID_REGISTER || 'open').toLowerCase(),
+    invite: env.MELID_SYNC_INVITE || '',
+    adminKey: env.MELID_ADMIN_KEY || '',
+    adminIps: env.MELID_ADMIN_IPS || '',
+    maxUsers: Number(env.MELID_MAX_USERS) || 1000,
     updateUpstream: env.UPDATE_UPSTREAM || '',
     updateFeedUrl: env.UPDATE_FEED_URL || '',
     trustProxy: /^cloudflare$/i.test(env.TRUST_PROXY || '') ? 'cloudflare' : /^(1|true|yes)$/i.test(env.TRUST_PROXY || ''),
@@ -501,7 +513,7 @@ if (require.main === module) {
     ? https.createServer({ cert: fs.readFileSync(process.env.TLS_CERT), key: fs.readFileSync(process.env.TLS_KEY) }, handler)
     : http.createServer(handler);
   srv.listen(port, host, () => {
-    console.log(`SSHDeck eşitleme sunucusu: ${tls ? 'https' : 'http'}://${host}:${port}  (veri: ${dataDir})`);
-    console.log(`Hesap açma: ${env.SSHDECK_REGISTER || 'open'}; yönetici paneli: ${env.SSHDECK_ADMIN_KEY || env.SSHDECK_SYNC_INVITE ? 'açık (/admin)' : 'kapalı (SSHDECK_ADMIN_KEY yok)'}`);
+    console.log(`Melid eşitleme sunucusu: ${tls ? 'https' : 'http'}://${host}:${port}  (veri: ${dataDir})`);
+    console.log(`Hesap açma: ${env.MELID_REGISTER || 'open'}; yönetici paneli: ${env.MELID_ADMIN_KEY || env.MELID_SYNC_INVITE ? 'açık (/admin)' : 'kapalı (MELID_ADMIN_KEY yok)'}`);
   });
 }
