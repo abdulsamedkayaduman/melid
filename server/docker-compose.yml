@@ -26,6 +26,6 @@ services:
     # taklit edebilirdi. Vekilsiz, yerel ağda kullanacaksanız (uygulamadaki "Yerel ağda ara" 3150'yi bulur):
     #   ports: ["3150:3150"]  ve  TRUST_PROXY=0
     volumes:
-      - sshdeck-sync-data:/data
+      - melid-sync-data:/data
 volumes:
-  sshdeck-sync-data:
+  melid-sync-data:

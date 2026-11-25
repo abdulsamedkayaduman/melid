@@ -97,7 +97,7 @@ public final class SyncCore {
         PKCS5S2ParametersGenerator g = new PKCS5S2ParametersGenerator(new SHA512Digest());
         g.init(password.getBytes(StandardCharsets.UTF_8), Base64.getDecoder().decode(saltB64), iter);
         byte[] mk = ((KeyParameter) g.generateDerivedParameters(256)).getKey();
-        return new Keys(b64(hkdf(mk, "sshdeck-auth")), hkdf(mk, "sshdeck-wrap"));
+        return new Keys(b64(hkdf(mk, "melid-auth")), hkdf(mk, "melid-wrap"));
     }
 
     /** HKDF-SHA256, tuz yok (= 32 sıfır bayt), 32 bayt çıktı (tek blok). Node hkdfSync ile aynı. */
@@ -145,7 +145,7 @@ public final class SyncCore {
     /** [recAuth (base64), recWrap] */
     static Object[] recoveryKeys(String code) throws Exception {
         byte[] raw = recoveryBytes(code);
-        return new Object[]{b64(hkdf(raw, "sshdeck-recovery-auth")), hkdf(raw, "sshdeck-recovery-wrap")};
+        return new Object[]{b64(hkdf(raw, "melid-recovery-auth")), hkdf(raw, "melid-recovery-wrap")};
     }
 
     static byte[] random(int n) { byte[] b = new byte[n]; RNG.nextBytes(b); return b; }
@@ -398,7 +398,7 @@ public final class SyncCore {
                 try {
                     String server = "http://" + host + ":" + port;
                     JSONObject info = new JSONObject(http("GET", server + "/api/info", null, null, null, 3000).body);
-                    if ("SSHDeck".equals(info.optString("app")))
+                    if ("Melid".equals(info.optString("app")))
                         found.add(new JSONObject().put("server", server).put("host", host).put("register", info.optBoolean("register")));
                 } catch (Exception ignored) { }
             });
@@ -436,7 +436,7 @@ public final class SyncCore {
         c.setReadTimeout(timeoutMs);
         c.setUseCaches(false);
         c.setRequestProperty("Accept", "application/json");
-        if (client != null && !client.isEmpty()) c.setRequestProperty("X-SSHDeck-Client", client);
+        if (client != null && !client.isEmpty()) c.setRequestProperty("X-Melid-Client", client);
         if (token != null) c.setRequestProperty("Authorization", "Bearer " + token);
         try {
             if (body != null) {
@@ -523,7 +523,7 @@ public final class SyncCore {
             server = normServer(server);
             user = user == null ? "" : user.trim().toLowerCase(Locale.ROOT);
             JSONObject info = req(server, "GET", "/api/info", null, null);
-            if (!"SSHDeck".equals(info.optString("app"))) throw new Exception("Bu bir Melid eşitleme sunucusu değil");
+            if (!"Melid".equals(info.optString("app"))) throw new Exception("Bu bir Melid eşitleme sunucusu değil");
             String salt = b64(random(16));
             Keys k = deriveKeys(password, salt, KDF_ITER);
             byte[] vk = random(32);

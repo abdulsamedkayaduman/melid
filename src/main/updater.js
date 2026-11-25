@@ -10,7 +10,7 @@ const fs = require('fs');
 const fsp = require('fs/promises');
 
 // MELID_UPDATE_URL: deneme için başka bir kaynak (imza yine gömülü anahtarla doğrulanır)
-const FEED_URL = process.env.MELID_UPDATE_URL || 'https://sshdeck.abdulsamed.net/guncelleme/latest.json';
+const FEED_URL = process.env.MELID_UPDATE_URL || 'https://melid.abdulsamed.net/guncelleme/latest.json';
 // Ed25519 açık anahtarı (ham 32 bayt, base64) — Android'de de aynısı (Updater.java)
 const PUBLIC_KEY = 'JZZUOZm0s+7S9kpAprN5IKx+6fMm07tbSeq5jkCy2Fo=';
 
@@ -48,7 +48,7 @@ function parseFeed(text, pubKey = PUBLIC_KEY) {
   const ok = crypto.verify(null, payload, publicKeyObject(pubKey), Buffer.from(outer.sig, 'base64'));
   if (!ok) throw new Error('Güncelleme bilgisinin imzası geçersiz');
   const info = JSON.parse(payload.toString('utf8'));
-  if (info.app !== 'sshdeck' || !info.version || !info.files) throw new Error('Güncelleme bilgisi okunamadı');
+  if (info.app !== 'melid' || !info.version || !info.files) throw new Error('Güncelleme bilgisi okunamadı');
   return info;
 }
 

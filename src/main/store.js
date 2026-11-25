@@ -29,7 +29,8 @@ function decWithKey(b64, key) {
   d.setAuthTag(tag);
   return Buffer.concat([d.update(data), d.final()]).toString('utf8');
 }
-const MASTER_CHECK = 'sshdeck-master-ok';
+const MASTER_CHECK = 'melid-master-ok';
+const MASTER_CHECK_OLD = 'sshdeck-master-ok'; // SSHDeck'te belirlenmiş ana parola
 
 const DEFAULT_SETTINGS = {
   fontFamily: "'JetBrains Mono', 'Fira Code', 'DejaVu Sans Mono', Menlo, monospace",
@@ -158,7 +159,7 @@ class Store {
     });
     const { master, updateSkip, updateLastCheck, ...settings } = this.settings;
     return {
-      app: 'SSHDeck', format: 1, exportedAt: new Date().toISOString(),
+      app: 'Melid', format: 1, exportedAt: new Date().toISOString(),
       encrypted: !!key, secretsSalt: salt ? salt.toString('base64') : undefined,
       settings, sessions,
     };
@@ -208,7 +209,8 @@ class Store {
     if (!m || !m.salt) return false;
     try {
       const key = deriveKey(passphrase, Buffer.from(m.salt, 'base64'));
-      if (decWithKey(m.check, key) !== MASTER_CHECK) return false;
+      const chk = decWithKey(m.check, key);
+      if (chk !== MASTER_CHECK && chk !== MASTER_CHECK_OLD) return false;
       this.masterKey = key;
       return true;
     } catch { return false; }

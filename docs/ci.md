@@ -44,7 +44,7 @@ Etiketli her sürümde `ci/publish-update.sh` dosyaları Forgejo **generic paket
 ```
 
 Forgejo yalnız ev ağında; dışarıya eşitleme sunucusu aktarır (`UPDATE_UPSTREAM`, docs/senkron.md):
-`https://sshdeck.abdulsamed.net/guncelleme/latest.json` ve `https://sshdeck.abdulsamed.net/indir/<sürüm>/<dosya>`.
+`https://melid.abdulsamed.net/guncelleme/latest.json` ve `https://melid.abdulsamed.net/indir/<sürüm>/<dosya>`.
 `latest.json`'daki indirme adresleri bu genel adreslerdir (`PUBLIC_DOWNLOAD_BASE`, derle.yml). 1.9.0 ve öncesi uygulamalar
 hâlâ Forgejo'daki `latest.json`'a bakar; o dosya da her sürümde yenilenir, böylece yeni adrese geçerler.
 
@@ -91,7 +91,7 @@ Uygulama içi güncelleme macOS'ta kurulum yapmaz: yeni sürüm bildirilir, "İn
    FORGEJO_TOKEN=<erişim token'ı> bash ci/set-android-secrets.sh
    ```
 
-   (`android/keystore.properties` + `sshdeck-release.jks`'i okur, değerleri ekrana yazmaz.) Secret yoksa `android`
+   (`android/keystore.properties` + `melid-release.jks`'i okur, değerleri ekrana yazmaz.) Secret yoksa `android`
    job'u bilerek hata verir: farklı anahtarla imzalı APK telefondaki uygulamanın üzerine kurulamaz.
 4. **Güncelleme secret'ları:**
    - `UPDATE_SIGNING_KEY` — `latest.json` imza anahtarı (Ed25519, PEM). Yerel kopyası `update-signing-key.pem`

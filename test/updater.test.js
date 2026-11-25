@@ -23,7 +23,7 @@ const u = require('../src/main/updater');
   const pem = privateKey.export({ type: 'pkcs8', format: 'pem' });
   const data = Buffer.from('Melid güncelleme deneme dosyası\n'.repeat(5000));
   const info = {
-    app: 'sshdeck', version: '9.9.9', date: '2026-10-09T10:00:00Z', notes: '- yeni şey',
+    app: 'melid', version: '9.9.9', date: '2026-10-09T10:00:00Z', notes: '- yeni şey',
     files: { 'linux-appimage': { name: 'a.AppImage', url: '', sha256: crypto.createHash('sha256').update(data).digest('hex'), size: data.length } },
   };
   const feed = u.signFeed(info, pem);

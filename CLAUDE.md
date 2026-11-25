@@ -62,7 +62,7 @@ src/main/sync.js         Hesap eşitlemesi (AccountSync): giriş/kayıt/çıkı�
                          bağımlılıksız; server/Dockerfile + docker-compose.yml, Dokploy). Kayıt herkese açık (MELID_REGISTER),
                          e-posta zorunlu; / tanıtım+indirme (server/pages/home.html), /admin yönetici (MELID_ADMIN_IPS +
                          MELID_ADMIN_KEY), /guncelleme ve /indir: UPDATE_UPSTREAM'den sürüm dosyaları. Genel sunucu
-                         sshdeck.abdulsamed.net (DEFAULT_SERVER; Dokploy main'e push'ta yeniden dağıtır). Ayrıntı: docs/senkron.md
+                         melid.abdulsamed.net (DEFAULT_SERVER; Dokploy main'e push'ta yeniden dağıtır). Ayrıntı: docs/senkron.md
 src/main/conncheck.js    Toplu işler: ayrı, sormayan SshManager ile oturumlara bağlanır (runOne/runSessions), önce TCP yoklaması
                          + gerekirse ping ile erişim teşhisi (reach: dns/ip/port/ssh), sonra iş: denetim (sınıflandırma
                          ok/auth/input/unreachable/hostkey/error, need: düzeltmek için sorulacak alan), execTask (komut),
@@ -146,14 +146,12 @@ derlemede `../node_modules`'tan kopyalanır); SSH Java'da: JSch (mwiede) + Bounc
 ## Ad: Melid (eski adı SSHDeck)
 
 Uygulama 1.10'da SSHDeck'ten Melid'e geçti (marka dosyaları: `build/`, Android `res/mipmap-*`, `server/pages/static/`).
-Şunlar **bilerek eski adla kaldı**, değiştirmeyin:
+Protokol, şifreleme dizeleri ve yedek biçimi de `melid`: SSHDeck hesapları ve 1.9 sunucusuyla uyum bilerek bırakıldı.
+Eski adın kaldığı yerler, değiştirmeyin:
 - `app.setName('SSHDeck')` (main.js): anahtarlıktaki şifreleme anahtarı ("SSHDeck Safe Storage") uygulama adına bağlı;
   değişirse kayıtlı parolalar çözülemez. Veri klasörü yine de `Melid` (`migrateDataDir()` eski `SSHDeck` klasörünü taşır).
-- HKDF/doğrulama dizeleri `sshdeck-auth`, `sshdeck-wrap`, `sshdeck-recovery-*`, `sshdeck-master-ok`.
-- Protokol: `/api/info` `app: 'SSHDeck'`, `X-SSHDeck-Client` başlığı, güncelleme akışında `app: 'sshdeck'`,
-  yedek dosyasında `app: 'SSHDeck'` (eski sürümler okuyabilsin).
-- Forgejo paket yolu `generic/sshdeck` (1.9 ve öncesi buraya bakar), Docker birimi `sshdeck-sync-data`, domain
-  `sshdeck.abdulsamed.net`, yerel imza dosyası `sshdeck-release.jks`.
+- `MASTER_CHECK_OLD` (store.js): SSHDeck'te belirlenmiş ana parolanın doğrulayıcısı.
+- Yedek içe aktarma `app: 'SSHDeck'` yedeklerini de kabul eder.
 
 ## Kurallar
 

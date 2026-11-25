@@ -4,7 +4,7 @@ Linux, Windows, macOS ve Android için açık kaynak SSH terminali ve SFTP dosya
 tüneller ve toplu sunucu işleri tek pencerede; oturumlar cihazlar arasında uçtan uca şifreli eşitlenir.
 Arayüz Türkçe. Electron + xterm.js + ssh2; Android'de WebView + JSch.
 
-**İndir:** https://sshdeck.abdulsamed.net
+**İndir:** https://melid.abdulsamed.net
 
 ## Özellikler
 
@@ -23,7 +23,7 @@ Arayüz Türkçe. Electron + xterm.js + ssh2; Android'de WebView + JSch.
 
 ## Kurulum
 
-Hazır paketler indirme sayfasında: https://sshdeck.abdulsamed.net
+Hazır paketler indirme sayfasında: https://melid.abdulsamed.net
 
 | Platform | Paket | Not |
 |---|---|---|
@@ -74,7 +74,7 @@ macOS'ta Ctrl yerine Cmd.
 
 ## Eşitleme sunucusu
 
-`server/` bağımlılıksız bir Node uygulaması (Docker / Dokploy dosyaları içinde). Genel sunucu `sshdeck.abdulsamed.net`;
+`server/` bağımlılıksız bir Node uygulaması (Docker / Dokploy dosyaları içinde). Genel sunucu `melid.abdulsamed.net`;
 kendi sunucunuzu kurmak ve güvenlik modeli için [docs/senkron.md](docs/senkron.md). Sunucu kasaların içeriğini göremez:
 yalnız kullanıcı adı, e-posta ve şifreli kasayı saklar.
 

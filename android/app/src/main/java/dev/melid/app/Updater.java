@@ -40,7 +40,7 @@ import java.util.Locale;
  * PackageInstaller ile (Android onay ekranı gösterir). APK aynı anahtarla imzalı olmalı, yoksa Android reddeder.
  */
 public final class Updater {
-    static final String FEED_URL = "https://sshdeck.abdulsamed.net/guncelleme/latest.json";
+    static final String FEED_URL = "https://melid.abdulsamed.net/guncelleme/latest.json";
     static final String PUBLIC_KEY = "JZZUOZm0s+7S9kpAprN5IKx+6fMm07tbSeq5jkCy2Fo=";
     static final String CHANNEL = "updates";
     static final int NOTIF_ID = 2;
@@ -93,7 +93,7 @@ public final class Updater {
         v.update(payload, 0, payload.length);
         if (sig.length != 64 || !v.verifySignature(sig)) throw new Exception("Güncelleme bilgisinin imzası geçersiz");
         JSONObject in = new JSONObject(new String(payload, StandardCharsets.UTF_8));
-        if (!"sshdeck".equals(in.optString("app")) || in.optString("version").isEmpty() || in.optJSONObject("files") == null)
+        if (!"melid".equals(in.optString("app")) || in.optString("version").isEmpty() || in.optJSONObject("files") == null)
             throw new Exception("Güncelleme bilgisi okunamadı");
         return in;
     }

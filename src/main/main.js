@@ -654,7 +654,7 @@ function registerIpc() {
     if (r.canceled) return null;
     let obj;
     try { obj = JSON.parse(await fsp.readFile(r.filePaths[0], 'utf8')); } catch (e) { throw new Error(`Yedek okunamadı: ${e.message}`); }
-    if (!obj || obj.app !== 'SSHDeck' || !Array.isArray(obj.sessions)) throw new Error('Bu bir Melid yedek dosyası değil');
+    if (!obj || !['Melid', 'SSHDeck'].includes(obj.app) || !Array.isArray(obj.sessions)) throw new Error('Bu bir Melid yedek dosyası değil');
     // local master must be unlocked to store secrets
     if (store.masterEnabled() && !store.isUnlocked()) {
       const pw = await uiRequest('password', { title: 'Ana parola', label: 'İçe aktarmak için ana parolanızı girin' });

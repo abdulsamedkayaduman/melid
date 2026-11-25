@@ -256,7 +256,7 @@ const names = (st) => st.sessions.map((s) => s.name).sort().join(',');
   assert.deepEqual(found, [{ server: `http://127.0.0.1:${port}`, host: '127.0.0.1', register: true }]);
   assert.equal(normServer('192.168.1.50'), 'http://192.168.1.50:3150', 'portsuz adrese varsayılan port');
   assert.equal(normServer('https://senkron.ornek.com'), 'https://senkron.ornek.com');
-  assert.equal(normServer('sshdeck.abdulsamed.net'), 'https://sshdeck.abdulsamed.net', 'alan adı: https');
+  assert.equal(normServer('melid.abdulsamed.net'), 'https://melid.abdulsamed.net', 'alan adı: https');
   assert.equal(normServer('senkron.ornek.com:8443'), 'https://senkron.ornek.com:8443');
   assert.equal(normServer('nas'), 'http://nas:3150', 'tek parçalı ad yerel');
   assert.equal(normServer('nas.local'), 'http://nas.local:3150');

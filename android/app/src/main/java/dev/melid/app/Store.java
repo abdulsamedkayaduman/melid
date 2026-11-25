@@ -680,7 +680,7 @@ public class Store implements SyncCore.Local {
             out.put(o);
         }
         JSONObject bk = new JSONObject();
-        bk.put("app", "SSHDeck");
+        bk.put("app", "Melid");
         bk.put("format", 1);
         bk.put("exportedAt", new java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", java.util.Locale.ROOT) {{
             setTimeZone(java.util.TimeZone.getTimeZone("UTC"));

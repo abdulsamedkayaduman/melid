@@ -5,8 +5,8 @@ Uçtan uca şifrelidir: sunucu verileri çözemez.
 
 ## Genel sunucu
 
-Uygulamalarda hesap penceresinde `sshdeck.abdulsamed.net` hazır gelir; herkes e-posta adresiyle hesap açabilir.
-Aynı sunucu `https://sshdeck.abdulsamed.net/` adresinde tanıtım ve indirme sayfasını, `/guncelleme/latest.json` ve
+Uygulamalarda hesap penceresinde `melid.abdulsamed.net` hazır gelir; herkes e-posta adresiyle hesap açabilir.
+Aynı sunucu `https://melid.abdulsamed.net/` adresinde tanıtım ve indirme sayfasını, `/guncelleme/latest.json` ve
 `/indir/<sürüm>/<dosya>` adreslerinde uygulama güncellemelerini sunar (Dokploy `melid-server`, `main`'e her push'ta
 yeniden dağıtılır; Cloudflare tüneli → Traefik → konteyner).
 
@@ -50,7 +50,7 @@ bu cihazın yerel IPv4 ağlarındaki (en fazla /24) adreslerde 3150 portunu tara
 - `/admin`: yönetici sayfası (`server/pages/admin.html`). Yalnız `MELID_ADMIN_IPS`'teki adreslerden açılır, diğerlerine 404
   döner; ayrıca `MELID_ADMIN_KEY` ister. Hesap ve cihaz sayısı, son 7 günde etkin olanlar, toplam kasa boyutu, sunucu
   açıldığından beri eşitleme/giriş/hatalı giriş sayıları; hesap başına kullanıcı adı, e-posta, son görülme, son değişiklik,
-  kasa sürümü/boyutu, oturum açık cihazlar (istemciler kendini `X-SSHDeck-Client` başlığıyla tanıtır). Hesap silinebilir.
+  kasa sürümü/boyutu, oturum açık cihazlar (istemciler kendini `X-Melid-Client` başlığıyla tanıtır). Hesap silinebilir.
   Kasa içerikleri şifreli olduğundan oturum adı, adres ya da parola burada hiçbir zaman görünmez.
   API: `POST /api/admin/stats {key}`, `POST /api/admin/delete {key, user}`.
 
@@ -63,14 +63,14 @@ oturumlar kalır. E-posta değişimi: `POST /api/email`.
 ## Docker / Dokploy
 
 `server/` içinde `Dockerfile` (node:22-alpine, root olmayan kullanıcı, sağlık kontrolü) ve `docker-compose.yml` var.
-Veriler `sshdeck-sync-data` adlı birimde (`/data`) durur; yeniden dağıtımda kaybolmaz.
+Veriler `melid-sync-data` adlı birimde (`/data`) durur; yeniden dağıtımda kaybolmaz.
 
 **Dokploy:**
 1. Create Service > **Compose** (Docker Compose). Kaynak: bu depo, dal `main`, **Compose Path** `./server/docker-compose.yml`.
 2. **Environment**: `MELID_ADMIN_KEY=<uzun rastgele parola>` (ör. `openssl rand -base64 24`), `MELID_ADMIN_IPS=<ev IP'niz>`,
    isteğe bağlı `UPDATE_UPSTREAM`.
 3. **Domains**: alan adı, servis `sync`, container port `3150`.
-4. **Deploy**. Kontrol: `https://<alan-adı>/api/info` -> `{"app":"SSHDeck","api":2,"register":true,"invite":false}`.
+4. **Deploy**. Kontrol: `https://<alan-adı>/api/info` -> `{"app":"Melid","api":2,"register":true,"invite":false}`.
 
 `TRUST_PROXY=1` compose'ta varsayılan (Cloudflare arkasında `cloudflare`). Compose portu dışarı açmaz: istekler yalnız
 Traefik'ten gelir (vekili atlayan istek IP başlıklarını taklit edebilirdi). Vekilsiz yerel ağ kurulumu için
@@ -78,15 +78,15 @@ Traefik'ten gelir (vekili atlayan istek IP başlıklarını taklit edebilirdi). 
 
 Düz Docker: `cd server && MELID_ADMIN_KEY=... docker compose up -d --build`.
 
-Yedek: `docker run --rm -v <proje>_sshdeck-sync-data:/d -v $PWD:/b alpine tar czf /b/melid-sync.tgz -C /d .`
+Yedek: `docker run --rm -v <proje>_melid-sync-data:/d -v $PWD:/b alpine tar czf /b/melid-sync.tgz -C /d .`
 (birim adı `docker volume ls` ile görülür; Dokploy proje adını önek yapar).
 
 ## Güvenlik modeli
 
 ```
 hesap parolası ──PBKDF2-SHA512 (600 000, kullanıcı tuzu)──► ana anahtar
-    ana anahtar ──HKDF "sshdeck-auth"──► authKey  ──► sunucu (scrypt özeti saklanır)
-    ana anahtar ──HKDF "sshdeck-wrap"──► wrapKey  (cihazdan çıkmaz)
+    ana anahtar ──HKDF "melid-auth"──► authKey  ──► sunucu (scrypt özeti saklanır)
+    ana anahtar ──HKDF "melid-wrap"──► wrapKey  (cihazdan çıkmaz)
 kasa anahtarı VK (rastgele 32 bayt) ──AES-256-GCM(wrapKey)──► wrappedKey (sunucuda)
 kasa JSON'u ──AES-256-GCM(VK)──► sunucuda yalnız bu şifreli blob
 ```
@@ -124,8 +124,8 @@ Hesap penceresi > Kurtarma anahtarı (Android: Hesap ve eşitleme > Kurtarma ana
 bayttan oluşan kod `ABCD-EFGH-…` (base32, 32 harf) bir kez gösterilir, kopyalanabilir ya da metin dosyasına kaydedilebilir.
 
 ```
-kod ──HKDF "sshdeck-recovery-auth"──► recAuth  ──► sunucu (scrypt özeti saklanır)
-kod ──HKDF "sshdeck-recovery-wrap"──► recWrap  ──► VK'yı sarar (recWrapped sunucuda)
+kod ──HKDF "melid-recovery-auth"──► recAuth  ──► sunucu (scrypt özeti saklanır)
+kod ──HKDF "melid-recovery-wrap"──► recWrap  ──► VK'yı sarar (recWrapped sunucuda)
 ```
 
 - Oluşturma/kaldırma hesap parolasıyla doğrulanır (`POST /api/recovery`); yalnız jetonla olmaz, çalınan jeton yetmesin.

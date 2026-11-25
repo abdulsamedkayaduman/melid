@@ -3,7 +3,7 @@ import { h, icon, formatSize } from './util.js';
 import { modal, toast } from './dialogs.js';
 
 const api = window.api;
-const DOWNLOAD_PAGE = 'https://sshdeck.abdulsamed.net/#indir';
+const DOWNLOAD_PAGE = 'https://melid.abdulsamed.net/#indir';
 
 /** check: önce sunucuya sor (Ayarlar > "Şimdi denetle"); yoksa son bilinen durumu göster. */
 export async function updateDialog(app, { check = false } = {}) {

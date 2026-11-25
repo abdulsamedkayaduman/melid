@@ -37,7 +37,7 @@ async function loginDialog(app, { reauth } = {}) {
   try { lastServer = localStorage.getItem('syncServer') || ''; lastUser = localStorage.getItem('syncUser') || ''; } catch {}
   if (reauth) { lastServer = reauth.server; lastUser = reauth.user; }
   const f = {
-    server: h('input.input', { type: 'text', value: lastServer, placeholder: 'örn. sshdeck.abdulsamed.net veya 192.168.1.50', spellcheck: false }),
+    server: h('input.input', { type: 'text', value: lastServer, placeholder: 'örn. melid.abdulsamed.net veya 192.168.1.50', spellcheck: false }),
     user: h('input.input', { type: 'text', value: lastUser, spellcheck: false, autocapitalize: 'off' }),
     email: h('input.input', { type: 'email', spellcheck: false, autocapitalize: 'off', placeholder: 'ornek@eposta.com' }),
     password: h('input.input', { type: 'password' }),
@@ -301,7 +301,7 @@ async function showRecoveryCode(rc) {
 /** Parolası unutulan hesap: kurtarma anahtarı (yazarak ya da dosyadan) + yeni parola */
 export async function recoverDialog(app, pre = {}) {
   const f = {
-    server: h('input.input', { value: pre.server || '', placeholder: 'örn. sshdeck.abdulsamed.net veya 192.168.1.50', spellcheck: false }),
+    server: h('input.input', { value: pre.server || '', placeholder: 'örn. melid.abdulsamed.net veya 192.168.1.50', spellcheck: false }),
     user: h('input.input', { value: pre.user || '', spellcheck: false, autocapitalize: 'off' }),
     code: h('input.input.mono', { placeholder: 'XXXX-XXXX-XXXX-XXXX-XXXX-XXXX-XXXX-XXXX', spellcheck: false, autocapitalize: 'characters' }),
     pw1: h('input.input', { type: 'password' }),

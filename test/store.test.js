@@ -43,6 +43,22 @@ assert.equal(st2.getSession(id).password, undefined);
 assert.equal(st2.unlock('anaP'), true);
 assert.equal(st2.getSession(id).password, 'gizli123');
 
+// SSHDeck'te belirlenmiş ana parola (eski doğrulayıcı) Melid'de de açılır
+{
+  const crypto = require('crypto');
+  const { encWithKey } = require('../src/main/store');
+  const raw = JSON.parse(fs.readFileSync(path.join(st.dir, 'settings.json'), 'utf8'));
+  const key = crypto.pbkdf2Sync('anaP', Buffer.from(raw.master.salt, 'base64'), 200000, 32, 'sha512');
+  const legacyDir = fs.mkdtempSync(path.join(os.tmpdir(), 'melid-store-'));
+  for (const f of fs.readdirSync(st.dir)) fs.copyFileSync(path.join(st.dir, f), path.join(legacyDir, f));
+  const lraw = { ...raw, master: { ...raw.master, check: encWithKey('sshdeck-master-ok', key) } };
+  fs.writeFileSync(path.join(legacyDir, 'settings.json'), JSON.stringify(lraw));
+  const legacy = new Store(legacyDir, noKeyring);
+  assert.equal(legacy.unlock('yanlis'), false);
+  assert.equal(legacy.unlock('anaP'), true, 'eski doğrulayıcıyla ana parola açılır');
+  assert.equal(legacy.getSession(id).password, 'gizli123');
+}
+
 // yanlış eski parolayla değiştirme reddedilmeli
 assert.throws(() => st2.setMasterPassword('yanlis', 'yeni'), /yanlış/);
 // doğru eskiyle değiştir

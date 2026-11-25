@@ -35,5 +35,5 @@ for (const [kind, name] of Object.entries(optional)) {
   const buf = fs.readFileSync(p);
   files[kind] = { name, url: `${baseUrl}/${encodeURIComponent(name)}`, sha256: crypto.createHash('sha256').update(buf).digest('hex'), size: buf.length };
 }
-const info = { app: 'sshdeck', version, date: new Date().toISOString(), notes: fs.readFileSync(notesFile, 'utf8').trim(), files };
+const info = { app: 'melid', version, date: new Date().toISOString(), notes: fs.readFileSync(notesFile, 'utf8').trim(), files };
 process.stdout.write(signFeed(info, key));

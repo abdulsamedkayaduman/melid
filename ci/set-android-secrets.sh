@@ -2,7 +2,7 @@
 # APK imza anahtarını Forgejo repo secret'larına yükler (bir kez çalıştırılır; geliştirme makinesinde).
 # Kullanım: FORGEJO_TOKEN=<token> bash ci/set-android-secrets.sh
 #   Token: Forgejo > Ayarlar > Uygulamalar > Erişim token'ı oluştur (yetki: repository okuma+yazma).
-# android/keystore.properties ve içindeki storeFile (sshdeck-release.jks) okunur; değerler ekrana yazılmaz.
+# android/keystore.properties ve içindeki storeFile (melid-release.jks) okunur; değerler ekrana yazılmaz.
 set -euo pipefail
 cd "$(dirname "$0")/../android"
 : "${FORGEJO_TOKEN:?FORGEJO_TOKEN gerekli}"

@@ -53,7 +53,7 @@ Gerekenler: JDK 17, Android SDK (platform 35, build-tools 35), kök dizinde `npm
 ```
 cd android
 ./gradlew assembleDebug        # app/build/outputs/apk/debug/
-./gradlew assembleRelease      # imzalı: keystore.properties + sshdeck-release.jks gerekir
+./gradlew assembleRelease      # imzalı: keystore.properties + melid-release.jks gerekir
 ./gradlew lintDebug
 bash coretest/run.sh           # SSH çekirdeği testleri (JVM; geçici sshd + ssh2 sunucusu)
 ```
@@ -61,13 +61,13 @@ bash coretest/run.sh           # SSH çekirdeği testleri (JVM; geçici sshd + s
 `local.properties` içinde `sdk.dir=...` olmalı. İmzalama: `keystore.properties` (git'e girmez):
 
 ```
-storeFile=../sshdeck-release.jks
+storeFile=../melid-release.jks
 storePassword=...
 keyAlias=melid
 keyPassword=...
 ```
 
-**`sshdeck-release.jks` ve `keystore.properties` dosyalarını yedekleyin.** Kaybolursa yeni sürümler telefondaki
+**`melid-release.jks` ve `keystore.properties` dosyalarını yedekleyin.** Kaybolursa yeni sürümler telefondaki
 uygulamanın üzerine kurulamaz (önce kaldırmak, yani verileri silmek gerekir). Sürüm (`versionName`/`versionCode`)
 kök `package.json`'dan gelir. CI'da imza ortam değişkenlerinden okunur (`ANDROID_KEYSTORE_FILE` vb., bkz. `docs/ci.md`).
 

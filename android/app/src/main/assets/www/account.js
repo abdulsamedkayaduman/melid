@@ -32,7 +32,7 @@ export async function accountSheet(app) {
 }
 
 // Hesap penceresinde hazır gelen genel eşitleme sunucusu (masaüstünde src/main/sync.js DEFAULT_SERVER)
-const DEFAULT_SERVER = 'sshdeck.abdulsamed.net';
+const DEFAULT_SERVER = 'melid.abdulsamed.net';
 
 async function loginSheet(app, reauth, st0) {
   let mode = 'login';
@@ -42,7 +42,7 @@ async function loginSheet(app, reauth, st0) {
   if (!lastServer) lastServer = DEFAULT_SERVER;
   const inp = (attrs) => h('input.input', { spellcheck: false, autocapitalize: 'off', autocomplete: 'off', ...attrs });
   const f = {
-    server: inp({ value: lastServer, placeholder: 'örn. sshdeck.abdulsamed.net veya 192.168.1.50', inputmode: 'url' }),
+    server: inp({ value: lastServer, placeholder: 'örn. melid.abdulsamed.net veya 192.168.1.50', inputmode: 'url' }),
     user: inp({ value: lastUser }),
     email: inp({ type: 'email', inputmode: 'email', placeholder: 'ornek@eposta.com' }),
     password: inp({ type: 'password' }),
@@ -258,7 +258,7 @@ async function recoveryFlow(info) {
 async function recoverSheet(app, pre = {}) {
   const inp = (attrs) => h('input.input', { spellcheck: false, autocapitalize: 'off', autocomplete: 'off', ...attrs });
   const f = {
-    server: inp({ value: pre.server || '', inputmode: 'url', placeholder: 'örn. sshdeck.abdulsamed.net veya 192.168.1.50' }),
+    server: inp({ value: pre.server || '', inputmode: 'url', placeholder: 'örn. melid.abdulsamed.net veya 192.168.1.50' }),
     user: inp({ value: pre.user || '' }),
     code: inp({ placeholder: 'XXXX-XXXX-XXXX-…', autocapitalize: 'characters' }),
     pw1: inp({ type: 'password' }),

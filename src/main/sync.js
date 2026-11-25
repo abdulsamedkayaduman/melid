@@ -17,7 +17,7 @@ const KDF_ITER = 600000;
 async function deriveKeys(password, saltB64, iter = KDF_ITER) {
   const mk = await new Promise((res, rej) => crypto.pbkdf2(Buffer.from(password, 'utf8'), Buffer.from(saltB64, 'base64'), iter, 32, 'sha512', (e, k) => (e ? rej(e) : res(k))));
   const sub = (info) => Buffer.from(crypto.hkdfSync('sha256', mk, Buffer.alloc(0), info, 32));
-  return { authKey: sub('sshdeck-auth').toString('base64'), wrapKey: sub('sshdeck-wrap') };
+  return { authKey: sub('melid-auth').toString('base64'), wrapKey: sub('melid-wrap') };
 }
 
 // ---- kurtarma anahtarı: 20 rastgele bayt, base32 (32 harf) "ABCD-EFGH-..." ----
@@ -39,12 +39,12 @@ function recoveryBytes(code) {
 function recoveryKeys(code) {
   const raw = recoveryBytes(code);
   const sub = (info) => Buffer.from(crypto.hkdfSync('sha256', raw, Buffer.alloc(0), info, 32));
-  return { recAuth: sub('sshdeck-recovery-auth').toString('base64'), recWrap: sub('sshdeck-recovery-wrap') };
+  return { recAuth: sub('melid-recovery-auth').toString('base64'), recWrap: sub('melid-recovery-wrap') };
 }
 
 const DEFAULT_PORT = 3150;
 /** Hesap penceresinde hazır gelen genel eşitleme sunucusu */
-const DEFAULT_SERVER = 'sshdeck.abdulsamed.net';
+const DEFAULT_SERVER = 'melid.abdulsamed.net';
 // Şemasız yazıldığında yerel sayılan adlar: IP, tek parçalı ad (nas), .local/.lan/.home/.internal
 const LOCAL_NAME = /^(\[.*\]|\d+\.\d+\.\d+\.\d+|localhost|[^.]+|.*\.(local|lan|home|internal))$/i;
 
@@ -102,7 +102,7 @@ async function scanLan({ port = DEFAULT_PORT, targets = lanTargets(), timeout = 
       try {
         const r = await fetchImpl(`http://${host}:${port}/api/info`, { signal: AbortSignal.timeout(3000) });
         const info = await r.json();
-        if (info && info.app === 'SSHDeck') found.push({ server: `http://${host}:${port}`, host, register: !!info.register });
+        if (info && info.app === 'Melid') found.push({ server: `http://${host}:${port}`, host, register: !!info.register });
       } catch {}
     }
   };
@@ -144,7 +144,7 @@ class AccountSync extends EventEmitter {
     try {
       res = await this.fetch(server + path, {
         method,
-        headers: { 'Content-Type': 'application/json', ...(this.client ? { 'X-SSHDeck-Client': this.client } : {}), ...(token ? { Authorization: 'Bearer ' + token } : {}) },
+        headers: { 'Content-Type': 'application/json', ...(this.client ? { 'X-Melid-Client': this.client } : {}), ...(token ? { Authorization: 'Bearer ' + token } : {}) },
         body: body ? JSON.stringify(body) : undefined,
         signal: AbortSignal.timeout(20000),
       });
@@ -167,7 +167,7 @@ class AccountSync extends EventEmitter {
     server = normServer(server);
     user = String(user || '').trim().toLowerCase();
     const info = await this._req('GET', '/api/info', null, null, server);
-    if (info.app !== 'SSHDeck') throw new Error('Bu bir Melid eşitleme sunucusu değil');
+    if (info.app !== 'Melid') throw new Error('Bu bir Melid eşitleme sunucusu değil');
     const salt = crypto.randomBytes(16).toString('base64');
     const { authKey, wrapKey } = await deriveKeys(password, salt, KDF_ITER);
     const vk = crypto.randomBytes(32);

@@ -111,8 +111,8 @@ function createSyncServer({
   const tokenHash = (t) => crypto.createHash('sha256').update(t).digest('hex');
   const started = Date.now();
   const counters = { syncs: 0, logins: 0, failedLogins: 0 }; // sunucu açıldığından beri
-  // İstemci kendini X-SSHDeck-Client başlığıyla tanıtır (ör. "Melid 1.5.0 linux"); yalnız istatistik için
-  const clientName = (req) => String(req.headers['x-sshdeck-client'] || req.headers['user-agent'] || '').replace(/[^\w .:;/()+-]/g, '').slice(0, 60);
+  // İstemci kendini X-Melid-Client başlığıyla tanıtır (ör. "Melid 1.5.0 linux"); yalnız istatistik için
+  const clientName = (req) => String(req.headers['x-melid-client'] || req.headers['user-agent'] || '').replace(/[^\w .:;/()+-]/g, '').slice(0, 60);
   const newToken = (user, req) => {
     const t = crypto.randomBytes(32).toString('base64url');
     tokens[tokenHash(t)] = { user, expires: Date.now() + TOKEN_TTL, created: Date.now(), seen: Date.now(), client: clientName(req) };
@@ -184,7 +184,7 @@ function createSyncServer({
 
   const routes = {
     // register: hesap açılabilir mi; invite: davet kodu gerekir mi
-    'GET /api/info': () => ({ app: 'SSHDeck', api: 2, register: regMode !== 'closed' && Object.keys(users).length < maxUsers, invite: regMode === 'invite' }),
+    'GET /api/info': () => ({ app: 'Melid', api: 2, register: regMode !== 'closed' && Object.keys(users).length < maxUsers, invite: regMode === 'invite' }),
 
     // Giriş öncesi: KDF tuzu. Olmayan kullanıcıya da sabit sahte tuz döner (hesap var/yok sızmasın).
     'GET /api/prelogin': (req, _b, url) => {

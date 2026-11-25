@@ -110,7 +110,7 @@ public class SyncTest {
 
         ok(SyncCore.normServer("192.168.1.50").equals("http://192.168.1.50:3150"), "portsuz adrese 3150");
         ok(SyncCore.normServer("https://Senkron.Ornek.com/").equals("https://senkron.ornek.com"), "https adresi");
-        ok(SyncCore.normServer("sshdeck.abdulsamed.net").equals("https://sshdeck.abdulsamed.net"), "alan adı: https");
+        ok(SyncCore.normServer("melid.abdulsamed.net").equals("https://melid.abdulsamed.net"), "alan adı: https");
         ok(SyncCore.normServer("senkron.ornek.com:8443").equals("https://senkron.ornek.com:8443"), "alan adı + port");
         ok(SyncCore.normServer("nas").equals("http://nas:3150"), "tek parçalı ad yerel");
         ok(SyncCore.normServer("nas.lan:4000").equals("http://nas.lan:4000"), ".lan yerel");
