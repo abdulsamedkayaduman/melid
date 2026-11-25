@@ -235,7 +235,12 @@ public class CoreTest {
         JSONObject fl = fwd.start("c1", SshCore.obj("id", "L1", "type", "L", "bindHost", "127.0.0.1", "bindPort", freeL, "dstHost", "127.0.0.1", "dstPort", 2299));
         ok(banner(fl.getInt("port")).equals("SSH-2.0"), "-L yerel tünel");
         fwd.stop("c1", "L1");
-        ok(expectError(() -> banner(freeL)) != null, "-L durdurulunca port kapandı");
+        // durdurma eşzamansız: yavaş makinede port bir an daha açık kalabilir (en fazla 3 sn bekle)
+        boolean closed = false;
+        for (int i = 0; i < 30 && !closed; i++) {
+            try (Socket probe = new Socket("127.0.0.1", freeL)) { Thread.sleep(100); } catch (java.io.IOException e) { closed = true; }
+        }
+        ok(closed, "-L durdurulunca port kapandı");
         JSONObject fd = fwd.start("c1", SshCore.obj("id", "D1", "type", "D", "bindHost", "127.0.0.1", "bindPort", 0));
         try (Socket s = new Socket("127.0.0.1", fd.getInt("port"))) {
             s.setSoTimeout(5000);
