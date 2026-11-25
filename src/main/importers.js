@@ -1,6 +1,7 @@
 'use strict';
 // Session importers for WindTerm (user.sessions) and Xshell (.xsh files, session folders, .xts exports).
-// Passwords are not imported: both tools encrypt them with keys we can't get (master password / Windows SID).
+// WindTerm passwords: with the WindTerm master password. Xshell passwords: RC4 with a key from the exporting Windows
+// user (username + SID) or the Xshell master password (decryptXshellPassword). Android port: core/XshellImport.java.
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
@@ -150,7 +151,7 @@ function parseXsh(buf, rel) {
   const parts = rel.replace(/\\/g, '/').split('/').filter(Boolean);
   const name = parts.pop().replace(/\.xsh$/i, '');
   const notes = (ini.SESSIONINFO || {}).description || (c.description) || undefined;
-  return {
+  const out = {
     name,
     group: cleanGroup(parts.join('/')) || 'Xshell',
     host: c.host,
@@ -158,8 +159,123 @@ function parseXsh(buf, rel) {
     username: a.username || '',
     authType: 'auto',
     notes: notes ? notes.replace(/\\n/g, '\n') : undefined,
-    forwards: [],
+    forwards: parseXshellForwards(ini['CONNECTION:SSH'] || {}),
   };
+  // Şifreli parola: içe aktarırken decryptXshellPassword ile çözülür (alan kaydedilmeden önce silinir)
+  if (a.password) out._xshell = { enc: a.password, version: (ini.SESSIONINFO || {}).version || '' };
+  return out;
+}
+
+/**
+ * [CONNECTION:SSH] FwdReqCount + FwdReq_<i>_Port (dinlenen port), _Host / _HostPort (hedef). Yön alanı belgelenmemiş:
+ * FwdReq_<i>_Type (0/1/2 ya da local/remote/dynamic) varsa ondan, yoksa hedef yoksa SOCKS, varsa yerel sayılır.
+ */
+function parseXshellForwards(sec) {
+  const out = [];
+  const n = Math.min(Number(sec.fwdreqcount) || 0, 100);
+  for (let i = 0; i < n; i++) {
+    const g = (k) => (sec[`fwdreq_${i}_${k}`] || '').trim();
+    const bindPort = Number(g('port'));
+    if (!bindPort) continue;
+    const t = g('type').toLowerCase();
+    const dstHost = g('host'); const dstPort = Number(g('hostport'));
+    const type = /^(1|r|remote)/.test(t) ? 'R' : /^(2|d|dynamic|socks)/.test(t) ? 'D' : t ? 'L' : (!dstHost && !dstPort ? 'D' : 'L');
+    const fw = { id: `xs${i}`, type, bindHost: normHost(g('source') || g('bindaddress') || g('listenhost')), bindPort, enabled: true };
+    if (type !== 'D') {
+      if (!dstHost || !dstPort) continue;
+      fw.dstHost = normHost(dstHost); fw.dstPort = dstPort;
+    }
+    out.push(fw);
+  }
+  return out;
+}
+
+// ---------------------------------------------------------------- Xshell parolaları
+// Kaynak: Metasploit Rex::Parser::NetSarang ve SharpXDecrypt. 5.1 ve sonrası: base64(RC4(parola) + SHA256(parola)).
+// Anahtar sürüme göre değişir ve kaynaklar ayrıntıda ayrışır; bu yüzden olası bütün anahtarlar denenir ve sonuç
+// sondaki SHA-256 ile doğrulanır: yanlış anahtar hiçbir zaman parola diye kabul edilmez.
+function rc4(key, data) {
+  const S = new Uint8Array(256);
+  for (let i = 0; i < 256; i++) S[i] = i;
+  for (let i = 0, j = 0; i < 256; i++) { j = (j + S[i] + key[i % key.length]) & 255; [S[i], S[j]] = [S[j], S[i]]; }
+  const out = Buffer.alloc(data.length);
+  for (let n = 0, i = 0, j = 0; n < data.length; n++) {
+    i = (i + 1) & 255; j = (j + S[i]) & 255; [S[i], S[j]] = [S[j], S[i]];
+    out[n] = data[n] ^ S[(S[i] + S[j]) & 255];
+  }
+  return out;
+}
+// Windows'un ANSI kod sayfası (Türkçe Windows: 1254). Diğer harfler Latin-1 ile aynı.
+const CP1254 = { 'Ğ': 0xd0, 'ğ': 0xf0, 'İ': 0xdd, 'ı': 0xfd, 'Ş': 0xde, 'ş': 0xfe };
+function encodings(str) {
+  const out = [Buffer.from(str, 'utf8')];
+  if (/[^\x00-\x7f]/.test(str)) {
+    out.push(Buffer.from([...str].map((ch) => CP1254[ch] || (ch.charCodeAt(0) < 256 ? ch.charCodeAt(0) : 0x3f))));
+    out.push(Buffer.from(str, 'latin1'));
+  }
+  return out;
+}
+const sha256 = (b) => crypto.createHash('sha256').update(b).digest();
+const rev = (x) => [...x].reverse().join('');
+
+/** creds: { user, sid, master } -> denenecek RC4 anahtarları (sürüm ayrımı yapmadan; doğrulama SHA-256 ile) */
+function xshellKeys({ user, sid, master } = {}) {
+  const keys = [];
+  if (master) for (const b of encodings(master)) keys.push(sha256(b));
+  if (sid) {
+    sid = String(sid).trim();
+    // whoami adı küçük harfle verir; Xshell hesabın gerçek yazılışını kullanır: yaygın biçimlerin hepsi denenir
+    const u0 = user ? String(user).trim().replace(/^.*\\/, '') : '';
+    const cap = (x) => x.charAt(0).toLocaleUpperCase('tr') + x.slice(1);
+    const users = u0 ? [...new Set([u0, u0.toLowerCase(), cap(u0.toLowerCase()), u0.toUpperCase(), cap(u0.toLowerCase()).replace(/^I/, 'I')])] : [];
+    for (const u of users) for (const str of [u + sid, rev(sid) + u]) for (const b of encodings(str)) keys.push(sha256(b));
+    keys.push(sha256(Buffer.from(sid, 'ascii')));
+  }
+  return keys;
+}
+
+/** Şifreli Xshell parolası -> düz parola ya da null (anahtarlardan hiçbiri tutmadı) */
+function decryptXshellPassword(enc, version, keys) {
+  let data;
+  try { data = Buffer.from(String(enc).trim(), 'base64'); } catch { return null; }
+  if (!data.length) return null;
+  const v = parseFloat(version) || 0;
+  if (v > 0 && v < 5.1) { // eski sürümler: sabit anahtar, doğrulama özeti yok
+    const pt = rc4(crypto.createHash('md5').update('!X@s#h$e%l^l&').digest(), data);
+    const str = pt.toString('utf8');
+    return /^[\x20-\x7e\u00a0-\uffff]+$/.test(str) && !str.includes('\ufffd') ? str : null;
+  }
+  if (data.length <= 32) return null;
+  const ct = data.subarray(0, data.length - 32); const sum = data.subarray(data.length - 32);
+  for (const k of keys) {
+    const pt = rc4(k, ct);
+    if (sha256(pt).equals(sum)) {
+      const u = pt.toString('utf8');
+      return u.includes('\ufffd') ? new TextDecoder('windows-1254').decode(pt) : u;
+    }
+  }
+  return null;
+}
+
+/** list içindeki _xshell parolalarını creds ile çözmeyi dener. Dönüş: { total, ok } (çözülemeyenler beklemede kalır) */
+function applyXshellPasswords(list, creds) {
+  const keys = xshellKeys(creds);
+  let total = 0; let ok = 0;
+  for (const s of list) {
+    if (!s._xshell) continue;
+    total++;
+    if (s.password) { ok++; continue; }
+    if (!keys.length && !(parseFloat(s._xshell.version) < 5.1)) continue;
+    const pw = decryptXshellPassword(s._xshell.enc, s._xshell.version, keys);
+    if (pw != null) { s.password = pw; ok++; }
+  }
+  return { total, ok };
+}
+
+/** Test ve Android uyumu için: düz parola -> Xshell 5.1+ biçimi */
+function encryptXshellPassword(pw, key) {
+  const pt = Buffer.from(pw, 'utf8');
+  return Buffer.concat([rc4(key, pt), sha256(pt)]).toString('base64');
 }
 
 // Minimal ZIP reader (stored + deflate) for Xshell .xts exports.
@@ -213,6 +329,7 @@ function parseXshellPaths(paths) {
 }
 
 module.exports = {
-  findWindTermFiles, parseWindTerm, parseWindTermTunnels, parseXsh, parseXshellPaths, readZip,
+  findWindTermFiles, parseWindTerm, parseWindTermTunnels, parseXsh, parseXshellPaths, parseXshellForwards, readZip,
+  xshellKeys, decryptXshellPassword, applyXshellPasswords, encryptXshellPassword, rc4,
   readWindTermFingerprint, windTermHasSecrets, verifyWindTermMaster, wtPassword,
 };

@@ -15,7 +15,7 @@ const updater = require('./updater');
 const { AccountSync, DEFAULT_SERVER, scanLan } = require('./sync');
 const { Usage } = require('./usage');
 const { runSessions, runOne, execTask, statsTask } = require('./conncheck');
-const { spawn } = require('child_process');
+const { spawn, execFileSync } = require('child_process');
 const { fileURLToPath } = require('url');
 
 // İç ad eski kalır: işletim sistemi anahtarlığındaki şifreleme anahtarı ("SSHDeck Safe Storage") uygulama adına bağlı;
@@ -265,6 +265,16 @@ async function prepareDrag(connId, tid, items) {
   throw new Error(result ? result.error : 'İndirilemedi');
 }
 
+/** Windows'ta oturum açmış kullanıcının adı ve SID'i (Xshell parolalarını çözmek için); başka sistemde null */
+function windowsIdentity() {
+  if (process.platform !== 'win32') return null;
+  try {
+    const out = execFileSync('whoami', ['/user', '/fo', 'csv', '/nh'], { encoding: 'utf8', windowsHide: true, timeout: 5000 }).trim();
+    const m = /"([^"]*)","(S-[\d-]+)"/.exec(out);
+    return m ? { user: os.userInfo().username || m[1], sid: m[2] } : null;
+  } catch { return null; }
+}
+
 // Windows'ta Xshell oturumları: Belgeler\NetSarang Computer\<sürüm>\Xshell\Sessions (en yeni sürüm)
 function xshellDefaultDir() {
   if (process.platform !== 'win32') return os.homedir();
@@ -479,6 +489,7 @@ function registerIpc() {
     const existing = new Set(store.sessions.map(key));
     let added = 0; let withPassword = 0;
     for (const s of parsed) {
+      delete s._xshell;
       if (existing.has(key(s))) continue;
       existing.add(key(s));
       store.saveSession(s); added++;
@@ -524,6 +535,18 @@ function registerIpc() {
         : { title: 'Xshell oturumları (.xsh / .xts)', defaultPath: xsDir, properties: ['openFile', 'multiSelections', 'showHiddenFiles'], filters: [{ name: 'Xshell', extensions: ['xsh', 'xts'] }] });
       if (r.canceled) return null;
       try { parsed = importers.parseXshellPaths(r.filePaths); } catch (e) { throw new Error(`Xshell oturumları okunamadı: ${e.message}`); }
+      // Şifreli parolalar: Windows'ta bu kullanıcının kimliğiyle kendiliğinden; olmazsa (başka bilgisayarda dışa aktarılmış,
+      // Xshell ana parolası, Linux/macOS) bilgiler sorulur. Boş bırakılırsa parolasız aktarılır.
+      const pending = () => parsed.filter((x) => x._xshell && x.password == null).length;
+      if (pending()) {
+        const me = windowsIdentity();
+        if (me) importers.applyXshellPasswords(parsed, me);
+        for (let tries = 0; pending() && tries < 3; tries++) {
+          const ans = await uiRequest('xshellCreds', { pending: pending(), total: parsed.filter((x) => x._xshell).length, retry: tries > 0, me });
+          if (!ans || (!ans.master && !ans.sid)) break;
+          importers.applyXshellPasswords(parsed, ans);
+        }
+      }
     } else throw new Error('Bilinmeyen içe aktarma türü');
     if (parsed.some((s) => s.password) && !(await ensureUnlocked())) throw new Error('Ana parola girilmedi');
     return addImported(parsed);

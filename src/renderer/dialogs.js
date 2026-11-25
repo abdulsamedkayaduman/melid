@@ -92,6 +92,28 @@ export function hostKeyDialog({ host, port, type, fingerprint, changed, oldFinge
   }).then((v) => v || 'cancel');
 }
 
+/** Xshell içe aktarma: şifreli parolalar için Windows kullanıcı adı + SID ya da Xshell ana parolası. null: parolasız aktar */
+export async function xshellCredsDialog({ pending, total, retry, me }) {
+  const f = {
+    master: h('input.input', { type: 'password', autocomplete: 'off' }),
+    user: h('input.input', { value: (me && me.user) || '', spellcheck: false, placeholder: 'ör. Abdulsamed' }),
+    sid: h('input.input.mono', { value: (me && me.sid) || '', spellcheck: false, placeholder: 'S-1-5-21-…' }),
+  };
+  const field = (label, control, hint) => h('label.field', null, h('span', null, label), control, hint ? h('div.hint', null, hint) : null);
+  return modal({
+    title: 'Xshell parolaları', width: 500,
+    body: h('div', null,
+      h('p', null, `${pending} oturumun${total > pending ? ` (toplam ${total})` : ''} parolası şifreli. Xshell parolaları, dışa aktarıldığı Windows kullanıcısına bağlı bir anahtarla ya da Xshell ana parolasıyla şifreler.`),
+      retry ? h('p.hint.warn', null, 'Bu bilgilerle parolalar çözülemedi. Yazımı kontrol edip tekrar deneyin ya da parolasız aktarın.')
+        : me ? h('p.hint', null, 'Bu bilgisayardaki Windows hesabıyla çözülemedi; oturumlar başka bir bilgisayarda ya da başka bir kullanıcıyla dışa aktarılmış olabilir.') : null,
+      field('Xshell ana parolası', f.master, 'Xshell\'de ana parola (Master Password) ayarladıysanız yalnız bunu girin.'),
+      field('Windows kullanıcı adı', f.user),
+      field('Windows SID', f.sid, 'Xshell\'in kurulu olduğu Windows\'ta komut istemine whoami /user yazın: kullanıcı adı ve S-1-5-21 ile başlayan SID görünür.'),
+      h('p.hint', null, 'Bu bilgiler yalnız parolaları çözmek için kullanılır, kaydedilmez. Çözülen parolalar Melid\'de şifreli saklanır.')),
+    buttons: [{ label: 'Parolasız aktar', value: null }, { label: 'Parolaları çöz', value: 'ok', primary: true }],
+  }).then((v) => (v === 'ok' ? { master: f.master.value, user: f.user.value.trim(), sid: f.sid.value.trim() } : null));
+}
+
 export async function kbdDialog({ title, instructions, prompts }) {
   const inputs = prompts.map((p, i) => h('input.input', { type: p.echo ? 'text' : 'password', autofocus: i === 0 }));
   const r = await modal({

@@ -53,7 +53,8 @@ fs.writeFileSync(path.join(dir, 'telnet.xsh'), xsh('h2', 'u2', 23, 'TELNET'));
 const xs = im.parseXshellPaths([dir]).sort((a, b) => a.name.localeCompare(b.name));
 assert.deepEqual(xs.map((s) => [s.name, s.group, s.host, s.port, s.username, s.notes]), [
   ['app01', 'Müşteri/Test', '192.168.1.10', 2200, 'deploy', 'not'], ['kök', 'Xshell', 'h1', 22, 'u1', 'not']]);
-assert(!JSON.stringify(xs).includes('abc=='), 'parola aktarılmamalı');
+assert(xs.every((s) => s.password === undefined && s._xshell.enc === 'abc=='), 'şifreli parola çözülmeden düz parola olmaz');
+assert.deepEqual(im.applyXshellPasswords(xs, {}), { total: 2, ok: 0 }, 'bilgi yoksa çözülmez');
 
 // Xshell .xts (zip, deflate)
 const zip = (entries) => {
@@ -73,3 +74,35 @@ const xt = im.parseXshellPaths([path.join(dir, 'export.xts')]);
 assert.deepEqual(xt.map((s) => [s.name, s.group, s.host, s.username]), [['sv1', 'Grup A', '10.1.1.1', 'admin'], ['sv2', 'Xshell', '10.1.1.2', 'root']]);
 fs.rmSync(dir, { recursive: true, force: true });
 console.log('OK xshell (.xsh klasörü, UTF-16, .xts)');
+
+// Xshell parolaları (5.1+: RC4 + SHA-256 özeti) ve tüneller
+{
+  const crypto = require('crypto');
+  const sid = 'S-1-5-21-3623811015-3361044348-30300820-1013';
+  const k = (str) => crypto.createHash('sha256').update(str).digest();
+  const sess = (ver, enc, extra = '') => Buffer.from(`[SessionInfo]\r\nVersion=${ver}\r\n[CONNECTION]\r\nHost=h\r\nPort=22\r\nProtocol=SSH\r\n`
+    + `[CONNECTION:AUTHENTICATION]\r\nUserName=root\r\nPassword=${enc}\r\n[CONNECTION:SSH]\r\n${extra}`, 'utf8');
+  const list = [
+    im.parseXsh(sess('6.0', im.encryptXshellPassword('altı-ŞİFRE', k('Samed' + sid))), 'a.xsh'),
+    im.parseXsh(sess('7.3', im.encryptXshellPassword('yedi', k([...sid].reverse().join('') + 'Samed'))), 'b.xsh'),
+    im.parseXsh(sess('5.1', im.encryptXshellPassword('beş', k(sid))), 'c.xsh'),
+    im.parseXsh(sess('7.0', im.encryptXshellPassword('ana', k('xshellAna'))), 'd.xsh'),
+    im.parseXsh(sess('5.0', im.rc4(crypto.createHash('md5').update('!X@s#h$e%l^l&').digest(), Buffer.from('eski')).toString('base64')), 'e.xsh'),
+  ];
+  assert.deepEqual(im.applyXshellPasswords(list, { user: 'DESKTOP-1\\samed', sid: ' ' + sid + ' ' }), { total: 5, ok: 4 }, 'kullanıcı + SID (whoami küçük harf)');
+  assert.deepEqual(list.map((x) => x.password), ['altı-ŞİFRE', 'yedi', 'beş', undefined, 'eski']);
+  assert.deepEqual(im.applyXshellPasswords(list, { master: 'yanlis' }), { total: 5, ok: 4 }, 'yanlış ana parola kabul edilmez');
+  assert.deepEqual(im.applyXshellPasswords(list, { master: 'xshellAna' }), { total: 5, ok: 5 });
+  assert.equal(list[3].password, 'ana');
+
+  const fw = im.parseXsh(sess('7.0', '', 'FwdReqCount=4\r\nFwdReq_0_Port=8080\r\nFwdReq_0_Host=localhost\r\nFwdReq_0_HostPort=80\r\n'
+    + 'FwdReq_1_Type=1\r\nFwdReq_1_Port=9000\r\nFwdReq_1_Host=10.0.0.5\r\nFwdReq_1_HostPort=22\r\nFwdReq_1_Desc=geri\r\n'
+    + 'FwdReq_2_Port=1080\r\nFwdReq_3_Port=5432\r\nFwdReq_3_Host=db\r\n'), 'f.xsh');
+  assert.equal(fw._xshell, undefined, 'boş parola alanı');
+  assert.deepEqual(fw.forwards, [
+    { id: 'xs0', type: 'L', bindHost: '127.0.0.1', bindPort: 8080, enabled: true, dstHost: '127.0.0.1', dstPort: 80 },
+    { id: 'xs1', type: 'R', bindHost: '127.0.0.1', bindPort: 9000, enabled: true, dstHost: '10.0.0.5', dstPort: 22 },
+    { id: 'xs2', type: 'D', bindHost: '127.0.0.1', bindPort: 1080, enabled: true },
+  ], 'yerel, uzak, SOCKS; hedefi eksik tünel atlanır');
+  console.log('OK xshell parolaları ve tünelleri');
+}

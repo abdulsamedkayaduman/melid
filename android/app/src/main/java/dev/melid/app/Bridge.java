@@ -232,6 +232,42 @@ public class Bridge {
 
             // ---- backup
             case "pickTextFile": return pickTextFile(a.optInt("max", 4 << 20));
+            // Xshell içe aktarma: dosya seç (.xts / .xsh) -> gerekirse parolaları çöz -> kaydet (core/XshellImport)
+            case "xshellPick": {
+                List<Uri> uris = act.pickFiles(false);
+                if (uris == null || uris.isEmpty()) return null;
+                String[] m = meta(uris.get(0));
+                if (Long.parseLong(m[1]) > (32 << 20)) throw new Exception("Dosya çok büyük");
+                byte[] data;
+                try (InputStream in = act.getContentResolver().openInputStream(uris.get(0))) { data = readAll(in, 32 << 20); }
+                try { xshellPending = dev.melid.core.XshellImport.parse(m[0], data); }
+                catch (Exception e) { throw new Exception("Xshell oturumları okunamadı: " + e.getMessage()); }
+                int enc = 0;
+                for (JSONObject x : xshellPending) if (x.has("_xsEnc")) enc++;
+                return obj("found", xshellPending.size(), "encrypted", enc, "name", m[0]);
+            }
+            case "xshellDecrypt": {
+                if (xshellPending == null) throw new Exception("Önce dosya seçin");
+                return dev.melid.core.XshellImport.applyPasswords(xshellPending, a.optString("user"), a.optString("sid"), a.optString("master"));
+            }
+            case "xshellSave": {
+                if (xshellPending == null) throw new Exception("Önce dosya seçin");
+                List<JSONObject> list = xshellPending;
+                xshellPending = null;
+                java.util.Set<String> existing = new java.util.HashSet<>();
+                JSONArray cur = app.store.state().getJSONArray("sessions");
+                for (int i = 0; i < cur.length(); i++) { JSONObject x = cur.getJSONObject(i); existing.add(x.optString("name") + "|" + x.optString("host") + "|" + x.optInt("port", 22) + "|" + x.optString("username")); }
+                int added = 0, withPw = 0;
+                for (JSONObject x : list) {
+                    x.remove("_xsEnc"); x.remove("_xsVer");
+                    String k = x.optString("name") + "|" + x.optString("host") + "|" + x.optInt("port", 22) + "|" + x.optString("username");
+                    if (!existing.add(k)) continue;
+                    app.store.saveSession(x);
+                    added++;
+                    if (x.has("password")) withPw++;
+                }
+                return obj("added", added, "found", list.size(), "withPassword", withPw);
+            }
             case "importBackup": {
                 JSONObject bk = new JSONObject(a.getString("text"));
                 return app.store.importBackup(bk, a.optString("passphrase", null), a.optBoolean("withSettings", true));
@@ -358,6 +394,17 @@ public class Bridge {
             if (cu != null && cu.moveToFirst()) shown = cu.getString(0);
         }
         return "İndirilenler/Melid/" + shown;
+    }
+
+    /** Seçilip henüz kaydedilmemiş Xshell oturumları (parolaları çözülebilir) */
+    volatile List<JSONObject> xshellPending;
+
+    static byte[] readAll(InputStream in, int max) throws Exception {
+        ByteArrayOutputStream bo = new ByteArrayOutputStream();
+        byte[] b = new byte[16384];
+        int n;
+        while ((n = in.read(b)) > 0) { bo.write(b, 0, n); if (bo.size() > max) throw new Exception("Dosya çok büyük"); }
+        return bo.toByteArray();
     }
 
     JSONObject pickTextFile(int max) throws Exception {

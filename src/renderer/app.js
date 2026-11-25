@@ -1,5 +1,5 @@
 import { h, icon, brandIcon, wordmark, parseConnText, debounce, formatSize, IS_MAC, modKey, keyLabel } from './util.js';
-import { modal, promptText, confirmBox, hostKeyDialog, kbdDialog, contextMenu, toast, sessionEditor, settingsDialog, applyUiTheme } from './dialogs.js';
+import { modal, promptText, confirmBox, hostKeyDialog, kbdDialog, xshellCredsDialog, contextMenu, toast, sessionEditor, settingsDialog, applyUiTheme } from './dialogs.js';
 import { SessionTab } from './tab.js';
 import { cleanErr } from './filepane.js';
 import { checkDialog } from './conncheck.js';
@@ -1112,6 +1112,7 @@ class App {
           if (v && typeof v === 'object' && 'save' in v && v.save !== !!this.settings.savePrompted) this.saveSettings({ savePrompted: v.save });
         }
         else if (kind === 'kbd') v = await kbdDialog(payload);
+        else if (kind === 'xshellCreds') v = await xshellCredsDialog(payload);
       } finally { api.uiRespond(id, v); }
     });
     api.ssh.onStatus((connId, state, msg) => this.tabByConn(connId)?.onStatus(state, msg));
