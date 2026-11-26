@@ -59,6 +59,7 @@ const DEFAULT_SETTINGS = {
   relayMethod: 'relay', // uzak -> uzak aktarımda son seçilen yöntem: 'relay' (bu bilgisayar) | 'key' | 'agent'
   showStats: true, // durum çubuğunda sunucu kaynakları
   toolbarLabels: true, // araç çubuğu düğmelerinin altında yazı
+  language: 'auto', // arayüz dili: auto (sistem dili) | tr | en; cihaza özgü
   autoUpdate: true, // güncellemeleri kendiliğinden denetle (açılışta + 6 saatte bir)
   updateSkip: null, // "bu sürümü atla" denen sürüm
   updateLastCheck: 0,
@@ -74,7 +75,7 @@ const DEFAULT_SETTINGS = {
 };
 
 // Hesap eşitlemesine girmeyen, cihaza özgü ayarlar
-const LOCAL_SETTINGS = new Set(['master', 'syncKeys', 'recent', 'logDir', 'logEnabled', 'colWidths', 'hiddenCols', 'autoHideCols', 'paneSplit', 'sftpHeight', 'xferHeight', 'updateSkip', 'updateLastCheck', 'usageStats', 'deviceId']);
+const LOCAL_SETTINGS = new Set(['master', 'syncKeys', 'recent', 'logDir', 'logEnabled', 'colWidths', 'hiddenCols', 'autoHideCols', 'paneSplit', 'sftpHeight', 'xferHeight', 'updateSkip', 'updateLastCheck', 'usageStats', 'deviceId', 'language']);
 // Oturumda cihaza özgü alanlar (yerel klasör yolu başka cihazda/işletim sisteminde geçersiz)
 const LOCAL_SESSION_FIELDS = ['localDir'];
 const TOMBSTONE_TTL = 180 * 24 * 3600 * 1000;

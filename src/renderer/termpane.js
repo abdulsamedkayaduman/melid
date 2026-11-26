@@ -1,5 +1,6 @@
 import { h, icon } from './util.js';
 import { THEMES } from './dialogs.js';
+import { t } from './i18n.js';
 
 // Bir sekmedeki tek terminal bölmesi: kendi xterm'i ve aynı SSH bağlantısında kendi kabuğu (sid).
 export class TermPane {
@@ -120,7 +121,7 @@ export class TermPane {
       + '\x1b[?9l\x1b[?1000l\x1b[?1001l\x1b[?1002l\x1b[?1003l\x1b[?1004l\x1b[?1005l\x1b[?1006l\x1b[?1015l\x1b[?1016l' // fare, odak
       + '\x1b[?2004l\x1b[?1l\x1b>\x1b[?2026l\x1b[?6l\x1b[?7h\x1b[?25h\x1b[r\x1b[0m\x1b(B'); // yapıştırma, imleç tuşları, bölge, renk
   }
-  info(msg, color = '90') { this.term.write(`\r\n\x1b[${color}m${msg}\x1b[0m`); }
+  info(msg, color = '90') { this.term.write(`\r\n\x1b[${color}m${t(msg)}\x1b[0m`); }
 
   dispose() {
     this.ro.disconnect();

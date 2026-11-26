@@ -2,6 +2,7 @@ import { h, icon, uid, formatSize, backForward, modKey } from './util.js';
 import { FilePane, cleanErr } from './filepane.js';
 import { contextMenu, modal, toast, promptText, confirmBox } from './dialogs.js';
 import { TermPane } from './termpane.js';
+import { t } from './i18n.js';
 
 const posix = {
   join: (a, b) => (a === '/' ? '/' + b : a.replace(/\/+$/, '') + '/' + b),
@@ -520,7 +521,7 @@ export class SessionTab {
     const s = this.session;
     const label = s ? `${s.username ? s.username + '@' : ''}${s.host}:${s.port || 22}` : `${this.quick.username ? this.quick.username + '@' : ''}${this.quick.host}:${this.quick.port}`;
     if (this._everConnected) this.writeAll('\r\n');
-    this.writeAll(this.isLocal ? '\x1b[90mYerel terminal açılıyor…\x1b[0m' : `\x1b[90m${label} adresine bağlanılıyor…\x1b[0m`);
+    this.writeAll(`\x1b[90m${this.isLocal ? t('Yerel terminal açılıyor…') : t(`${label} adresine bağlanılıyor…`)}\x1b[0m`);
     try {
       const info = await this.api.ssh.connect(connId, this.sessionId ? { sessionId: this.sessionId } : { session: this.quick });
       if (connId !== this.connId) return;

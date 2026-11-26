@@ -367,6 +367,9 @@ export async function settingsDialog(settings, ctx = {}) {
     onclick: () => { uiTheme = k; applyUiTheme(k); for (const b of uiBtns) b.classList.toggle('on', b.dataset.key === k); },
   }, h('span.ui-sw', null, ...t.swatch.map((c) => h('i', { style: { background: c } }))), t.name));
   const chk = (k, label) => h('label.check', null, (f[k] = h('input', { type: 'checkbox', checked: !!settings[k] })), label);
+  // Dil seçenekleri her dilde aynı görünür (translate=no): kullanıcı kendi dilini tanısın
+  f.language = h('select.input', { translate: 'no' }, [['auto', 'Otomatik / Automatic'], ['tr', 'Türkçe'], ['en', 'English']]
+    .map(([v, l]) => h('option', { value: v, selected: (settings.language || 'auto') === v }, l)));
   f.fontFamily = h('input.input', { value: settings.fontFamily, spellcheck: false });
   f.fontSize = h('input.input', { type: 'number', min: 8, max: 32, value: settings.fontSize });
   f.scrollback = h('input.input', { type: 'number', min: 500, max: 200000, step: 500, value: settings.scrollback });
@@ -385,6 +388,7 @@ export async function settingsDialog(settings, ctx = {}) {
     width: 520,
     body: h('div', null,
       h('div.field', null, h('span', null, 'Arayüz teması'), h('div.ui-themes', null, uiBtns)),
+      h('label.field', null, h('span', { translate: 'no' }, 'Dil / Language'), f.language),
       h('label.field', null, h('span', null, 'Terminal yazı tipi'), f.fontFamily),
       h('div.grid2', null,
         h('label.field', null, h('span', null, 'Yazı boyutu'), f.fontSize),
@@ -446,6 +450,7 @@ export async function settingsDialog(settings, ctx = {}) {
   if (r !== 'ok') { applyUiTheme(settings.uiTheme); return null; }
   return {
     uiTheme,
+    language: f.language.value,
     fontFamily: f.fontFamily.value.trim() || settings.fontFamily,
     fontSize: Math.min(32, Math.max(8, Number(f.fontSize.value) || 14)),
     scrollback: Math.max(500, Number(f.scrollback.value) || 10000),

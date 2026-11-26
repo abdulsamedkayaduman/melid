@@ -14,6 +14,7 @@ const keys = require('./keys');
 const updater = require('./updater');
 const { AccountSync, DEFAULT_SERVER, scanLan } = require('./sync');
 const { Usage } = require('./usage');
+const { T, setLang } = require('./i18n');
 const { runSessions, runOne, execTask, statsTask } = require('./conncheck');
 const { spawn, execFileSync } = require('child_process');
 const { fileURLToPath } = require('url');
@@ -342,7 +343,7 @@ function updateState() {
 function announceUpdate(info) {
   send('update:available', updateState());
   if (!Notification.isSupported()) return;
-  const n = new Notification({ title: `Melid ${info.version} çıktı`, body: 'Yeni sürümü görmek ve kurmak için tıklayın.', icon: path.join(__dirname, '..', '..', 'build', 'icon.png') });
+  const n = new Notification({ title: T(`Melid ${info.version} çıktı`), body: T('Yeni sürümü görmek ve kurmak için tıklayın.'), icon: path.join(__dirname, '..', '..', 'build', 'icon.png') });
   n.on('click', () => { if (win) { if (win.isMinimized()) win.restore(); win.focus(); send('update:show'); } });
   n.show();
 }
@@ -527,10 +528,10 @@ function registerIpc() {
     if (kind === 'windterm') {
       const found = importers.findWindTermFiles();
       const r = await dialog.showOpenDialog(win, {
-        title: 'WindTerm oturum dosyası (user.sessions)',
+        title: T('WindTerm oturum dosyası (user.sessions)'),
         defaultPath: found[0] || os.homedir(),
         properties: ['openFile', 'showHiddenFiles'],
-        filters: [{ name: 'WindTerm oturumları', extensions: ['sessions'] }, { name: 'Tüm dosyalar', extensions: ['*'] }],
+        filters: [{ name: T('WindTerm oturumları'), extensions: ['sessions'] }, { name: T('Tüm dosyalar'), extensions: ['*'] }],
       });
       if (r.canceled) return null;
       const file = r.filePaths[0];
@@ -556,8 +557,8 @@ function registerIpc() {
     } else if (kind === 'xshell-dir' || kind === 'xshell-files') {
       const xsDir = xshellDefaultDir();
       const r = await dialog.showOpenDialog(win, kind === 'xshell-dir'
-        ? { title: 'Xshell Sessions klasörü', defaultPath: xsDir, properties: ['openDirectory', 'showHiddenFiles'] }
-        : { title: 'Xshell oturumları (.xsh / .xts)', defaultPath: xsDir, properties: ['openFile', 'multiSelections', 'showHiddenFiles'], filters: [{ name: 'Xshell', extensions: ['xsh', 'xts'] }] });
+        ? { title: T('Xshell Sessions klasörü'), defaultPath: xsDir, properties: ['openDirectory', 'showHiddenFiles'] }
+        : { title: T('Xshell oturumları (.xsh / .xts)'), defaultPath: xsDir, properties: ['openFile', 'multiSelections', 'showHiddenFiles'], filters: [{ name: 'Xshell', extensions: ['xsh', 'xts'] }] });
       if (r.canceled) return null;
       try { parsed = importers.parseXshellPaths(r.filePaths); } catch (e) { throw new Error(`Xshell oturumları okunamadı: ${e.message}`); }
       // Şifreli parolalar: Windows'ta bu kullanıcının kimliğiyle kendiliğinden; çözülemeyen kalırsa (başka bilgisayarda
@@ -582,9 +583,9 @@ function registerIpc() {
       // Kurulu MobaXterm: %APPDATA%\MobaXterm\MobaXterm.ini; taşınabilir: exe'nin yanındaki MobaXterm.ini
       const def = process.platform === 'win32' ? path.join(process.env.APPDATA || os.homedir(), 'MobaXterm') : os.homedir();
       const r = await dialog.showOpenDialog(win, {
-        title: 'MobaXterm oturumları (.mxtsessions ya da MobaXterm.ini)', defaultPath: fs.existsSync(def) ? def : os.homedir(),
+        title: T('MobaXterm oturumları (.mxtsessions ya da MobaXterm.ini)'), defaultPath: fs.existsSync(def) ? def : os.homedir(),
         properties: ['openFile', 'multiSelections', 'showHiddenFiles'],
-        filters: [{ name: 'MobaXterm', extensions: ['mxtsessions', 'ini'] }, { name: 'Tüm dosyalar', extensions: ['*'] }],
+        filters: [{ name: 'MobaXterm', extensions: ['mxtsessions', 'ini'] }, { name: T('Tüm dosyalar'), extensions: ['*'] }],
       });
       if (r.canceled) return null;
       parsed = []; const passwords = [];
@@ -628,7 +629,12 @@ function registerIpc() {
     }
     return { added, found: parsed.length, sessions: store.publicSessions() };
   });
-  h('settings:save', (patch) => { store.saveSettings(patch); if ('uiTheme' in patch) applyNativeTheme(); return store.publicSettings(); });
+  h('settings:save', (patch) => {
+    store.saveSettings(patch);
+    if ('uiTheme' in patch) applyNativeTheme();
+    if ('language' in patch) { setLang(store.settings.language, app.getLocale()); setMacMenu(); }
+    return store.publicSettings();
+  });
 
   // master password
   h('master:status', () => ({ enabled: store.masterEnabled(), unlocked: store.isUnlocked() }));
@@ -676,8 +682,8 @@ function registerIpc() {
   h('account:recover', (o) => accountCall(() => account.recover(o)));
   h('account:recoverySave', async (rc) => {
     const r = await dialog.showSaveDialog(win, {
-      title: 'Kurtarma anahtarını kaydet', defaultPath: path.join(app.getPath('documents'), `melid-kurtarma-${rc.user}.txt`),
-      filters: [{ name: 'Metin', extensions: ['txt'] }],
+      title: T('Kurtarma anahtarını kaydet'), defaultPath: path.join(app.getPath('documents'), `melid-kurtarma-${rc.user}.txt`),
+      filters: [{ name: T('Metin'), extensions: ['txt'] }],
     });
     if (r.canceled || !r.filePath) return null;
     const text = [
@@ -697,7 +703,7 @@ function registerIpc() {
     return r.filePath;
   });
   h('account:recoveryOpen', async () => {
-    const r = await dialog.showOpenDialog(win, { title: 'Kurtarma anahtarı dosyası', properties: ['openFile'], filters: [{ name: 'Metin', extensions: ['txt'] }, { name: 'Tümü', extensions: ['*'] }] });
+    const r = await dialog.showOpenDialog(win, { title: T('Kurtarma anahtarı dosyası'), properties: ['openFile'], filters: [{ name: T('Metin'), extensions: ['txt'] }, { name: T('Tümü'), extensions: ['*'] }] });
     if (r.canceled || !r.filePaths[0]) return null;
     const t = (await fsp.readFile(r.filePaths[0], 'utf8')).slice(0, 20000);
     const get = (k) => { const m = new RegExp('^' + k + ':\\s*(.+)$', 'mi').exec(t); return m ? m[1].trim() : ''; };
@@ -723,8 +729,8 @@ function registerIpc() {
       if (passphrase == null) return { ok: false };
     }
     const r = await dialog.showSaveDialog(win, {
-      title: 'Yedeği dışa aktar', defaultPath: path.join(os.homedir(), `melid-yedek-${new Date().toISOString().slice(0, 10)}.json`),
-      filters: [{ name: 'Melid yedeği', extensions: ['json'] }],
+      title: T('Yedeği dışa aktar'), defaultPath: path.join(os.homedir(), `melid-yedek-${new Date().toISOString().slice(0, 10)}.json`),
+      filters: [{ name: T('Melid yedeği'), extensions: ['json'] }],
     });
     if (r.canceled) return { ok: false };
     await fsp.writeFile(r.filePath, JSON.stringify(store.exportData({ passphrase: passphrase || undefined }), null, 2), { mode: 0o600 });
@@ -732,8 +738,8 @@ function registerIpc() {
   });
   h('backup:import', async () => {
     const r = await dialog.showOpenDialog(win, {
-      title: 'Yedeği içe aktar', defaultPath: os.homedir(), properties: ['openFile'],
-      filters: [{ name: 'Melid yedeği', extensions: ['json'] }],
+      title: T('Yedeği içe aktar'), defaultPath: os.homedir(), properties: ['openFile'],
+      filters: [{ name: T('Melid yedeği'), extensions: ['json'] }],
     });
     if (r.canceled) return null;
     let obj;
@@ -957,18 +963,18 @@ function setMacMenu() {
   const sep = { type: 'separator' };
   Menu.setApplicationMenu(Menu.buildFromTemplate([
     { label: 'Melid', submenu: [
-      { role: 'about', label: 'Melid Hakkında' }, sep,
-      { role: 'services', label: 'Servisler' }, sep,
-      { role: 'hide', label: 'Melid\'i Gizle' }, { role: 'hideOthers', label: 'Diğerlerini Gizle' }, { role: 'unhide', label: 'Tümünü Göster' }, sep,
-      { role: 'quit', label: 'Melid\'ten Çık' },
+      { role: 'about', label: T('Melid Hakkında') }, sep,
+      { role: 'services', label: T('Servisler') }, sep,
+      { role: 'hide', label: T('Melid\'i Gizle') }, { role: 'hideOthers', label: T('Diğerlerini Gizle') }, { role: 'unhide', label: T('Tümünü Göster') }, sep,
+      { role: 'quit', label: T('Melid\'ten Çık') },
     ] },
-    { label: 'Düzen', submenu: [
-      { role: 'undo', label: 'Geri Al' }, { role: 'redo', label: 'Yinele' }, sep,
-      { role: 'cut', label: 'Kes' }, { role: 'copy', label: 'Kopyala' }, { role: 'paste', label: 'Yapıştır' }, { role: 'selectAll', label: 'Tümünü Seç' },
+    { label: T('Düzen'), submenu: [
+      { role: 'undo', label: T('Geri Al') }, { role: 'redo', label: T('Yinele') }, sep,
+      { role: 'cut', label: T('Kes') }, { role: 'copy', label: T('Kopyala') }, { role: 'paste', label: T('Yapıştır') }, { role: 'selectAll', label: T('Tümünü Seç') },
     ] },
-    { label: 'Pencere', role: 'windowMenu', submenu: [
-      { role: 'minimize', label: 'Küçült' }, { role: 'zoom', label: 'Büyüt' }, { role: 'togglefullscreen', label: 'Tam Ekran' }, sep,
-      { role: 'front', label: 'Tümünü Öne Getir' },
+    { label: T('Pencere'), role: 'windowMenu', submenu: [
+      { role: 'minimize', label: T('Küçült') }, { role: 'zoom', label: T('Büyüt') }, { role: 'togglefullscreen', label: T('Tam Ekran') }, sep,
+      { role: 'front', label: T('Tümünü Öne Getir') },
     ] },
   ]));
 }
@@ -1006,8 +1012,8 @@ function createWindow() {
       if (closeAsking) return;
       closeAsking = true;
       dialog.showMessageBox(win, {
-        type: 'question', buttons: ['Kapat', 'Vazgeç'], defaultId: 1, cancelId: 1,
-        title: 'Melid', message: `${manager.conns.size} açık bağlantı var. Kapatılsın mı?`,
+        type: 'question', buttons: [T('Kapat'), T('Vazgeç')], defaultId: 1, cancelId: 1,
+        title: 'Melid', message: T(`${manager.conns.size} açık bağlantı var. Kapatılsın mı?`),
         checkboxLabel: 'Bir daha sorma (Ayarlar\'dan tekrar açılabilir)',
       }).then(({ response, checkboxChecked }) => {
         closeAsking = false;
@@ -1160,6 +1166,7 @@ app.whenReady().then(async () => {
   account.on('changed', () => { applyNativeTheme(); send('account:changed', { sessions: store.publicSessions(), settings: store.publicSettings() }); });
   registerIpc();
   applyNativeTheme();
+  setLang(store.settings.language, app.getLocale());
   setMacMenu();
   openMainWindow();
   scheduleUpdateChecks();

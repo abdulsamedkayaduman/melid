@@ -7,6 +7,7 @@ import { execDialog, statsDialog } from './bulk.js';
 import { snippetPalette, snippetsEditor, keysDialog, installKeyDialog } from './tools.js';
 import { updateDialog } from './update.js';
 import { accountDialog, STATE_TEXT, syncTimeText } from './account.js';
+import { initI18n } from './i18n.js';
 
 const api = window.api;
 
@@ -43,6 +44,7 @@ class App {
     this.version = d.version;
     this.account = await api.account.status();
     applyUiTheme(this.settings.uiTheme);
+    initI18n(this.settings.language);
     this.applyTabActivity();
     this.build();
     this.applyToolbarLabels();
@@ -574,7 +576,10 @@ class App {
     });
     if (!r) return;
     const updChanged = r.autoUpdate !== (this.settings.autoUpdate !== false);
+    const langChanged = (r.language || 'auto') !== (this.settings.language || 'auto');
     await this.saveSettings(r);
+    if (langChanged && this.tabs.every((x) => x.state !== 'connected')) { location.reload(); return; }
+    if (langChanged) toast('Dil değişikliği uygulama yeniden açılınca tamamlanır', 'info', 6000);
     if (updChanged) api.update.schedule();
     this.applyTabActivity();
     for (const t of this.tabs) t.applySettings();
