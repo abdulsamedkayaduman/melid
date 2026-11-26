@@ -197,6 +197,16 @@ export function settingsView(app) {
       h('div.set-card', null, lockRow),
       h('div.sec-title', null, 'Görünüm'),
       h('div.set-card', null,
+        h('div.set-row', { translate: 'no', onclick: async () => {
+          const cur = app.settings.language || 'auto';
+          const v = await actionSheet('Dil / Language', [['auto', 'Otomatik / Automatic'], ['tr', 'Türkçe'], ['en', 'English']]
+            .map(([k, l]) => ({ label: l, value: k, icon: k === cur ? 'check' : null })));
+          if (!v || v === cur) return;
+          await app.saveSettings({ language: v });
+          try { localStorage.setItem('language', v); } catch { /* yok */ }
+          location.reload();
+        } }, icon('globe', 22), h('div.txt', null, h('b', null, 'Dil / Language'),
+          h('small', null, { auto: 'Otomatik / Automatic', tr: 'Türkçe', en: 'English' }[app.settings.language || 'auto'])), icon('chevron', 18)),
         h('div', { style: { padding: '12px 16px 4px', fontWeight: 500 } }, 'Arayüz teması'),
         h('div.ui-themes', null, Object.entries(UI_THEMES).map(([k, t]) => h('button.ui-theme' + (k === uiKey ? '.on' : ''), {
           type: 'button', onclick: async () => { await app.saveSettings({ uiTheme: k }); render(); },
@@ -453,7 +463,7 @@ export function snippetsView(app) {
       return;
     }
     list.replaceChildren(h('div.set-card', { style: { marginTop: '12px' } }, sn.map((s) => h('div.snip', { onclick: () => editSnippet(app, s).then(render) },
-      h('div.txt', null, h('b', null, s.name), h('code', null, s.command)), s.run ? h('small.muted', null, '↵') : null))));
+      h('div.txt', null, h('b', { translate: 'no' }, s.name), h('code', null, s.command)), s.run ? h('small.muted', null, '↵') : null))));
   };
   render();
   return { el: h('div.view', null, topbar(app, 'Hazır komutlar'), list, h('button.fab', { onclick: () => editSnippet(app, null).then(render) }, icon('plus', 26))), refresh: render };

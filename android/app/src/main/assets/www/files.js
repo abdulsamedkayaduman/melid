@@ -122,7 +122,7 @@ export class FilesView {
     const meta = dir ? formatDate(e.mtime) : `${formatSize(e.size)} · ${formatDate(e.mtime)}`;
     const r = h('div.frow' + (e.name.startsWith('.') ? '.hiddenf' : '') + (this.sel.has(e.name) ? '.sel' : ''), null,
       h('div.fic' + (dir ? '.dir' : e.type === 'l' ? '.link' : ''), null, icon(ic, 20)),
-      h('div.txt', null, h('b', null, e.name), h('small', null, `${meta}  ${e.perm || ''}`)));
+      h('div.txt', null, h('b', { translate: 'no' }, e.name), h('small', { translate: 'no' }, `${meta}  ${e.perm || ''}`)));
     let lp = null; let long = false; let sx = 0; let sy = 0;
     r.addEventListener('touchstart', (ev) => {
       long = false; sx = ev.touches[0].clientX; sy = ev.touches[0].clientY;

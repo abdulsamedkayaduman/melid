@@ -295,7 +295,7 @@ public final class Updater {
     static void notifyNewer(Context ctx, String version) {
         NotificationManager nm = ctx.getSystemService(NotificationManager.class);
         if (nm.getNotificationChannel(CHANNEL) == null) {
-            NotificationChannel ch = new NotificationChannel(CHANNEL, "Güncellemeler", NotificationManager.IMPORTANCE_DEFAULT);
+            NotificationChannel ch = new NotificationChannel(CHANNEL, App.tr("Güncellemeler", "Updates"), NotificationManager.IMPORTANCE_DEFAULT);
             ch.setDescription("Yeni Melid sürümü çıktığında gösterilir");
             nm.createNotificationChannel(ch);
         }
@@ -303,8 +303,8 @@ public final class Updater {
         PendingIntent pi = PendingIntent.getActivity(ctx, 3, open, PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
         nm.notify(NOTIF_ID, new Notification.Builder(ctx, CHANNEL)
                 .setSmallIcon(R.drawable.ic_stat)
-                .setContentTitle("Melid " + version + " çıktı")
-                .setContentText("Yeni sürümü görmek ve kurmak için dokunun")
+                .setContentTitle(App.tr("Melid " + version + " çıktı", "Melid " + version + " is out"))
+                .setContentText(App.tr("Yeni sürümü görmek ve kurmak için dokunun", "Tap to see and install the new version"))
                 .setContentIntent(pi)
                 .setAutoCancel(true)
                 .build());

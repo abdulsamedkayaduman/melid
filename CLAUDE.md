@@ -143,6 +143,8 @@ derlemede `../node_modules`'tan kopyalanır); SSH Java'da: JSch (mwiede) + Bounc
 
 - `android/app/src/main/java/dev/melid/core/` Android'den bağımsız (ssh-manager.js'in karşılığı) —
   `bash android/coretest/run.sh` ile JVM'de geçici sshd + ssh2 sunucusuna karşı test edilir.
+- Dil: `www/i18n.js` (masaüstüyle aynı gözlemci) + `www/locales/en.js` (masaüstü sözlüğü + Android'e özgü metinler; yeni metin
+  ikisine de eklenmeli). Ayar `language` cihaza özgü (localStorage'da da tutulur, kilit ekranı için). Java yerel metinleri `App.tr(tr, en)`.
 - Köprü: JS `MelidNative.call(id, metot, json)` -> `window.__nreply`; olaylar `window.__nevent` (Bridge.java).
   Yeni çağrı: `Bridge.dispatch` içine `case` + JS'te `N.call('metot', {...})`.
 - Güncelleme: `Updater.java` (masaüstüyle aynı imzalı latest.json; JobScheduler + bildirim, PackageInstaller).

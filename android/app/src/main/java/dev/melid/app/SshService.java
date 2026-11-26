@@ -63,7 +63,7 @@ public class SshService extends Service {
     Notification build(int n) {
         NotificationManager nm = getSystemService(NotificationManager.class);
         if (nm.getNotificationChannel(CHANNEL) == null) {
-            NotificationChannel ch = new NotificationChannel(CHANNEL, "Açık bağlantılar", NotificationManager.IMPORTANCE_LOW);
+            NotificationChannel ch = new NotificationChannel(CHANNEL, App.tr("Açık bağlantılar", "Open connections"), NotificationManager.IMPORTANCE_LOW);
             ch.setDescription("SSH bağlantıları açıkken gösterilir");
             ch.setShowBadge(false);
             nm.createNotificationChannel(ch);
@@ -75,7 +75,7 @@ public class SshService extends Service {
         return new Notification.Builder(this, CHANNEL)
                 .setSmallIcon(R.drawable.ic_stat)
                 .setContentTitle("Melid")
-                .setContentText(n == 1 ? "1 bağlantı açık" : n + " bağlantı açık")
+                .setContentText(n == 1 ? App.tr("1 bağlantı açık", "1 connection open") : App.tr(n + " bağlantı açık", n + " connections open"))
                 .setContentIntent(pOpen)
                 .setOngoing(true)
                 .setShowWhen(false)

@@ -406,6 +406,7 @@ public class Store implements SyncCore.Local {
 
     /** Kullanım sayıları gönderilsin mi (bu cihaza özgü; varsayılan açık). Ayrıntı: UsageStats, server/pages/kosullar.html */
     public synchronized boolean usageStats() { return settings.optBoolean("usageStats", true); }
+    public synchronized String language() { return settings.optString("language", "auto"); }
 
     public synchronized void setUsageStats(boolean on) throws JSONException {
         settings.put("usageStats", on);

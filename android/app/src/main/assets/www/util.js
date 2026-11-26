@@ -206,6 +206,7 @@ const I = {
   tab: 'M3 6h8v4h10v10H3z',
   dup: 'M8 8h12v12H8zM4 16V4h12',
   palette: 'M12 22a10 10 0 1 1 10-10c0 3-2 4-4 4h-2a2 2 0 0 0-1 3.7A2 2 0 0 1 12 22zM7.5 11h.01M10 7h.01M14 7h.01M16.5 11h.01',
+  globe: 'M3 12a9 9 0 1 0 18 0a9 9 0 1 0-18 0M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18',
   font: 'M4 20l6-16h4l6 16M7 14h10',
 };
 // Melid mührü (melid-brand/svg/melid-icon.svg; küçük boyutta melid-icon-small.svg). Sabit, güvenilir SVG metni.

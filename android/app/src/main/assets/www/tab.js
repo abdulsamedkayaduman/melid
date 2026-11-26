@@ -6,6 +6,7 @@ import { toast, actionSheet, sheet, confirm } from './dialogs.js';
 import { TermView } from './term.js';
 import { FilesView } from './files.js';
 import { editForward } from './screens.js';
+import { t } from './i18n.js';
 
 const b64ToBytes = (s) => {
   const bin = atob(s);
@@ -96,7 +97,7 @@ export class SessionTab {
     try {
       await N.call('connect', { c, sessionId: this.session.id, overrides });
       if (this.connId !== c) { N.call('disconnect', { c }).catch(() => {}); return; }
-      if (this.everConnected) this.term.write('\r\n\x1b[2m── yeniden bağlandı ──\x1b[0m\r\n');
+      if (this.everConnected) this.term.write(`\r\n\x1b[2m── ${t('yeniden bağlandı')} ──\x1b[0m\r\n`);
       await N.call('openShell', { c, s: 'main', cols: this.term.cols, rows: this.term.rows });
       if (this.connId !== c) return;
       this.everConnected = true;
@@ -155,7 +156,7 @@ export class SessionTab {
   }
 
   onBanner(ev) {
-    if (ev.c === this.connId) this.term.write('\x1b[2m' + ev.message.replace(/\r?\n/g, '\r\n') + '\x1b[0m\r\n');
+    if (ev.c === this.connId) this.term.write('\x1b[2m' + t(ev.message).replace(/\r?\n/g, '\r\n') + '\x1b[0m\r\n');
   }
 
   onExit(ev) {

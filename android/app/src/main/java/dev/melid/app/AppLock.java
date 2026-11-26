@@ -174,7 +174,7 @@ class AppLock {
             if (!bioAvailable()) throw new Exception("Bu telefonda kayıtlı parmak izi / yüz tanıma yok (Android Ayarlar > Güvenlik)");
             deleteBioKey();
             createBioKey();
-            prompt(act, "Biyometrik girişi aç", "Doğrulamak için parmağınızı okutun");
+            prompt(act, App.tr("Biyometrik girişi aç", "Turn on biometric unlock"), App.tr("Doğrulamak için parmağınızı okutun", "Scan your fingerprint to verify"));
         } else deleteBioKey();
         synchronized (this) {
             JSONObject n = new JSONObject(cfg.toString());
@@ -186,7 +186,7 @@ class AppLock {
     /** Biyometrikle aç (kilit ekranından) */
     void unlockBiometric(Activity act) throws Exception {
         if (!enabled() || !cfg.optBoolean("biometric")) throw new Exception("Biyometrik giriş kapalı");
-        prompt(act, "Melid kilidini aç", null);
+        prompt(act, App.tr("Melid kilidini aç", "Unlock Melid"), null);
         locked = false;
         synchronized (this) { fails = 0; }
     }
@@ -238,7 +238,7 @@ class AppLock {
         CancellationSignal cancel = new CancellationSignal();
         app.main.post(() -> {
             BiometricPrompt.Builder b = new BiometricPrompt.Builder(act).setTitle(title)
-                    .setNegativeButton("Parola kullan", act.getMainExecutor(), (d, w) -> result.offer(new Exception("")));
+                    .setNegativeButton(App.tr("Parola kullan", "Use password"), act.getMainExecutor(), (d, w) -> result.offer(new Exception("")));
             if (sub != null) b.setSubtitle(sub);
             if (Build.VERSION.SDK_INT >= 30) b.setAllowedAuthenticators(authenticators());
             try {

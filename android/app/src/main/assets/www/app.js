@@ -7,6 +7,7 @@ import { sessionEditor, settingsView, editorView, importBackup, snippetsView } f
 import { updateSheet } from './update.js';
 import { accountSheet } from './account.js';
 import { ensureUnlocked, showLock, lockShown } from './lock.js';
+import { initI18n } from './i18n.js';
 
 // "az önce", "12 dk önce", "14:05", "dün 14:05", "3 Eki"
 function recentWhen(t) {
@@ -37,9 +38,17 @@ class App {
     let cached = null;
     try { cached = localStorage.getItem('uiTheme'); } catch { /* yok */ }
     this.applyTheme(cached);
+    // Dil: kilit ekranı da çevrilsin diye son seçim localStorage'dan (ayar language cihaza özgü, eşitlenmez)
+    let lang = 'auto';
+    try { lang = localStorage.getItem('language') || 'auto'; } catch { /* yok */ }
+    initI18n(lang);
     await ensureUnlocked();
     N.on('lock', () => showLock());
     await this.reload();
+    if ((this.settings.language || 'auto') !== lang) {
+      try { localStorage.setItem('language', this.settings.language || 'auto'); } catch { /* yok */ }
+      location.reload(); return;
+    }
     // önceki çalıştırmadan kalan geçici (hızlı bağlan) oturumları temizle
     for (const s of this.sessions.filter((x) => x.temporary)) await N.call('deleteSession', { id: s.id }).catch(() => {});
     if (this.sessions.some((x) => x.temporary)) await this.reload();
@@ -236,7 +245,7 @@ class App {
       out.push(h('div.recent', null, recent.map((r) => {
         const s = byId.get(r.id);
         return h('button.recent-row', { type: 'button', onclick: () => this.connectSession(s) },
-          icon('terminal', 16), h('b', null, s.name), h('span', null, `${s.username ? s.username + '@' : ''}${s.host}`), h('small', null, recentWhen(r.t)));
+          icon('terminal', 16), h('b', { translate: 'no' }, s.name), h('span', { translate: 'no' }, `${s.username ? s.username + '@' : ''}${s.host}`), h('small', null, recentWhen(r.t)));
       })));
       out.push(h('div.sec-title', null, 'Oturumlar'));
     }
@@ -286,7 +295,7 @@ class App {
     const st = open.find((t) => t.state === 'connected') ? 'ok' : open.find((t) => t.state === 'connecting') ? 'busy' : open.length ? 'err' : null;
     const r = h('div.row', null,
       h('div.av', null, icon('server', 20), st ? h('span.dot.' + st) : null),
-      h('div.txt', null, h('b', null, s.name), h('small', null, `${s.username ? s.username + '@' : ''}${s.host}${s.port && s.port !== 22 ? ':' + s.port : ''}${s.authType === 'key' ? ' · anahtar' : ''}`)),
+      h('div.txt', null, h('b', { translate: 'no' }, s.name), h('small', null, h('span', { translate: 'no' }, `${s.username ? s.username + '@' : ''}${s.host}${s.port && s.port !== 22 ? ':' + s.port : ''}`), s.authType === 'key' ? ' · anahtar' : '')),
       h('button.tb', { onclick: (e) => { e.stopPropagation(); this.sessionMenu(s); } }, icon('more', 20)));
     let lp = null; let long = false;
     r.addEventListener('touchstart', () => { long = false; lp = setTimeout(() => { long = true; try { navigator.vibrate?.(15); } catch { /* yok */ } this.sessionMenu(s); }, 500); }, { passive: true });

@@ -26,6 +26,16 @@ import dev.melid.core.SshCore;
 public class App extends Application implements Host {
     static App I;
 
+    /** Arayüz dili İngilizce mi (ayar language: auto | tr | en; auto = telefonun dili). Yerel metinler için: App.tr("Türkçe", "English") */
+    public static boolean english() {
+        String l = "auto";
+        try { if (I != null && I.store != null) l = I.store.language(); } catch (Exception ignored) { }
+        if ("tr".equals(l)) return false;
+        if ("en".equals(l)) return true;
+        return !"tr".equals(java.util.Locale.getDefault().getLanguage());
+    }
+    public static String tr(String tr, String en) { return english() ? en : tr; }
+
     Store store;
     SshCore core;
     Sftp sftp;
