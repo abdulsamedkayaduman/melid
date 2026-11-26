@@ -58,6 +58,7 @@ const DEFAULT_SETTINGS = {
   maxTransfers: 3, // aynı anda en fazla kaç aktarım (sekme başına)
   relayMethod: 'relay', // uzak -> uzak aktarımda son seçilen yöntem: 'relay' (bu bilgisayar) | 'key' | 'agent'
   showStats: true, // durum çubuğunda sunucu kaynakları
+  toolbarLabels: true, // araç çubuğu düğmelerinin altında yazı
   autoUpdate: true, // güncellemeleri kendiliğinden denetle (açılışta + 6 saatte bir)
   updateSkip: null, // "bu sürümü atla" denen sürüm
   updateLastCheck: 0,

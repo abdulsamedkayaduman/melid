@@ -45,6 +45,7 @@ class App {
     applyUiTheme(this.settings.uiTheme);
     this.applyTabActivity();
     this.build();
+    this.applyToolbarLabels();
     this.renderSidebar();
     this.renderTabs();
     this.setAccount(this.account);
@@ -71,7 +72,8 @@ class App {
 
   // ------------------------------------------------------------ layout
   build() {
-    const tbtn = (ic, title, fn, cls = '') => h('button.tool' + cls, { title, onclick: fn }, icon(ic, 17));
+    // Araç çubuğu düğmesi: simge + kısa yazı (Ayarlar > "Düğme yazılarını göster" kapatınca yalnız simge)
+    const tbtn = (ic, title, fn, cls = '', label = '') => h('button.tool' + cls, { title, onclick: fn }, icon(ic, 17), label ? h('span.tool-label', null, label) : null);
     this.quickInput = h('input.quick-input', {
       placeholder: 'Hızlı bağlan:  kullanici@sunucu:port  — veya bağlantı bilgilerini yapıştırın',
       spellcheck: false,
@@ -86,11 +88,11 @@ class App {
       },
       onkeydown: (e) => { if (e.key === 'Enter') { e.preventDefault(); this.quickConnect(this.quickInput.value); } if (e.key === 'Escape') { this.quickInput.value = ''; this.active?.focus(); } },
     });
-    this.btnSidebar = tbtn('sidebar', 'Oturum listesi (Ctrl+Shift+B)', () => this.toggleSidebar(), '.on');
-    this.btnSftp = tbtn('files', 'SFTP dosya paneli (Ctrl+Shift+E)', () => this.active?.toggleSftp() || this.syncToolbar());
-    this.btnTunnels = tbtn('tunnel', 'Tüneller', () => this.active?.tunnelsDialog());
-    this.btnBroadcast = tbtn('broadcast', 'Tüm sekmelere gönder', () => this.toggleBroadcast());
-    this.btnSnippets = tbtn('snippet', 'Hazır komutlar (Ctrl+Shift+K)', () => this.snippetPalette());
+    this.btnSidebar = tbtn('sidebar', 'Oturum listesi (Ctrl+Shift+B)', () => this.toggleSidebar(), '.on', 'Oturumlar');
+    this.btnSftp = tbtn('files', 'SFTP dosya paneli (Ctrl+Shift+E)', () => this.active?.toggleSftp() || this.syncToolbar(), '', 'Dosyalar');
+    this.btnTunnels = tbtn('tunnel', 'Tüneller', () => this.active?.tunnelsDialog(), '', 'Tüneller');
+    this.btnBroadcast = tbtn('broadcast', 'Tüm sekmelere gönder', () => this.toggleBroadcast(), '', 'Yayın');
+    this.btnSnippets = tbtn('snippet', 'Hazır komutlar (Ctrl+Shift+K)', () => this.snippetPalette(), '', 'Komutlar');
     this.btnSplit = tbtn('splitH', 'Terminali böl (Ctrl+Shift+D sağa, Ctrl+Shift+S aşağı)', (e) => {
       const r = e.currentTarget.getBoundingClientRect();
       contextMenu(r.left, r.bottom + 4, [
@@ -98,19 +100,19 @@ class App {
         { label: 'Aşağı böl', icon: 'splitV', hint: 'Ctrl+Shift+S', action: () => this.active?.splitPane('v') },
         { label: 'Bölmeyi kapat', icon: 'x', hint: 'Ctrl+Shift+W', disabled: !(this.active && this.active.panes.length > 1), action: () => this.active?.closePane() },
       ]);
-    });
-    this.btnFocus = tbtn('focus', 'Odak modu (Alt+Enter)', () => this.toggleFocus());
-    const toolbar = h('header.toolbar', null,
+    }, '', 'Böl');
+    this.btnFocus = tbtn('focus', 'Odak modu (Alt+Enter)', () => this.toggleFocus(), '', 'Odak');
+    const toolbar = this.toolbarEl = h('header.toolbar', null,
       h('div.brand', null, brandIcon(20), wordmark()),
       h('button.btn.primary.sm', { onclick: () => this.newSession(), title: 'Yeni oturum (Ctrl+Shift+N)' }, icon('plus', 14), 'Yeni oturum'),
       h('div.quick', null, icon('bolt', 14), this.quickInput),
       h('div.spacer'),
       this.btnSidebar, this.btnSftp, this.btnSplit, this.btnTunnels, this.btnSnippets, this.btnBroadcast, this.btnFocus,
       h('span.tool-sep'),
-      tbtn('terminal', 'Yerel terminal: bu bilgisayarın kabuğu (Ctrl+Shift+O)', () => this.openLocalShell()),
-      tbtn('import', 'İçe aktar (SSH config, WindTerm, Xshell, MobaXterm)', (e) => { const r = e.currentTarget.getBoundingClientRect(); this.importMenu(r.left, r.bottom + 4); }),
-      (this.btnAccount = tbtn('cloud', 'Hesap ve eşitleme', () => accountDialog(this))),
-      tbtn('gear', 'Ayarlar', () => this.openSettings()));
+      tbtn('terminal', 'Yerel terminal: bu bilgisayarın kabuğu (Ctrl+Shift+O)', () => this.openLocalShell(), '', 'Terminal'),
+      tbtn('import', 'İçe aktar (SSH config, WindTerm, Xshell, MobaXterm)', (e) => { const r = e.currentTarget.getBoundingClientRect(); this.importMenu(r.left, r.bottom + 4); }, '', 'İçe aktar'),
+      (this.btnAccount = tbtn('cloud', 'Hesap ve eşitleme', () => accountDialog(this), '', 'Hesap')),
+      tbtn('gear', 'Ayarlar', () => this.openSettings(), '', 'Ayarlar'));
 
     // Arama: yazdıkça ilk eşleşme seçilir; ↑/↓ (Home/End) ile gezilir, Enter bağlanır, Esc temizler
     this.filter = h('input.input.sm.filter', {
@@ -679,7 +681,10 @@ class App {
   async saveSettings(patch) {
     Object.assign(this.settings, patch);
     this.settings = await api.saveSettings(patch);
+    this.applyToolbarLabels();
   }
+
+  applyToolbarLabels() { this.toolbarEl?.classList.toggle('labels', this.settings.toolbarLabels !== false); }
 
   // ------------------------------------------------------------ tabs
   openSession(id, opts = {}) {
