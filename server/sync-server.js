@@ -81,7 +81,7 @@ function createSyncServer({
     const c = /(?:^|;\s*)melid_lang=(tr|en)\b/.exec(req.headers.cookie || '');
     if (c) return { lang: c[1] };
     const al = String(req.headers['accept-language'] || '').trim().toLowerCase();
-    return { lang: !al || al.startsWith('tr') ? 'tr' : 'en' };
+    return { lang: !al || al === '*' || al.startsWith('tr') ? 'tr' : 'en' };
   };
   // Favicon ve uygulama ikonları (pages/static, melid-brand/web)
   const STATIC_TYPES = { '.png': 'image/png', '.svg': 'image/svg+xml', '.ico': 'image/x-icon' };
