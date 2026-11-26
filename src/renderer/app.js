@@ -947,7 +947,19 @@ class App {
       b._title.textContent = t.title;
       return b;
     });
-    g.addBtn ??= h('button.tab-add', { title: 'Yeni oturum', onclick: () => { if (g.active) this.activate(g.active); this.newSession(); } }, icon('plus', 14));
+    // +: bu gruba yerel terminal; sağ tık: yerel terminal ya da yeni oturum
+    g.addBtn ??= h('button.tab-add', {
+      title: 'Yerel terminal (Ctrl+Shift+O) · sağ tık: yeni oturum',
+      onclick: () => { if (g.active) this.activate(g.active); this.openLocalShell(); },
+      oncontextmenu: (e) => {
+        e.preventDefault();
+        if (g.active) this.activate(g.active);
+        contextMenu(e.clientX, e.clientY, [
+          { label: 'Yerel terminal', icon: 'terminal', hint: 'Ctrl+Shift+O', action: () => this.openLocalShell() },
+          { label: 'Yeni oturum…', icon: 'plus', hint: 'Ctrl+Shift+N', action: () => this.newSession() },
+        ]);
+      },
+    }, icon('plus', 14));
     g.tabbar.replaceChildren(...btns, g.addBtn);
   }
 
