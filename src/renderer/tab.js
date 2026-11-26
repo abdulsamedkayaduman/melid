@@ -38,6 +38,7 @@ export class SessionTab {
     this.id = uid('tab');
     this.sessionId = sessionId || null;
     this.quick = quick || null;
+    this.isLocal = !!(quick && quick.local); // yerel terminal: bu bilgisayarın kabuğu (dosya paneli, tünel, kaynak sorgusu yok)
     this.title = title;
     this.connId = null;
     this.state = 'idle';
@@ -45,7 +46,7 @@ export class SessionTab {
     this.fwState = new Map(); // fid -> {state, msg}
     this.adhocForwards = [];
     this.transfers = new Map();
-    this.sftpVisible = app.settings.sftpPanel !== false;
+    this.sftpVisible = !this.isLocal && app.settings.sftpPanel !== false;
     this.localVisible = app.settings.localPane !== false;
     this.followTerm = app.settings.followTerminal !== false;
     this.localInitialized = false;
@@ -295,6 +296,7 @@ export class SessionTab {
   }
 
   toggleSftp(v) {
+    if (this.isLocal) { if (v !== false) toast('Yerel terminalde dosya paneli yok', 'info'); return; }
     this.sftpVisible = v === undefined ? !this.sftpVisible : v;
     if (!this.sftpVisible) this.sftpOnly = false;
     this.applySftpLayout();
@@ -485,8 +487,8 @@ export class SessionTab {
       { label: 'Aşağı böl', icon: 'splitV', hint: 'Ctrl+Shift+S', action: () => this.splitPane('v', pane) },
       this.panes.length > 1 ? { label: 'Bölmeyi kapat', icon: 'x', hint: 'Ctrl+Shift+W', action: () => this.closePane(pane) } : null,
       '-',
-      { label: 'Tüneller…', icon: 'tunnel', disabled: !connected, action: () => this.tunnelsDialog() },
-      { label: 'Açık anahtarı sunucuya yükle…', icon: 'key', disabled: !connected, action: () => this.app.installKeyDialog(this) },
+      this.isLocal ? null : { label: 'Tüneller…', icon: 'tunnel', disabled: !connected, action: () => this.tunnelsDialog() },
+      this.isLocal ? null : { label: 'Açık anahtarı sunucuya yükle…', icon: 'key', disabled: !connected, action: () => this.app.installKeyDialog(this) },
       this.app.settings.logEnabled ? { label: 'Kayıt klasörünü aç', icon: 'record', action: () => this.api.logs.open() } : null,
       connected ? { label: 'Bağlantıyı kes', icon: 'stop', danger: true, action: () => this.disconnect() }
         : { label: 'Yeniden bağlan', icon: 'play', action: () => this.connect() },
@@ -518,7 +520,7 @@ export class SessionTab {
     const s = this.session;
     const label = s ? `${s.username ? s.username + '@' : ''}${s.host}:${s.port || 22}` : `${this.quick.username ? this.quick.username + '@' : ''}${this.quick.host}:${this.quick.port}`;
     if (this._everConnected) this.writeAll('\r\n');
-    this.writeAll(`\x1b[90m${label} adresine bağlanılıyor…\x1b[0m`);
+    this.writeAll(this.isLocal ? '\x1b[90mYerel terminal açılıyor…\x1b[0m' : `\x1b[90m${label} adresine bağlanılıyor…\x1b[0m`);
     try {
       const info = await this.api.ssh.connect(connId, this.sessionId ? { sessionId: this.sessionId } : { session: this.quick });
       if (connId !== this.connId) return;
@@ -540,8 +542,8 @@ export class SessionTab {
       if (this.sftpVisible) this.initRemotePane();
       // SFTP paneli gizliyse uzak başlangıç dizini panel açılınca kullanılsın
       if (this.startDirs) this.startDirs = !this.sftpVisible && this.startDirs.remote ? { remote: this.startDirs.remote } : null;
-      this.lastTermCwd = null; this._cwdFails = 0; this._cwdUnsupported = false;
-      this.stats = null; this._statsUnsupported = false;
+      this.lastTermCwd = null; this._cwdFails = 0; this._cwdUnsupported = this.isLocal;
+      this.stats = null; this._statsUnsupported = this.isLocal;
       clearInterval(this._cwdTimer);
       this._cwdTimer = setInterval(() => { if (this.app.active === this) { this.syncTermCwd(); this.pollStats(); } }, 3000);
       this.pollStats();

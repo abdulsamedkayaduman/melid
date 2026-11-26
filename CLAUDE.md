@@ -72,6 +72,9 @@ src/main/conncheck.js    Toplu işler: ayrı, sormayan SshManager ile oturumlara
                          Bilinmeyen sunucu anahtarına yalnız seçilirse güvenir.
 src/main/usage.js        Kullanım sayıları (usage.json, günlük bağlantı/aktarım/tünel); sync.js eşitlemeden sonra saatte bir
                          gönderir (POST /api/usage), ayar usageStats kapatır. Android: app/UsageStats.java. Gizlilik: /kosullar
+                         Yerel terminal: main.js localShells (@lydell/node-pty, hazır derlenmiş N-API; asarUnpack). Sekme SSH gibi:
+                         ssh:connect {session:{local:true}} + aynı ssh:shell/write/resize kanalları; tab.isLocal (SFTP/tünel yok).
+                         Mac paketi Linux'ta derlendiği için CI darwin ikililerini ayrıca kurar (derle.yml mac).
 src/main/termlog.js      Oturum kaydı: TermLogger (oturum adına göre klasör, dosya başına kabuk) + parçalı ANSI temizleyici
 src/main/keys.js         ~/.ssh anahtarlarını listeleme, ssh2 utils ile anahtar üretme (OpenSSH biçimi)
 src/main/socks.js        -D için minimal SOCKS5 (CONNECT, kimlik doğrulamasız)
@@ -85,7 +88,8 @@ src/main/importers.js    WindTerm (user.sessions JSON) ve Xshell (.xsh INI, klas
                          WindTerm parolaları: AES-256-CBC, anahtar=PBKDF2-SHA3-512(ana parola, salt=user.config application.fingerprint, 100000).
                          İçe aktarmada ana parola sorulur (uiRequest password). Xshell parolaları: RC4, anahtar Windows kullanıcı adı + SID
                          ya da Xshell ana parolası (xshellKeys: olası biçimlerin hepsi, SHA-256 özetiyle doğrulanır); Windows'ta
-                         windowsIdentity() kendiliğinden, değilse uiRequest xshellCreds. Tüneller FwdReq_*. Yalnız masaüstü
+                         windowsIdentity() kendiliğinden, değilse uiRequest xshellCreds. Tüneller FwdReq_* (yön _Incoming). MobaXterm: parseMobaXterm
+                         ([Bookmarks_N], SSH alanları, geçit -> _jump, taşınabilir sürüm [Passwords] AES-256-CFB8). Yalnız masaüstü
                          SHA3 için @noble/hashes kullanılır (Electron BoringSSL sha3-512 desteklemez); anahtar bir kez türetilir
 src/preload.js           contextBridge ile window.api (contextIsolation + sandbox açık, nodeIntegration kapalı)
 src/renderer/app.js      App: kenar çubuğu ağacı, sekmeler, kısayollar, broadcast, durum çubuğu, IPC olay yönlendirme

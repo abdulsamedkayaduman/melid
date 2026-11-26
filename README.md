@@ -19,7 +19,9 @@ Arayüz Türkçe. Electron + xterm.js + ssh2; Android'de WebView + JSch.
 - **Hesap ve eşitleme**: oturumlar, kayıtlı parolalar, ayarlar, hazır komutlar ve isteğe bağlı SSH anahtarları cihazlar
   arasında uçtan uca şifreli eşitlenir. Genel sunucu hazır gelir; isteyen kendi sunucusunu kurar ([docs/senkron.md](docs/senkron.md)).
 - **Güvenlik**: parolalar işletim sisteminin anahtarlığıyla şifreli, isteğe bağlı ana parola, şifreli yedek.
-- **Geçiş**: WindTerm ve Xshell oturumlarını parolaları ve tünelleriyle içe aktarma (Xshell `.xts` dışa aktarması; masaüstü uygulamada).
+- **Yerel terminal**: bu bilgisayarın kabuğu (Linux/macOS: `$SHELL`, Windows: PowerShell) ayrı sekmede; bölme, arama, yayın aynı (Ctrl+Shift+O).
+- **Geçiş**: Xshell (parolalar ve tünellerle, `.xts`), MobaXterm (`.mxtsessions` / `MobaXterm.ini`, klasörler, atlama sunucusu,
+  anahtar dosyası) ve WindTerm oturumlarını içe aktarma; masaüstü uygulamada.
 
 ## Kurulum
 
@@ -78,6 +80,16 @@ Masaüstü uygulamada, oturumlar klasörleri, parolaları ve tünelleriyle birli
 Gelenler: klasörler, ad, adres, port, kullanıcı adı, açıklama, parola, tüneller (yerel `-L`, uzak `-R`, SOCKS `-D`).
 Gelmeyenler: Xshell'in kendi anahtar deposundaki özel anahtarlar (Xshell'den dışa aktarıp `~/.ssh`'ye koyun) ve görünüm ayarları.
 WindTerm oturumları da aynı düğmeden, WindTerm ana parolasıyla parolalarıyla birlikte aktarılır.
+
+## MobaXterm'den geçiş
+
+1. **MobaXterm'de** soldaki oturum listesinde en üstteki **User sessions**'a sağ tıklayın → **Export sessions**: bir `.mxtsessions`
+   dosyası oluşur. Ya da doğrudan `MobaXterm.ini`'yi seçin (kurulu sürüm: `%APPDATA%\MobaXterm\MobaXterm.ini`; taşınabilir
+   sürüm: programın yanındaki `MobaXterm.ini`).
+2. **Melid'de** **İçe aktar** → **MobaXterm oturumları** ile dosyayı seçin. SSH oturumları; klasörleri, kullanıcı adı, port,
+   özel anahtar dosyası, giriş komutu, açıklama ve **SSH gateway** (atlama sunucusu) ile gelir. RDP, VNC gibi oturumlar atlanır.
+3. **Parolalar:** kurulu MobaXterm parolaları Windows kayıt defterinde tutar, dışa aktarılan dosyaya koymaz; bunlar ilk bağlantıda
+   sorulur. Taşınabilir sürümün `MobaXterm.ini` dosyasında parolalar varsa Melid MobaXterm ana parolasını sorar.
 
 ## Kaynaktan çalıştırma
 

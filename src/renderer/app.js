@@ -107,7 +107,8 @@ class App {
       h('div.spacer'),
       this.btnSidebar, this.btnSftp, this.btnSplit, this.btnTunnels, this.btnSnippets, this.btnBroadcast, this.btnFocus,
       h('span.tool-sep'),
-      tbtn('import', 'İçe aktar (SSH config, WindTerm, Xshell)', (e) => { const r = e.currentTarget.getBoundingClientRect(); this.importMenu(r.left, r.bottom + 4); }),
+      tbtn('terminal', 'Yerel terminal: bu bilgisayarın kabuğu (Ctrl+Shift+O)', () => this.openLocalShell()),
+      tbtn('import', 'İçe aktar (SSH config, WindTerm, Xshell, MobaXterm)', (e) => { const r = e.currentTarget.getBoundingClientRect(); this.importMenu(r.left, r.bottom + 4); }),
       (this.btnAccount = tbtn('cloud', 'Hesap ve eşitleme', () => accountDialog(this))),
       tbtn('gear', 'Ayarlar', () => this.openSettings()));
 
@@ -221,9 +222,10 @@ class App {
         h('div.w-cards', null,
           card('plus', 'Yeni oturum', 'Sunucu bilgilerini kaydedin', () => this.newSession()),
           card('bolt', 'Hızlı bağlan', 'kullanici@sunucu yazın veya bağlantı bilgilerini yapıştırın', () => this.quickInput.focus()),
+          card('terminal', 'Yerel terminal', 'Bu bilgisayarın kabuğunu açın', () => this.openLocalShell()),
           card('import', 'İçe aktar', 'SSH config, WindTerm veya Xshell oturumları', (e) => this.importMenu(e.clientX, e.clientY))),
         h('div.w-keys', null,
-          ...[['Ctrl+Shift+N', 'Yeni oturum'], ['Ctrl+Shift+T', 'Sekmeyi çoğalt'], ['Ctrl+Shift+W', 'Bölmeyi / sekmeyi kapat'], ['Ctrl+Tab', 'Sonraki sekme'],
+          ...[['Ctrl+Shift+N', 'Yeni oturum'], ['Ctrl+Shift+O', 'Yerel terminal'], ['Ctrl+Shift+T', 'Sekmeyi çoğalt'], ['Ctrl+Shift+W', 'Bölmeyi / sekmeyi kapat'], ['Ctrl+Tab', 'Sonraki sekme'],
             ['Ctrl+Shift+D / S', 'Sağa / aşağı böl'], ['Ctrl+Shift+M', 'Sekmeyi yana ayır'], ['Ctrl+Shift+PgUp / PgDn', 'Sekmeyi sola / sağa al'], ['Alt+Shift+Oklar', 'Bölmeler arası geç'], ['Ctrl+Shift+K', 'Hazır komutlar'],
             ['Ctrl+Shift+E', 'SFTP paneli'], ['Ctrl+Shift+F', 'Terminalde ara'], ['Ctrl+Shift+C / V', 'Kopyala / yapıştır'], ['Ctrl+C / V', 'Dosya kopyala / yapıştır (SFTP)'], ['Ctrl + / −', 'Yazı boyutu'], ['Alt+Enter', 'Odak modu']]
             .map(([k, v]) => h('div.w-key', null, h('kbd', null, keyLabel(k)), h('span', null, v))))));
@@ -532,6 +534,7 @@ class App {
       { label: 'WindTerm oturumları…', icon: 'import', action: () => this.importFrom('windterm') },
       { label: 'Xshell Sessions klasörü…', icon: 'folder', action: () => this.importFrom('xshell-dir') },
       { label: 'Xshell dosyaları (.xsh / .xts)…', icon: 'file', action: () => this.importFrom('xshell-files') },
+      { label: 'MobaXterm oturumları (.mxtsessions / MobaXterm.ini)…', icon: 'file', action: () => this.importFrom('mobaxterm') },
     ];
   }
 
@@ -699,6 +702,13 @@ class App {
     const quick = { name: q.name || q.host, host: q.host, port: q.port, username: q.username, authType: 'auto', forwards: [] };
     if (q.password) quick.password = q.password;
     const tab = new SessionTab(this, { quick, title: q.name || `${q.username ? q.username + '@' : ''}${q.host}` });
+    this.addTab(tab);
+    tab.connect();
+  }
+
+  /** Bu bilgisayarın kabuğu (Linux/macOS: $SHELL, Windows: PowerShell) yeni sekmede */
+  openLocalShell() {
+    const tab = new SessionTab(this, { quick: { local: true, name: 'Yerel terminal', host: 'localhost', port: 0, forwards: [] }, title: 'Yerel terminal' });
     this.addTab(tab);
     tab.connect();
   }
@@ -1147,7 +1157,7 @@ class App {
   isAppShortcut(e) {
     const k = e.key.toLowerCase();
     const mod = modKey(e);
-    if (mod && e.shiftKey && ['n', 't', 'w', 'e', 'b', 'r', 'l', 'd', 's', 'k', 'm'].includes(k)) return true;
+    if (mod && e.shiftKey && ['n', 't', 'w', 'e', 'b', 'r', 'l', 'd', 's', 'k', 'm', 'o'].includes(k)) return true;
     if (e.altKey && e.shiftKey && !e.ctrlKey && ['arrowleft', 'arrowright', 'arrowup', 'arrowdown'].includes(k)) return true;
     if (e.ctrlKey && k === 'tab') return true;
     if (mod && (k === 'pageup' || k === 'pagedown')) return true;
@@ -1186,6 +1196,7 @@ class App {
         else if (k === 'b') this.toggleSidebar();
         else if (k === 'r') this.active?.connect();
         else if (k === 'l') this.quickInput.focus();
+        else if (k === 'o') this.openLocalShell();
         else if (k === 'm') this.moveActiveSide();
         else if (k === 'pageup' || k === 'pagedown') this.shiftTab(this.active, k === 'pageup' ? -1 : 1);
         return;

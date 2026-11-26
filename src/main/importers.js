@@ -333,7 +333,111 @@ function parseXshellPaths(paths) {
   return out;
 }
 
+// ---------------------------------------------------------------- MobaXterm
+// Biçim: .mxtsessions (Oturumlar > Dışa aktar) ve MobaXterm.ini aynı INI düzenindedir. [Bookmarks], [Bookmarks_N]: SubRep=
+// klasör yolu (\ ile), ImgNum= simge; diğer satırlar "Ad=#simge#tür%adres%port%kullanıcı%...#terminal#başlatma#açıklama#renk".
+// SSH (tür 0) alanları: 1 adres, 2 port, 3 kullanıcı (<default> = yok), 7 giriş komutu, 8/9/10 geçit (atlama sunucusu)
+// adresleri/portları/kullanıcıları (__PIPE__ ile çoklu), 14 özel anahtar yolu (_CurrentDrive_ = C:). Parolalar yalnız
+// taşınabilir sürümün MobaXterm.ini [Passwords] bölümünde ("ssh22:kullanıcı@adres=..."); kurulu sürümde kayıt defterindedir.
+const MOBA_ESC = [['__PTVIRG__', ';'], ['__DBLQUO__', '"'], ['__PIPE__', '|'], ['__DIEZE__', '#'], ['__PERCENT__', '%']];
+const mobaUnescape = (v) => MOBA_ESC.reduce((x, [a, b]) => x.split(a).join(b), String(v || ''));
+const mobaPath = (p) => String(p || '').replace(/_CurrentDrive_:?/g, 'C:').replace(/_ProfileDir_/g, os.homedir()).trim();
+
+function decodeMoba(buf) {
+  if (buf[0] === 0xff && buf[1] === 0xfe) return buf.subarray(2).toString('utf16le');
+  const u = buf.toString('utf8').replace(/^﻿/, '');
+  return u.includes('�') ? new TextDecoder('windows-1252').decode(buf) : u;
+}
+
+/** MobaXterm dosyası -> { sessions, passwords: [{ port, user, host, enc }] } */
+function parseMobaXterm(buf) {
+  const sessions = []; const passwords = [];
+  let sec = ''; let group = '';
+  for (const raw of decodeMoba(buf).split(/\r?\n/)) {
+    const line = raw.trim();
+    if (!line || line[0] === ';') continue;
+    const m = line.match(/^\[(.+)\]$/);
+    if (m) { sec = m[1].trim(); group = ''; continue; }
+    const i = line.indexOf('=');
+    if (i <= 0) continue;
+    const key = line.slice(0, i).trim(); const val = line.slice(i + 1);
+    if (/^passwords$/i.test(sec)) {
+      const k = key.match(/^ssh(\d*):(.*)@([^@]+)$/i);
+      if (k && val) passwords.push({ port: Number(k[1]) || 22, user: k[2], host: k[3], enc: val.trim() });
+      continue;
+    }
+    if (!/^bookmarks(_\d+)?$/i.test(sec)) continue;
+    if (/^subrep$/i.test(key)) { group = cleanGroup(val); continue; }
+    if (/^imgnum$/i.test(key)) continue;
+    const parts = val.split('#');
+    const f = (parts[2] || '').split('%');
+    if (f[0] !== '0' || !f[1]) continue; // yalnız SSH oturumları
+    const user = f[3] && f[3] !== '<default>' ? f[3].trim() : '';
+    const keyPath = mobaPath(f[14]);
+    const s = {
+      name: key, group: group || 'MobaXterm', host: f[1].trim(), port: Number(f[2]) || 22, username: user,
+      authType: keyPath ? 'key' : 'auto', forwards: [],
+    };
+    if (keyPath) s.keyPath = keyPath;
+    const cmd = mobaUnescape(f[7]).trim();
+    if (cmd) s.startupCommand = cmd;
+    const note = mobaUnescape(parts[5]).trim();
+    if (note) s.notes = note;
+    // İlk geçit: içe aktarırken atlama sunucusu oturumu olarak bağlanır (main.js addImported)
+    const gw = mobaUnescape(f[8]).split('|')[0].trim();
+    if (gw) {
+      s._jump = {
+        host: gw, port: Number(mobaUnescape(f[9]).split('|')[0]) || 22,
+        username: (mobaUnescape(f[10]).split('|')[0] || '').replace('<default>', '').trim(),
+      };
+    }
+    sessions.push(s);
+  }
+  return { sessions, passwords };
+}
+
+/** Ana parolayla şifrelenmiş MobaXterm parolası: AES-256-CFB8, anahtar SHA-512(ana parola)[0:32], IV = AES-ECB(anahtar, 0) */
+function mobaKey(master) {
+  const key = crypto.createHash('sha512').update(Buffer.from(master, 'utf8')).digest().subarray(0, 32);
+  const ecb = crypto.createCipheriv('aes-256-ecb', key, null); ecb.setAutoPadding(false);
+  const iv = Buffer.concat([ecb.update(Buffer.alloc(16)), ecb.final()]);
+  return { key, iv };
+}
+function decryptMobaPassword(enc, master) {
+  const { key, iv } = mobaKey(master);
+  let data;
+  try { data = Buffer.from(enc, 'base64'); } catch { return null; }
+  if (!data.length) return null;
+  const d = crypto.createDecipheriv('aes-256-cfb8', key, iv);
+  const pt = Buffer.concat([d.update(data), d.final()]);
+  const str = pt.toString('utf8');
+  // Doğrulayıcı yok: yanlış ana parola rastgele bayt üretir. Geçerli, yazdırılabilir metin değilse reddedilir.
+  return !str.includes('�') && /^[^\x00-\x1f\x7f]+$/.test(str) ? str : null;
+}
+function encryptMobaPassword(pw, master) { // test için
+  const { key, iv } = mobaKey(master);
+  const c = crypto.createCipheriv('aes-256-cfb8', key, iv);
+  return Buffer.concat([c.update(Buffer.from(pw, 'utf8')), c.final()]).toString('base64');
+}
+
+/**
+ * Parolaları oturumlara dağıtır. Ana parola doğrulanamadığı için: kayıtların hepsi geçerli metne çözülmüyorsa ana parola
+ * yanlış sayılır (rastgele baytlar hepsinde birden geçerli metin vermez). Dönüş: { total, ok, wrong }
+ */
+function applyMobaPasswords(sessions, passwords, master) {
+  if (!passwords.length || !master) return { total: passwords.length, ok: 0, wrong: false };
+  const plain = passwords.map((p) => decryptMobaPassword(p.enc, master));
+  if (plain.some((x) => x == null)) return { total: passwords.length, ok: 0, wrong: true };
+  let ok = 0;
+  passwords.forEach((p, i) => {
+    const hit = sessions.filter((s) => s.host.toLowerCase() === p.host.toLowerCase() && s.port === p.port && (s.username || '') === p.user);
+    for (const s of hit) { if (s.password == null) { s.password = plain[i]; if (s.authType === 'auto') s.authType = 'password'; ok++; } }
+  });
+  return { total: passwords.length, ok, wrong: false };
+}
+
 module.exports = {
+  parseMobaXterm, decryptMobaPassword, encryptMobaPassword, applyMobaPasswords,
   findWindTermFiles, parseWindTerm, parseWindTermTunnels, parseXsh, parseXshellPaths, parseXshellForwards, readZip,
   xshellKeys, decryptXshellPassword, applyXshellPasswords, encryptXshellPassword, rc4,
   readWindTermFingerprint, windTermHasSecrets, verifyWindTermMaster, wtPassword,

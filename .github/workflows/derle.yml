@@ -113,6 +113,8 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci --no-audit --no-fund
+      # Yerel terminal (pty) Mac ikilileri: npm yalnız bu makinenin (Linux) paketini kurar
+      - run: npm install --no-save --force --ignore-scripts @lydell/node-pty-darwin-arm64@1.1.0 @lydell/node-pty-darwin-x64@1.1.0
       - run: npx electron-builder --mac --publish never
       - uses: actions/upload-artifact@v4
         with:

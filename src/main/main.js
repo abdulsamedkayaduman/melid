@@ -488,12 +488,26 @@ function registerIpc() {
     const key = (s) => `${s.name}|${s.host}|${s.port}|${s.username || ''}`;
     const existing = new Set(store.sessions.map(key));
     let added = 0; let withPassword = 0;
+    const jumps = [];
     for (const s of parsed) {
       delete s._xshell;
+      const jump = s._jump; delete s._jump;
       if (existing.has(key(s))) continue;
       existing.add(key(s));
-      store.saveSession(s); added++;
+      const id = store.saveSession(s); added++;
       if (s.password) withPassword++;
+      if (jump && id) jumps.push([id, jump, s.group]);
+    }
+    // Atlama sunucusu (MobaXterm "SSH gateway"): aynı adres/port/kullanıcıyla bir oturum varsa o, yoksa yenisi açılır
+    for (const [id, j, group] of jumps) {
+      const same = (x) => x.host === j.host && Number(x.port || 22) === j.port && (!j.username || x.username === j.username);
+      let gw = store.sessions.find((x) => same(x) && x.id !== id);
+      if (!gw) {
+        const gid = store.saveSession({ name: `${j.username ? j.username + '@' : ''}${j.host} (geçit)`, group, host: j.host, port: j.port, username: j.username, authType: 'auto', forwards: [] });
+        gw = { id: gid };
+        added++;
+      }
+      store.saveSession({ id, jumpHostId: gw.id });
     }
     return { added, found: parsed.length, withPassword, sessions: store.publicSessions() };
   };
@@ -552,6 +566,32 @@ function registerIpc() {
           last = { solved: before - pending() };
           prev = { user: ans.user, sid: ans.sid };
         }
+      }
+    } else if (kind === 'mobaxterm') {
+      // Kurulu MobaXterm: %APPDATA%\MobaXterm\MobaXterm.ini; taşınabilir: exe'nin yanındaki MobaXterm.ini
+      const def = process.platform === 'win32' ? path.join(process.env.APPDATA || os.homedir(), 'MobaXterm') : os.homedir();
+      const r = await dialog.showOpenDialog(win, {
+        title: 'MobaXterm oturumları (.mxtsessions ya da MobaXterm.ini)', defaultPath: fs.existsSync(def) ? def : os.homedir(),
+        properties: ['openFile', 'multiSelections', 'showHiddenFiles'],
+        filters: [{ name: 'MobaXterm', extensions: ['mxtsessions', 'ini'] }, { name: 'Tüm dosyalar', extensions: ['*'] }],
+      });
+      if (r.canceled) return null;
+      parsed = []; const passwords = [];
+      for (const f of r.filePaths) {
+        let res;
+        try { res = importers.parseMobaXterm(await fsp.readFile(f)); } catch (e) { throw new Error(`MobaXterm dosyası okunamadı: ${e.message}`); }
+        parsed.push(...res.sessions); passwords.push(...res.passwords);
+      }
+      // Taşınabilir sürüm parolaları ana parolayla şifreler; kurulu sürümde parolalar dosyada değil kayıt defterindedir
+      for (let tries = 0; passwords.length && tries < 3; tries++) {
+        const ans = await uiRequest('password', {
+          title: 'MobaXterm ana parolası',
+          label: tries ? 'Ana parola yanlış. Tekrar deneyin ya da boş bırakıp parolasız aktarın.'
+            : `Dosyada ${passwords.length} kayıtlı parola var. Aktarmak için MobaXterm ana parolasını girin (boş bırakabilirsiniz).`,
+        });
+        const pw = ans && typeof ans === 'object' ? ans.value : ans;
+        if (pw == null || pw === '') break;
+        if (!importers.applyMobaPasswords(parsed, passwords, pw).wrong) break;
       }
     } else throw new Error('Bilinmeyen içe aktarma türü');
     if (parsed.some((s) => s.password) && !(await ensureUnlocked())) throw new Error('Ana parola girilmedi');
@@ -710,6 +750,7 @@ function registerIpc() {
 
   // ssh
   h('ssh:connect', async (connId, ref) => {
+    if (ref && ref.session && ref.session.local) return localShells.connect(connId);
     let session;
     if (ref.sessionId) {
       session = resolveKey(store.getSession(ref.sessionId));
@@ -719,13 +760,14 @@ function registerIpc() {
     usage.inc('connections');
     return { host: session.host, username: session.username, remoteDir: session.remoteDir, localDir: session.localDir };
   });
-  h('ssh:shell', (connId, cols, rows, startup, sid) => manager.openShell(connId, cols, rows, startup, sid));
-  h('ssh:closeShell', (connId, sid) => manager.closeShell(connId, sid));
-  h('ssh:cwd', (connId, sid) => manager.shellCwd(connId, sid));
-  h('ssh:stats', (connId) => manager.stats(connId));
-  ipcMain.on('ssh:write', (_e, connId, data, sid) => manager.write(connId, data, sid));
-  ipcMain.on('ssh:resize', (_e, connId, cols, rows, sid) => manager.resize(connId, cols, rows, sid));
-  h('ssh:disconnect', (connId) => { stopEdits(connId); manager.disconnect(connId); });
+  // Yerel terminal sekmeleri (local.connect) aynı kanalları kullanır: kabuk pty ile bu bilgisayarda açılır
+  h('ssh:shell', (connId, cols, rows, startup, sid) => (localShells.has(connId) ? localShells.open(connId, cols, rows, sid) : manager.openShell(connId, cols, rows, startup, sid)));
+  h('ssh:closeShell', (connId, sid) => (localShells.has(connId) ? localShells.close(connId, sid) : manager.closeShell(connId, sid)));
+  h('ssh:cwd', (connId, sid) => (localShells.has(connId) ? localShells.cwd(connId, sid) : manager.shellCwd(connId, sid)));
+  h('ssh:stats', (connId) => (localShells.has(connId) ? null : manager.stats(connId)));
+  ipcMain.on('ssh:write', (_e, connId, data, sid) => (localShells.has(connId) ? localShells.write(connId, data, sid) : manager.write(connId, data, sid)));
+  ipcMain.on('ssh:resize', (_e, connId, cols, rows, sid) => (localShells.has(connId) ? localShells.resize(connId, cols, rows, sid) : manager.resize(connId, cols, rows, sid)));
+  h('ssh:disconnect', (connId) => { if (localShells.has(connId)) return localShells.disconnect(connId); stopEdits(connId); manager.disconnect(connId); });
   // ---- SFTP ek işleri: uzakta arama, sıkıştırma, arşiv açma (kabuk komutları burada güvenle tırnaklanır)
   const shq = (x) => `'${String(x).replace(/'/g, `'\\''`)}'`;
   const safeName = (n) => { if (!n || n.includes('/') || n === '.' || n === '..') throw new Error('Geçersiz ad'); return n; };
@@ -971,6 +1013,68 @@ function createWindow() {
   win.on('closed', () => { win = null; });
 }
 
+// ---------- Yerel terminal: bu bilgisayarın kabuğu (pty). Sekme SSH bağlantısı gibi davranır (connId + sid) ----------
+const localShells = {
+  conns: new Map(), // connId -> Map(sid -> pty)
+  pty: null,
+  has(connId) { return this.conns.has(connId); },
+  shell() {
+    if (process.platform === 'win32') {
+      // PowerShell 7 (pwsh) varsa o, yoksa Windows PowerShell
+      for (const p of [path.join(process.env.ProgramFiles || 'C:\\Program Files', 'PowerShell', '7', 'pwsh.exe')]) if (fs.existsSync(p)) return { file: p, args: ['-NoLogo'] };
+      return { file: 'powershell.exe', args: ['-NoLogo'] };
+    }
+    let sh = process.env.SHELL;
+    if (!sh || !fs.existsSync(sh)) sh = ['/bin/zsh', '/bin/bash', '/bin/sh'].find((x) => fs.existsSync(x)) || '/bin/sh';
+    return { file: sh, args: ['-l'] }; // oturum kabuğu: ~/.profile, ~/.zprofile okunur (macOS Terminal gibi)
+  },
+  connect(connId) {
+    this.conns.set(connId, new Map());
+    return { host: os.hostname(), username: os.userInfo().username, localDir: os.homedir(), local: true };
+  },
+  open(connId, cols, rows, sid = 'main') {
+    const shells = this.conns.get(connId);
+    if (!shells) throw new Error('Yerel terminal kapalı');
+    if (!this.pty) {
+      try { this.pty = require('@lydell/node-pty'); } catch (e) { throw new Error(`Yerel terminal başlatılamadı: ${e.message}`); }
+    }
+    const { file, args } = this.shell();
+    const env = { ...process.env, TERM: 'xterm-256color', COLORTERM: 'truecolor', TERM_PROGRAM: 'Melid' };
+    delete env.ELECTRON_RUN_AS_NODE;
+    const p = this.pty.spawn(file, args, { name: 'xterm-256color', cols: Math.max(2, cols || 80), rows: Math.max(2, rows || 24), cwd: os.homedir(), env, useConpty: true });
+    shells.set(sid, p);
+    p.onData((d) => send('ssh:data', connId, d, sid));
+    p.onExit(() => {
+      if (shells.get(sid) !== p) return;
+      shells.delete(sid);
+      send('ssh:exit', connId, sid);
+    });
+    return true;
+  },
+  write(connId, data, sid = 'main') { const p = this.conns.get(connId)?.get(sid); if (p) p.write(data); },
+  resize(connId, cols, rows, sid = 'main') { const p = this.conns.get(connId)?.get(sid); if (p && cols > 1 && rows > 1) try { p.resize(cols, rows); } catch {} },
+  close(connId, sid) {
+    const shells = this.conns.get(connId); const p = shells?.get(sid);
+    if (!p) return;
+    shells.delete(sid);
+    try { p.kill(); } catch {}
+  },
+  cwd(connId, sid = 'main') {
+    // SFTP paneli yerel sekmede yok; yine de Linux'ta kabuğun dizini /proc'tan okunabilir
+    const p = this.conns.get(connId)?.get(sid);
+    if (!p || process.platform !== 'linux') return null;
+    try { return fs.readlinkSync(`/proc/${p.pid}/cwd`); } catch { return null; }
+  },
+  disconnect(connId) {
+    const shells = this.conns.get(connId);
+    if (!shells) return;
+    this.conns.delete(connId);
+    for (const p of shells.values()) try { p.kill(); } catch {}
+    send('ssh:status', connId, 'closed', 'Yerel terminal kapandı');
+  },
+  closeAll() { for (const id of [...this.conns.keys()]) this.disconnect(id); },
+};
+
 // Tek kopya: ikinci kez açılınca yeni pencere açılmaz, açık olan öne getirilir.
 // Güncelleme sonrası yeniden başlatılan kopya (RELAUNCH_ARG) eski kopya kapanana kadar kilidi bekler.
 const RELAUNCH_ARG = '--melid-relaunch';
@@ -1054,7 +1158,7 @@ app.whenReady().then(async () => {
 
 // macOS: pencere kapanınca uygulama Dock'ta kalır (bağlantılar kapanır, eşitleme sürer); Dock'a tıklayınca yeni pencere açılır
 let quitting = false;
-app.on('before-quit', () => { quitting = true; if (usage) usage.save(); });
+app.on('before-quit', () => { quitting = true; if (usage) usage.save(); localShells.closeAll(); });
 app.on('window-all-closed', () => {
   if (manager) manager.closeAll();
   logger.closeAll();

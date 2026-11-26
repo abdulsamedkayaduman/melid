@@ -110,3 +110,38 @@ console.log('OK xshell (.xsh klasörü, UTF-16, .xts)');
   ], 'yerel, uzak, SOCKS; hedefi eksik tünel atlanır');
   console.log('OK xshell parolaları ve tünelleri');
 }
+
+// MobaXterm: .mxtsessions / MobaXterm.ini (klasörler, SSH alanları, geçit, anahtar, kaçış dizileri, ana parolalı parolalar)
+{
+  const moba = (fields, comment = '') => `#109#${fields.join('%')}#MobaFont%10%0%0%-1%15%236,236,236%30,30,30%180,180,192%0%-1%0%%xterm%-1%0%_Std_Colors_0_%80%24%0%1%-1%<none>%%0%0%-1#0#${comment}#-1`;
+  const ssh = (host, port, user, extra = {}) => { const f = ['0', host, String(port), user, '', '-1', '-1', '', '', '', '', '0', '0', '0', '', '', '', '-1', '0', '0', '', '1080', '', '0']; for (const [k, v] of Object.entries(extra)) f[k] = v; return f; };
+  const ini = [
+    '[Bookmarks]', 'SubRep=', 'ImgNum=42',
+    `kök sunucu=${moba(ssh('10.0.0.1', 22, 'root', { 7: 'cd /var/log__PTVIRG__ ls' }), 'not __DIEZE__1')}`,
+    `rdp=#91#4%10.0.0.9%3389%admin#...`,
+    '[Bookmarks_1]', 'SubRep=Şirket\\Prod', 'ImgNum=41',
+    `web=${moba(ssh('web.example', 2222, '<default>', { 14: '_CurrentDrive_\\keys\\web.ppk' }))}`,
+    `db=${moba(ssh('10.1.0.5', 22, 'postgres', { 8: 'bastion.example__PIPE__ikinci', 9: '2200__PIPE__22', 10: 'jump__PIPE__x' }))}`,
+    '[Passwords]', `ssh22:root@10.0.0.1=${im.encryptMobaPassword('kök-ŞİFRE', 'mobaAna')}`, `ssh22:postgres@10.1.0.5=${im.encryptMobaPassword('pg123', 'mobaAna')}`,
+  ].join('\r\n');
+  const { sessions: ms, passwords } = im.parseMobaXterm(Buffer.from(ini, 'utf8'));
+  assert.deepEqual(ms.map((x) => [x.name, x.group, x.host, x.port, x.username, x.authType]), [
+    ['kök sunucu', 'MobaXterm', '10.0.0.1', 22, 'root', 'auto'],
+    ['web', 'Şirket/Prod', 'web.example', 2222, '', 'key'],
+    ['db', 'Şirket/Prod', '10.1.0.5', 22, 'postgres', 'auto'],
+  ], 'yalnız SSH, klasör yolu, <default> kullanıcı');
+  assert.equal(ms[0].startupCommand, 'cd /var/log; ls');
+  assert.equal(ms[0].notes, 'not #1');
+  assert.equal(ms[1].keyPath, 'C:\\keys\\web.ppk', '_CurrentDrive_ = C:');
+  assert.deepEqual(ms[2]._jump, { host: 'bastion.example', port: 2200, username: 'jump' }, 'ilk geçit atlama sunucusu');
+  assert.equal(passwords.length, 2);
+  assert.deepEqual(im.applyMobaPasswords(ms, passwords, 'yanlis'), { total: 2, ok: 0, wrong: true }, 'yanlış ana parola');
+  assert(ms.every((x) => x.password === undefined));
+  assert.deepEqual(im.applyMobaPasswords(ms, passwords, 'mobaAna'), { total: 2, ok: 2, wrong: false });
+  assert.deepEqual(ms.map((x) => [x.password, x.authType]), [['kök-ŞİFRE', 'password'], [undefined, 'key'], ['pg123', 'password']]);
+  // Windows-1252 kodlu dosya
+  const cp = im.parseMobaXterm(Buffer.from('[Bookmarks_1]\r\nSubRep=Caf\xe9\r\nsv=#109#0%h%22%u%\r\n', 'latin1'));
+  assert.equal(cp.sessions[0].group, 'Café');
+  console.log('OK mobaxterm');
+}
+
