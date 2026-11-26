@@ -299,11 +299,22 @@ function installKind() {
 }
 
 const upd = { info: null, newer: false, checking: null, abort: null, timer: null };
+/**
+ * Kurulum sayımı: güncelleme denetimine kuruluma özgü rastgele kimlik, sürüm ve platform eklenir (hesap, ad, IP yok).
+ * "Kullanım istatistiklerini gönder" kapalıysa eklenmez. Sunucu: sync-server.js notePing, gizlilik: /kosullar
+ */
+function installHeaders() {
+  if (store.settings.usageStats === false) return {};
+  let id = store.settings.deviceId;
+  if (!/^[\w-]{16,64}$/.test(id || '')) { id = crypto.randomUUID(); store.saveSettings({ deviceId: id }); }
+  const osName = { win32: 'Windows', darwin: 'macOS' }[process.platform] || 'Linux';
+  return { 'X-Melid-Device': id, 'X-Melid-Client': `Melid ${app.getVersion()} ${osName} ${process.arch}` };
+}
 async function checkUpdates(manual) {
   if (upd.checking) return upd.checking;
   upd.checking = (async () => {
     try {
-      const r = await updater.check(app.getVersion());
+      const r = await updater.check(app.getVersion(), { headers: installHeaders() });
       upd.info = r.info; upd.newer = r.newer;
       store.saveSettings({ updateLastCheck: Date.now() });
       if (r.newer && !manual && store.settings.updateSkip !== r.info.version) announceUpdate(r.info);

@@ -46,7 +46,7 @@ footer { margin-top: 40px; color: var(--dim); font-size: 13px; }
   </nav>
 
   <h1>Kullanım koşulları ve gizlilik</h1>
-  <p class="updated">Son güncelleme: 25 Kasım 2026</p>
+  <p class="updated">Son güncelleme: 26 Kasım 2026</p>
 
   <div class="summary">
     <b>Kısaca</b>
@@ -54,6 +54,7 @@ footer { margin-top: 40px; color: var(--dim); font-size: 13px; }
       <li>Melid uygulamasını hesap açmadan kullanabilirsiniz. Bu metin yalnız isteğe bağlı <b>hesap ve eşitleme</b> hizmeti içindir.</li>
       <li>Bağlantılarınız, parolalarınız ve anahtarlarınız cihazınızda <b>uçtan uca şifrelenir</b>. Sunucu bunları okuyamaz.</li>
       <li>Sunucuda yalnız kullanıcı adınız, e-postanız, şifreli kasanız, cihaz bilgileriniz ve (kapatabileceğiniz) kullanım <b>sayıları</b> tutulur.</li>
+      <li>Hesap açmasanız da uygulama, güncelleme denetiminde kuruluma özgü rastgele bir kimlikle sürümünü ve platformunu bildirir (kaç cihazda kullanıldığını görmek için; kapatılabilir).</li>
       <li>Hesabınızı uygulamadan istediğiniz an silebilirsiniz; her şey hemen silinir.</li>
     </ul>
   </div>
@@ -74,11 +75,12 @@ footer { margin-top: 40px; color: var(--dim); font-size: 13px; }
       <tr><td>Giriş bilgisi</td><td>Hesap parolanız <b>gönderilmez</b>. Parolanızdan cihazda türetilen doğrulama anahtarının özeti (scrypt), şifreli kasa anahtarı ve varsa kurtarma anahtarının doğrulayıcısı.</td><td>Girişi doğrulamak.</td></tr>
       <tr><td>Şifreli kasa</td><td>Oturumlarınız, kayıtlı parolalar, ayarlar, hazır komutlar ve isteğe bağlı SSH anahtarları. <b>Uçtan uca şifreli</b>: sunucu yalnız boyutunu ve son değişiklik zamanını görür.</td><td>Cihazlarınız arasında eşitleme.</td></tr>
       <tr><td>Cihazlar</td><td>Giriş yapılan her cihaz için uygulama sürümü ve işletim sistemi (ör. "Melid 1.10.0 Windows"), girişin ve son eşitlemenin zamanı.</td><td>Hangi cihazların hesabınıza bağlı olduğunu göstermek; hata ayıklama.</td></tr>
+      <tr><td>Kurulum bilgisi<br><span class="dim">(kapatılabilir, hesap gerekmez)</span></td><td>Uygulama güncellemeleri denetlerken (açılışta ve birkaç saatte bir) kuruluma özgü <b>rastgele bir kimlik</b>, Melid sürümü ve platform (ör. "Melid 1.12.1 Windows x64") gönderilir. Kimlik hesabınızla, adınızla ya da IP adresinizle ilişkilendirilmez. 90 gün görülmeyen kurulumun kaydı silinir, yalnız toplam sayıya eklenir.</td><td>Uygulamanın kaç cihazda kullanıldığını ve hangi sürümlerin çalıştığını görmek.</td></tr>
       <tr><td>Kullanım sayıları<br><span class="dim">(kapatılabilir)</span></td><td>Günlük olarak: açılan SSH bağlantısı ve başarısız bağlantı sayısı, dosya aktarımı sayısı ve aktarılan toplam boyut, açılan tünel sayısı. Anlık olarak: kayıtlı sunucu, grup, SSH anahtarı, hazır komut ve kayıtlı tünel <b>sayısı</b>.</td><td>Uygulamanın nasıl kullanıldığını anlayıp geliştirmek.</td></tr>
       <tr><td>Teknik kayıtlar</td><td>Günlük istek ve hata sayıları; o gün eşitleme yapan hesaplar ve cihazlar (istatistik için en fazla 120 gün). IP adresiniz yalnız çok sayıda hatalı girişi engellemek için bellekte en fazla 24 saat tutulur, diske yazılmaz.</td><td>Hizmetin güvenliği ve çalışırlığı.</td></tr>
     </tbody>
   </table></div>
-  <p class="dim">Kullanım sayılarını göndermeyi uygulamada <b>Hesap ve eşitleme</b> penceresindeki <b>"Kullanım istatistiklerini gönder"</b> seçeneğiyle kapatabilirsiniz. Bu seçenek her cihazda ayrıdır.</p>
+  <p class="dim">Kurulum bilgisini ve kullanım sayılarını göndermeyi <b>Ayarlar</b>'daki <b>"Anonim kullanım istatistiklerini gönder"</b> (Android: Ayarlar → Anonim kullanım istatistikleri) ya da <b>Hesap ve eşitleme</b> penceresindeki aynı seçenekle kapatabilirsiniz. Bu seçenek her cihazda ayrıdır; kapalıyken güncelleme denetimi yine çalışır ama kimlik gönderilmez.</p>
 
   <h2>3. Toplamadığımız bilgiler</h2>
   <ul>

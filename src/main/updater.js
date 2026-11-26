@@ -67,9 +67,9 @@ function friendlyNetError(e) {
 }
 
 /** Akıştaki son sürümü getirir. { info, newer } — sunucuda henüz sürüm yoksa info null. */
-async function check(currentVersion, { url = FEED_URL, pubKey = PUBLIC_KEY, timeout = 15000 } = {}) {
+async function check(currentVersion, { url = FEED_URL, pubKey = PUBLIC_KEY, timeout = 15000, headers = {} } = {}) {
   let res;
-  try { res = await fetch(url, { signal: AbortSignal.timeout(timeout), cache: 'no-store' }); } catch (e) { throw new Error(friendlyNetError(e)); }
+  try { res = await fetch(url, { signal: AbortSignal.timeout(timeout), cache: 'no-store', headers }); } catch (e) { throw new Error(friendlyNetError(e)); }
   if (res.status === 404) return { info: null, newer: false };
   if (!res.ok) throw new Error(`Güncelleme sunucusu hata verdi (HTTP ${res.status})`);
   const info = parseFeed(await res.text(), pubKey);

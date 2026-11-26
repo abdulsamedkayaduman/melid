@@ -230,7 +230,8 @@ export function settingsView(app) {
       h('div.set-card', null,
         row('info', 'Melid Android', app.info ? `Sürüm ${app.info.version} · Android ${app.info.android}` : '', null, null),
         row('upload', 'Güncellemeleri denetle', app.update?.newer ? `${app.update.version} kurulabilir` : 'Yeni sürüm çıkınca bildirim gelir', icon('chevron', 18), () => updateSheet(app, { check: true })),
-        toggle('refresh', 'autoUpdate', 'Arka planda denetle', 'Açılışta ve 12 saatte bir', true)),
+        toggle('refresh', 'autoUpdate', 'Arka planda denetle', 'Açılışta ve 12 saatte bir', true),
+        toggle('info', 'usageStats', 'Anonim kullanım istatistikleri', 'Kurulum sayısı, sürüm ve bağlantı sayıları; içerik gönderilmez', true)),
       h('div', { style: { height: '40px' } }));
   };
   render();

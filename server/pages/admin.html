@@ -84,6 +84,9 @@ td.devs { white-space: normal; min-width: 230px; }
 .muted { color: var(--dim); }
 button.del { padding: 3px 9px; font-size: 12px; color: var(--err); }
 .mail { user-select: all; }
+.badge { display: inline-block; font-size: 11px; padding: 0 6px; border-radius: 99px; margin-left: 6px; vertical-align: 1px; border: 1px solid var(--line); color: var(--dim); }
+.badge.old { color: var(--warn); border-color: color-mix(in srgb, var(--warn) 50%, transparent); }
+.badge.cur { color: var(--ok); border-color: color-mix(in srgb, var(--ok) 50%, transparent); }
 .empty { padding: 20px 14px; color: var(--dim); }
 .foot { color: var(--dim); font-size: 12px; margin-top: 18px; line-height: 1.7; }
 [hidden] { display: none !important; }
@@ -110,6 +113,15 @@ button.del { padding: 3px 9px; font-size: 12px; color: var(--err); }
 
   <div id="stats" hidden>
     <section><h2>Şu an <small id="nowAt"></small></h2><div class="tiles" id="liveTiles"></div></section>
+    <section><h2>Kurulumlar <small id="instNote">hesap açılmasa da sayılır · güncelleme denetimiyle</small></h2>
+      <div class="tiles" id="instTiles"></div>
+      <div class="charts" id="instCharts" style="margin-top:10px"></div>
+      <div class="two" id="instDists" style="margin-top:10px"></div>
+      <div class="card" style="margin-top:10px">
+        <div class="tblbar"><b style="font-size:13px">Son görülen kurulumlar</b><span class="cnt" id="instCnt"></span></div>
+        <div class="tbl"><table><thead><tr><th>Kimlik</th><th>Platform</th><th>Sürüm</th><th>İlk görülme</th><th>Son görülme</th></tr></thead><tbody id="instRows"></tbody></table></div>
+      </div>
+    </section>
     <section><h2>Hesaplar</h2><div class="tiles" id="accTiles"></div></section>
     <section><h2>Son 30 gün <small>sunucunun gördükleri</small></h2><div class="charts" id="srvCharts"></div></section>
     <section><h2>Uygulama kullanımı <small id="usageNote"></small></h2>
@@ -168,6 +180,17 @@ button.del { padding: 3px 9px; font-size: 12px; color: var(--err); }
     return { version: (m[1] === 'Melid' ? '' : m[1] + ' ') + m[2], os: os, full: m[3] };
   }
   var WEEK = 7 * 86400000, TEN_MIN = 10 * 60000;
+  function cmpVer(a, b) {
+    var x = String(a).split(/[.-]/).map(Number), y = String(b).split(/[.-]/).map(Number);
+    for (var i = 0; i < 3; i++) { var d = (x[i] || 0) - (y[i] || 0); if (d) return d > 0 ? 1 : -1; }
+    return 0;
+  }
+  // Sürüm etiketi: en son sürümse yeşil, eskiyse turuncu
+  function verBadge(v, latest) {
+    if (!latest || !/^\d/.test(v || '')) return null;
+    var old = cmpVer(v, latest) < 0;
+    return el('span', old ? 'eski' : 'güncel', 'badge ' + (old ? 'old' : 'cur'));
+  }
 
   // ---------------------------------------------------------------- ipucu
   var tip = $('tip');
@@ -287,6 +310,34 @@ button.del { padding: 3px 9px; font-size: 12px; color: var(--err); }
     if (S.disk) live.push(tile('Disk', bytes(S.disk.total - S.disk.free) + ' / ' + bytes(S.disk.total), bytes(S.disk.free) + ' boş · veri ' + bytes(S.dataBytes), meter(1 - S.disk.free / S.disk.total)));
     $('liveTiles').replaceChildren.apply($('liveTiles'), live);
 
+    // Kurulumlar
+    var I = d.installs || { known: 0, active1: 0, active7: 0, active30: 0, new30: 0, retired: { count: 0, byOs: {}, byVersion: {} }, byVersion: {}, byOs: {}, byOsAll: {}, recent: [] };
+    var latest = d.latestVersion;
+    var oldCount = I.recent.filter(function (x) { return latest && now - x.last < 30 * 86400000 && /^\d/.test(x.version) && cmpVer(x.version, latest) < 0; }).length;
+    $('instTiles').replaceChildren(
+      tile('Bilinen kurulum', num(I.known), num(I.retired.count) + ' tanesi 90 günden fazla görülmediği için emekli · toplam ' + num(I.known + I.retired.count)),
+      tile('Bugün etkin', num(I.active1), 'son 24 saatte güncelleme denetleyen'),
+      tile('Son 7 gün', num(I.active7), pct(I.active7, I.known) + ' bilinen kurulum'),
+      tile('Son 30 gün', num(I.active30), num(I.new30) + ' yeni kurulum'),
+      tile('En son sürüm', latest || '—', latest ? (oldCount ? num(oldCount) + ' etkin kurulum eski sürümde' : 'etkin kurulumların hepsi güncel') : 'güncelleme akışı henüz alınmadı')
+    );
+    $('instCharts').replaceChildren(
+      barChart('Etkin kurulum', days, function (x) { return x.installs; }, num, peakOf),
+      barChart('Yeni kurulum', days, function (x) { return x.newInstalls; }, num, sumOf())
+    );
+    var verLabel = {}; Object.keys(I.byVersion).forEach(function (v) { verLabel[v + (latest && /^\d/.test(v) ? (cmpVer(v, latest) < 0 ? ' (eski)' : ' (güncel)') : '')] = I.byVersion[v]; });
+    $('instDists').replaceChildren(distCard('Sürüm (son 30 günde etkin)', verLabel), distCard('Platform (son 30 günde etkin)', I.byOs),
+      distCard('Emekli kurulumlar (90+ gün)', I.retired.byOs));
+    $('instCnt').textContent = I.recent.length < I.known ? 'en son görülen ' + num(I.recent.length) + ' / ' + num(I.known) : num(I.known) + ' kurulum';
+    var ir = $('instRows'); ir.replaceChildren();
+    if (!I.recent.length) { var e0 = el('tr'); var t0 = el('td', 'Henüz kurulum kaydı yok. Melid 1.12.1 ve sonrası, güncelleme denetiminde kendini sayar.', 'empty'); t0.colSpan = 5; e0.append(t0); ir.append(e0); }
+    I.recent.forEach(function (x) {
+      var tr = el('tr'); var v = el('td', x.version); var b = verBadge(x.version, latest); if (b) v.append(b);
+      var idc = el('td'); idc.append(el('span', null, 'dot' + (now - x.last < 86400000 ? ' on' : '')), el('code', x.id));
+      tr.append(idc, el('td', x.os), v, el('td', date(x.first)), el('td', ago(x.last, now)));
+      ir.append(tr);
+    });
+
     // Hesaplar
     var newUsers30 = days.reduce(function (a, x) { return a + x.registrations; }, 0);
     $('accTiles').replaceChildren(
@@ -396,7 +447,10 @@ button.del { padding: 3px 9px; font-size: 12px; color: var(--err); }
       var mail = el('td'); if (u.email) { var a = el('a', u.email, 'mail'); a.href = 'mailto:' + u.email; mail.append(a); } else mail.append(el('span', '—', 'muted'));
       var devs = el('td', null, 'devs');
       if (!u.devices.length) devs.append(el('span', 'oturum açık cihaz yok', 'dev'));
-      u.devices.forEach(function (x) { var r = el('div', null, 'dev'); r.append(el('b', x.client || 'bilinmeyen istemci'), el('span', ago(x.seen, now))); devs.append(r); });
+      u.devices.forEach(function (x) {
+        var r = el('div', null, 'dev'); var nm = el('b', x.client || 'bilinmeyen istemci'); var bg = verBadge(parseClient(x.client).version, data.latestVersion); if (bg) nm.append(bg);
+        r.append(nm, el('span', ago(x.seen, now))); devs.append(r);
+      });
       var act = el('td'); var b = el('button', 'Sil', 'del'); b.type = 'button'; b.onclick = function () { del(u); }; act.append(b);
       var noUse = !us.reported;
       tr.append(name, mail, el('td', ago(u.seen, now)), el('td', date(u.created)),

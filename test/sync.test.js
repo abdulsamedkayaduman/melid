@@ -377,6 +377,37 @@ const names = (st) => st.sessions.map((s) => s.name).sort().join(',');
   assert.equal((await f1.json()).payload, 'gh'); assert.equal((await f2.json()).payload, 'gh');
   assert.equal(feedHits, 1, 'eşzamanlı istekler tek kez alır, sonra bellekten');
   gh.close(); fsrv.close();
+
+  // Kurulum sayımı: güncelleme denetimindeki X-Melid-Device; 90 gün görülmeyen kurulum emekliye ayrılır
+  const payload = Buffer.from(JSON.stringify({ app: 'melid', version: '1.12.1', files: {} })).toString('base64');
+  const gh2 = http.createServer((q, s2) => s2.end(JSON.stringify({ payload, sig: 'x' })));
+  await new Promise((r) => gh2.listen(0, '127.0.0.1', r));
+  const instDir = tmp('sshdeck-srv-');
+  fs.writeFileSync(path.join(instDir, 'installs.json'), JSON.stringify({ devices: { 'eski-kurulum-0000000000': { first: Date.now() - 200 * 86400000, last: Date.now() - 100 * 86400000, client: 'Melid 1.9.0 Linux x64' } }, retired: { count: 0, byOs: {}, byVersion: {} } }));
+  const ih = createSyncServer({ dataDir: instDir, adminKey: 'k', adminIps: '127.0.0.1', updateFeedUrl: `http://127.0.0.1:${gh2.address().port}/x` });
+  const isrv = http.createServer(ih);
+  await new Promise((r) => isrv.listen(0, '127.0.0.1', r));
+  const IU = `http://127.0.0.1:${isrv.address().port}`;
+  const ping = (id, client) => fetch(`${IU}/guncelleme/latest.json`, { headers: { ...(id ? { 'X-Melid-Device': id } : {}), ...(client ? { 'X-Melid-Client': client } : {}) } });
+  assert.equal((await ping('a1b2c3d4-0000-4000-8000-000000000001', 'Melid 1.12.1 Windows x64')).status, 200);
+  await ping('a1b2c3d4-0000-4000-8000-000000000001', 'Melid 1.12.1 Windows x64'); // aynı kurulum iki kez sayılmaz
+  await ping('a1b2c3d4-0000-4000-8000-000000000002', 'Melid 1.12.0 Android 15');
+  await ping(null, 'Melid 1.12.1 Linux x64'); // kimlik yok (istatistik kapalı): sayılmaz
+  await ping('kisa', 'x'); await ping('../../etc/passwd'.padEnd(20, 'x'), 'x'); // geçersiz kimlikler
+  ih.flush();
+  const ist = await (await fetch(`${IU}/api/admin/stats`, { method: 'POST', body: '{"key":"k"}' })).json();
+  const I = ist.installs;
+  assert.equal(I.known, 2, 'yalnız geçerli kimlikler');
+  assert.equal(I.active1, 2);
+  assert.deepEqual(I.retired, { count: 1, byOs: { Linux: 1 }, byVersion: { '1.9.0': 1 } }, '90 gün görülmeyen emekli, ayrıntısı silinir');
+  assert.deepEqual(I.byOs, { Windows: 1, Android: 1 });
+  assert.deepEqual(I.byVersion, { '1.12.1': 1, '1.12.0': 1 });
+  assert.equal(ist.latestVersion, '1.12.1', 'panel en son sürümü bilir');
+  assert.equal(ist.days[29].installs, 2); assert.equal(ist.days[29].newInstalls, 2);
+  assert(!JSON.stringify(I).includes('a1b2c3d4-0000-4000-8000-000000000001'), 'panelde kimliğin yalnız kısa hali');
+  const saved2 = JSON.parse(fs.readFileSync(path.join(instDir, 'installs.json'), 'utf8'));
+  assert(!saved2.devices['eski-kurulum-0000000000'] && Object.keys(saved2.devices).length === 2, 'dosyada da silindi');
+  gh2.close(); isrv.close();
   pub.close(); upstream.close();
   console.log('OK herkese açık kayıt, e-posta, hesap silme, yönetici IP sınırı, güncelleme aktarımı');
 })().catch((e) => { console.error(e); process.exit(1); });

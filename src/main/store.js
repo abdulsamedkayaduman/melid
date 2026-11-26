@@ -73,7 +73,7 @@ const DEFAULT_SETTINGS = {
 };
 
 // Hesap eşitlemesine girmeyen, cihaza özgü ayarlar
-const LOCAL_SETTINGS = new Set(['master', 'syncKeys', 'recent', 'logDir', 'logEnabled', 'colWidths', 'hiddenCols', 'autoHideCols', 'paneSplit', 'sftpHeight', 'xferHeight', 'updateSkip', 'updateLastCheck', 'usageStats']);
+const LOCAL_SETTINGS = new Set(['master', 'syncKeys', 'recent', 'logDir', 'logEnabled', 'colWidths', 'hiddenCols', 'autoHideCols', 'paneSplit', 'sftpHeight', 'xferHeight', 'updateSkip', 'updateLastCheck', 'usageStats', 'deviceId']);
 // Oturumda cihaza özgü alanlar (yerel klasör yolu başka cihazda/işletim sisteminde geçersiz)
 const LOCAL_SESSION_FIELDS = ['localDir'];
 const TOMBSTONE_TTL = 180 * 24 * 3600 * 1000;

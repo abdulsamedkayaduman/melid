@@ -135,6 +135,45 @@ function createSyncServer({
     if (o && typeof o === 'object') for (const k of keys) { const v = Number(o[k]); if (Number.isFinite(v) && v > 0) out[k] = Math.min(Math.floor(v), 1e15); }
     return out;
   };
+  // Kurulumlar (installs.json): güncelleme denetimindeki X-Melid-Device (kuruluma özgü rastgele kimlik) + X-Melid-Client.
+  // Hesap, ad, IP tutulmaz. 90 gün görülmeyen kurulumun ayrıntısı silinir, yalnız "emekli" sayılarına eklenir.
+  const installs = load('installs.json', null) || { devices: {}, retired: { count: 0, byOs: {}, byVersion: {} } };
+  let installsDirty = false;
+  const RETIRE_MS = 90 * 86400000;
+  const parseClient = (c) => {
+    const m = /^\S+\s+(\d+\.\d+\.\d+\S*)\s*(.*)$/.exec(c || '');
+    const r = (m ? m[2] : '').toLowerCase();
+    return {
+      version: m ? m[1] : 'bilinmiyor',
+      os: /android/.test(r) ? 'Android' : /win/.test(r) ? 'Windows' : /mac|darwin/.test(r) ? 'macOS' : /linux/.test(r) ? 'Linux' : 'Bilinmiyor',
+    };
+  };
+  const notePing = (req) => {
+    const id = String(req.headers['x-melid-device'] || '');
+    if (!/^[\w-]{16,64}$/.test(id)) return;
+    const now = Date.now();
+    const client = clientName(req);
+    let d = installs.devices[id];
+    if (!d) { d = installs.devices[id] = { first: now, last: 0, client }; bump('newInstalls'); }
+    if (client) d.client = client;
+    d.last = now;
+    installsDirty = true;
+    const day = today();
+    const short = crypto.createHash('sha256').update(id).digest('hex').slice(0, 12); // günlük listede kimliğin özeti
+    if (!(day.installs || (day.installs = [])).includes(short)) { day.installs.push(short); statsDirty = true; }
+  };
+  const retireInstalls = () => {
+    const cut = Date.now() - RETIRE_MS;
+    for (const [id, d] of Object.entries(installs.devices)) {
+      if (d.last >= cut) continue;
+      const p = parseClient(d.client);
+      const R = installs.retired;
+      R.count++; R.byOs[p.os] = (R.byOs[p.os] || 0) + 1; R.byVersion[p.version] = (R.byVersion[p.version] || 0) + 1;
+      delete installs.devices[id];
+      installsDirty = true;
+    }
+  };
+
   // Anlık: son istekler (cihaz başına) ve dakika başına istek sayısı (son 60 dk)
   const live = new Map(); // jeton özeti -> { user, client, ts }
   const perMinute = new Map(); // dakika (epoch/60000) -> istek
@@ -144,6 +183,8 @@ function createSyncServer({
       for (const k of Object.keys(stats.days)) if (k < cut) delete stats.days[k];
       save('stats.json', stats); statsDirty = false;
     }
+    retireInstalls();
+    if (installsDirty) { save('installs.json', installs); installsDirty = false; }
     if (usageDirty) {
       for (const u of Object.values(usage)) for (const d of Object.values(u.devices || {})) for (const k of Object.keys(d.days || {})) if (k < cut) delete d.days[k];
       save('usage.json', usage); usageDirty = false;
@@ -435,6 +476,7 @@ function createSyncServer({
         }
         days.push({
           date: k, activeUsers: (d.users || []).length, activeDevices: (d.devices || []).length,
+          installs: (d.installs || []).length, newInstalls: d.newInstalls || 0,
           logins: d.logins || 0, failedLogins: d.failedLogins || 0, syncs: d.syncs || 0, registrations: d.registrations || 0,
           deletions: d.deletions || 0, requests: d.requests || 0, errors: d.errors || 0, denied: d.denied || 0, usage: use,
         });
@@ -475,6 +517,18 @@ function createSyncServer({
           vaultBytes, online: online.length,
         },
         lifetime: stats.totals,
+        installs: (() => {
+          const list = Object.entries(installs.devices).map(([id, d]) => ({ id: id.slice(0, 8), first: d.first, last: d.last, client: d.client || '', ...parseClient(d.client) }));
+          const act = (ms) => list.filter((x) => now - x.last < ms).length;
+          const by = (key, ms) => { const o = {}; for (const x of list) if (!ms || now - x.last < ms) o[x[key]] = (o[x[key]] || 0) + 1; return o; };
+          return {
+            known: list.length, active1: act(86400000), active7: act(7 * 86400000), active30: act(30 * 86400000),
+            new30: list.filter((x) => now - x.first < 30 * 86400000).length, retired: installs.retired,
+            byVersion: by('version', 30 * 86400000), byOs: by('os', 30 * 86400000), byOsAll: by('os'),
+            recent: list.sort((p, q) => q.last - p.last).slice(0, 100),
+          };
+        })(),
+        latestVersion: feedVersion(),
         days, online, rpm,
         users: list,
       };
@@ -508,6 +562,7 @@ function createSyncServer({
     const send = (body) => { res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'public, max-age=60', 'Access-Control-Allow-Origin': '*' }); res.end(body); };
     if (urlFeed && Date.now() - urlFeed.at < 300000) return send(urlFeed.body);
     urlFeedWait = urlFeedWait || fetchFeed(updateFeedUrl).then((body) => { urlFeed = { at: Date.now(), body }; return body; }).finally(() => { urlFeedWait = null; });
+    // (urlFeed.body yönetici panelinde "en son sürüm" için de kullanılır: feedVersion)
     urlFeedWait.then(send, (e) => {
       if (urlFeed) return send(urlFeed.body); // kaynak geçici olarak yoksa eskisi
       console.error('Güncelleme akışı alınamadı:', e.message);
@@ -551,6 +606,12 @@ function createSyncServer({
     res.on('close', () => up.destroy());
   };
 
+  /** Önbellekteki latest.json'dan en son sürüm (imza burada doğrulanmaz; yalnız panelde "eski sürüm" işareti için) */
+  const feedVersion = () => {
+    const body = (urlFeed && urlFeed.body) || (feedCache && feedCache.body);
+    try { return JSON.parse(Buffer.from(JSON.parse(body.toString('utf8')).payload, 'base64').toString('utf8')).version || null; } catch { return null; }
+  };
+
   const handler = (req, res) => {
     const reply = (status, obj) => {
       if (status >= 500) bump('errors'); else if (status === 401 || status === 403 || status === 429) bump('denied');
@@ -577,7 +638,7 @@ function createSyncServer({
         if (!adminSecret || !adminIpOk(req)) return reply(404, { error: 'Bulunamadı' });
         htmlHead(200); return res.end(PAGES.admin);
       }
-      if (url.pathname === '/guncelleme/latest.json') return updateFeedUrl ? serveUrlFeed(res) : proxy('latest/latest.json', res, true);
+      if (url.pathname === '/guncelleme/latest.json') { notePing(req); return updateFeedUrl ? serveUrlFeed(res) : proxy('latest/latest.json', res, true); }
       const m = /^\/indir\/(\d+\.\d+\.\d+)\/([\w.-]+)$/.exec(url.pathname);
       if (m && !m[2].startsWith('.')) return proxy(`${m[1]}/${m[2]}`, res, false);
     }

@@ -412,6 +412,13 @@ public class Store implements SyncCore.Local {
         save("settings.json", settings);
     }
 
+    /** Kuruluma özgü rastgele kimlik (kurulum sayımı; eşitlenmez) */
+    public synchronized String deviceId() throws JSONException {
+        String id = settings.optString("deviceId");
+        if (!id.matches("[\\w-]{16,64}")) { id = java.util.UUID.randomUUID().toString(); settings.put("deviceId", id); save("settings.json", settings); }
+        return id;
+    }
+
     /** Sunucuya gidecek kullanım raporu: yalnız sayılar; kapalıysa null */
     @Override public synchronized JSONObject usageReport() throws JSONException {
         if (!usageStats() || App.I == null || App.I.usage == null) return null;

@@ -66,6 +66,11 @@ bu cihazın yerel IPv4 ağlarındaki (en fazla /24) adreslerde 3150 portunu tara
   ve anlık sayıları (kayıtlı sunucu, grup, anahtar, hazır komut, kayıtlı tünel) gönderir. Gün başına tam değer gittiği
   için tekrar gönderim iki kez saymaz; sunucu yalnız bilinen anahtarları saklar. Masaüstü `src/main/usage.js`, Android
   `app/UsageStats.java`. Hesap penceresindeki **Kullanım istatistiklerini gönder** (cihaza özgü `usageStats`) kapatır.
+- **Kurulumlar** (`installs.json`): `/guncelleme/latest.json` isteğindeki `X-Melid-Device` (kuruluma özgü rastgele UUID, cihaza
+  özgü ayar `deviceId`) ve `X-Melid-Client` ("Melid 1.12.1 Windows x64"). Hesap gerekmez; ad/IP tutulmaz. Gün başına etkin
+  kurulumlar kimliğin SHA-256 özetiyle sayılır. 90 gün görülmeyen kurulumun ayrıntısı silinir, `retired` sayılarına (platform,
+  sürüm) eklenir. Panel en son sürümü önbellekteki akıştan bilir ve eski sürümdeki cihazları işaretler. `usageStats` kapalıysa
+  istemci başlıkları göndermez (masaüstü `installHeaders()`, Android `Updater.check`).
 - Hesap silinince kullanım kayıtları silinir, kullanıcı adı günlük listelerden çıkarılır.
 - Kullanıcıya açıklama: `/kosullar` (`server/pages/kosullar.html`). Toplanan veri değişirse bu sayfa da güncellenmeli.
 

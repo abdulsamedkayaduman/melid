@@ -118,6 +118,13 @@ public final class Updater {
         HttpURLConnection c = null;
         try {
             c = open(feedUrl(), 15000);
+            // Kurulum sayımı (masaüstündeki installHeaders ile aynı): rastgele kimlik + sürüm + platform; ayardan kapatılır
+            try {
+                if (App.I != null && App.I.store.usageStats()) {
+                    c.setRequestProperty("X-Melid-Device", App.I.store.deviceId());
+                    c.setRequestProperty("X-Melid-Client", "Melid " + currentVersion(ctx) + " Android " + android.os.Build.VERSION.RELEASE);
+                }
+            } catch (Exception ignored) { }
             int code = c.getResponseCode();
             if (code == 404) { info = null; }
             else if (code != 200) throw new Exception("Güncelleme sunucusu hata verdi (HTTP " + code + ")");
