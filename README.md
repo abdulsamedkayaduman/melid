@@ -2,7 +2,7 @@
 
 Linux, Windows, macOS ve Android için açık kaynak SSH terminali ve SFTP dosya yöneticisi. Terminal, dosya aktarımı,
 tüneller ve toplu sunucu işleri tek pencerede; oturumlar cihazlar arasında uçtan uca şifreli eşitlenir.
-Arayüz Türkçe. Electron + xterm.js + ssh2; Android'de WebView + JSch.
+Arayüz Türkçe ve İngilizce (masaüstü). Electron + xterm.js + ssh2; Android'de WebView + JSch.
 
 **İndir:** https://melid.abdulsamed.net
 

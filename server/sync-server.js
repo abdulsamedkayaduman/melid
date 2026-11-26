@@ -73,7 +73,16 @@ function createSyncServer({
   const adminSecret = adminKey || invite;
   const adminNets = ipList(adminIps || PRIVATE_NETS);
   const page = (n) => { try { return fs.readFileSync(path.join(pagesDir || path.join(__dirname, 'pages'), n), 'utf8'); } catch { return `<!doctype html><title>Melid</title><p>${n} bulunamadı</p>`; } };
-  const PAGES = { home: page('home.html'), admin: page('admin.html'), terms: page('kosullar.html') };
+  const PAGES = { home: page('home.html'), admin: page('admin.html'), terms: page('kosullar.html'), homeEn: page('home.en.html'), termsEn: page('kosullar.en.html') };
+  // Sayfa dili: ?lang=tr|en (seçim çerezde bir yıl hatırlanır) > melid_lang çerezi > tarayıcı dili (tr değilse İngilizce)
+  const pageLang = (req, url) => {
+    const q = url.searchParams.get('lang');
+    if (q === 'tr' || q === 'en') return { lang: q, cookie: `melid_lang=${q}; Max-Age=31536000; Path=/; SameSite=Lax` };
+    const c = /(?:^|;\s*)melid_lang=(tr|en)\b/.exec(req.headers.cookie || '');
+    if (c) return { lang: c[1] };
+    const al = String(req.headers['accept-language'] || '').trim().toLowerCase();
+    return { lang: !al || al.startsWith('tr') ? 'tr' : 'en' };
+  };
   // Favicon ve uygulama ikonları (pages/static, melid-brand/web)
   const STATIC_TYPES = { '.png': 'image/png', '.svg': 'image/svg+xml', '.ico': 'image/x-icon' };
   const STATIC = new Map();
@@ -621,13 +630,20 @@ function createSyncServer({
     };
     const url = new URL(req.url, 'http://x');
     if (req.method === 'GET' || req.method === 'HEAD') {
-      const htmlHead = (status) => res.writeHead(status, {
+      const htmlHead = (status, extra = {}) => res.writeHead(status, {
+        ...extra,
         'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff',
         'Referrer-Policy': 'no-referrer', 'X-Frame-Options': 'DENY',
         'Content-Security-Policy': `default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'self'; img-src 'self' data:; frame-ancestors 'none'; base-uri 'none'; form-action 'none'`,
       });
-      if (url.pathname === '/' || url.pathname === '/index.html') { htmlHead(200); return res.end(PAGES.home); }
-      if (url.pathname === '/kosullar' || url.pathname === '/gizlilik') { htmlHead(200); return res.end(PAGES.terms); }
+      const isHome = url.pathname === '/' || url.pathname === '/index.html';
+      const isTerms = ['/kosullar', '/gizlilik', '/terms', '/privacy'].includes(url.pathname);
+      if (isHome || isTerms) {
+        const pl = pageLang(req, url);
+        htmlHead(200, { 'Content-Language': pl.lang, Vary: 'Accept-Language, Cookie', ...(pl.cookie ? { 'Set-Cookie': pl.cookie } : {}) });
+        const en = pl.lang === 'en';
+        return res.end(isHome ? (en ? PAGES.homeEn : PAGES.home) : (en ? PAGES.termsEn : PAGES.terms));
+      }
       const st = STATIC.get(url.pathname);
       if (st) {
         res.writeHead(200, { 'Content-Type': st.type, 'Content-Length': st.body.length, 'Cache-Control': 'public, max-age=86400', 'X-Content-Type-Options': 'nosniff' });

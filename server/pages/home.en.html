@@ -1,0 +1,285 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Melid — SSH · SFTP</title>
+<meta name="description" content="Open-source SSH terminal and SFTP file manager for Linux, Windows, macOS and Android. Your sessions sync across devices, end-to-end encrypted.">
+<link rel="icon" href="/favicon.ico" sizes="32x32">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<meta name="theme-color" content="#C2410C">
+<style>
+:root { --bg: #0f1115; --bg2: #171a20; --bg3: #1d2129; --line: #262a33; --fg: #d7dae0; --dim: #8b919c; --acc: #FB923C; --acc2: #C2410C; --ok: #57c785; color-scheme: dark; }
+@media (prefers-color-scheme: light) { :root { --bg: #f4f5f7; --bg2: #ffffff; --bg3: #eef0f3; --line: #e1e4e9; --fg: #1d2129; --dim: #5d6470; --acc: #EA580C; --acc2: #9A3412; --ok: #2a9a6d; color-scheme: light; } }
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body { margin: 0; background: var(--bg); color: var(--fg); font: 15px/1.6 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+a { color: var(--acc); text-decoration: none; }
+a:hover { text-decoration: underline; }
+.wrap { max-width: 1080px; margin: 0 auto; padding: 0 16px; }
+nav { display: flex; align-items: center; gap: 12px; padding: 18px 0; }
+nav .brand { display: flex; align-items: center; gap: 10px; font-weight: 650; font-size: 18px; color: var(--fg); }
+nav .sp { flex: 1; }
+nav a.l { color: var(--dim); font-size: 14px; }
+.mark { flex: none; border-radius: 8px; }
+.wm { font-family: ui-monospace, "JetBrains Mono", "SF Mono", Menlo, Consolas, monospace; font-weight: 700; letter-spacing: .02em; }
+.hero { display: grid; grid-template-columns: 1.05fr 1fr; gap: 40px; align-items: center; padding: 48px 0 56px; }
+.hero h1 { font-size: clamp(30px, 5vw, 46px); line-height: 1.12; margin: 0 0 16px; letter-spacing: -0.02em; }
+.hero p.lead { font-size: 17px; color: var(--dim); margin: 0 0 26px; max-width: 34em; }
+.cta { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+.btn { display: inline-flex; align-items: center; gap: 8px; padding: 11px 18px; border-radius: 9px; border: 1px solid var(--line); background: var(--bg2); color: var(--fg); font-weight: 550; }
+.btn:hover { text-decoration: none; border-color: var(--acc); }
+.btn.primary { background: #C2410C; border-color: #C2410C; color: #fff; }
+.btn.primary:hover { background: #9A3412; border-color: #9A3412; }
+.ver { color: var(--dim); font-size: 13px; }
+/* terminal görseli */
+.term { background: #0b0d11; border: 1px solid var(--line); border-radius: 12px; overflow: hidden; box-shadow: 0 20px 50px rgba(0,0,0,.35); font: 13px/1.55 ui-monospace, "SF Mono", Menlo, Consolas, monospace; color: #c9d1d9; }
+.term .bar { display: flex; gap: 6px; align-items: center; padding: 10px 12px; background: #151821; border-bottom: 1px solid #222632; }
+.term .bar i { width: 10px; height: 10px; border-radius: 50%; background: #3a3f4b; display: block; }
+.term .bar span { margin-left: 10px; color: #7d8590; font: 12px system-ui, sans-serif; }
+.term .tabs { display: flex; gap: 2px; padding: 0 8px; background: #151821; }
+.term .tabs b { font: 500 12px system-ui, sans-serif; color: #7d8590; padding: 6px 12px; border-radius: 6px 6px 0 0; }
+.term .tabs b.on { background: #0b0d11; color: #e6edf3; }
+.term pre { margin: 0; padding: 14px 16px 18px; white-space: pre-wrap; word-break: break-all; }
+.g { color: #57c785; } .b { color: #4f9dff; } .d { color: #7d8590; } .y { color: #e3b341; }
+.split { display: grid; grid-template-columns: 1fr 1fr; border-top: 1px solid #222632; font: 12px system-ui, sans-serif; }
+.split div { padding: 8px 12px; color: #9da7b3; }
+.split div + div { border-left: 1px solid #222632; }
+.split div p { margin: 3px 0; display: flex; justify-content: space-between; gap: 8px; }
+.split div p span { color: #6e7681; }
+section { padding: 56px 0; border-top: 1px solid var(--line); }
+section h2 { font-size: 26px; margin: 0 0 8px; letter-spacing: -0.01em; }
+section p.sub { color: var(--dim); margin: 0 0 28px; max-width: 46em; }
+.grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+.card { background: var(--bg2); border: 1px solid var(--line); border-radius: 12px; padding: 18px 18px 16px; }
+.card h3 { margin: 10px 0 6px; font-size: 16px; }
+.card p { margin: 0; color: var(--dim); font-size: 14px; }
+.ic { width: 34px; height: 34px; border-radius: 8px; background: var(--bg3); display: grid; place-items: center; color: var(--acc); }
+.dl { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; }
+.dl .card { display: flex; flex-direction: column; gap: 8px; }
+.dl .card.rec { border-color: var(--acc); }
+.dl .card h3 { margin: 0; display: flex; align-items: center; gap: 8px; }
+.dl .card .rect { font-size: 11px; color: #fff; background: #C2410C; border-radius: 99px; padding: 1px 8px; font-weight: 600; }
+.dl a.file { display: flex; justify-content: space-between; gap: 8px; padding: 8px 10px; border-radius: 8px; background: var(--bg3); color: var(--fg); font-size: 14px; }
+.dl a.file:hover { text-decoration: none; outline: 1px solid var(--acc); }
+.dl a.file span { color: var(--dim); font-size: 12px; white-space: nowrap; }
+.dl .note { color: var(--dim); font-size: 12.5px; margin-top: auto; }
+code, .mono { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-size: 12.5px; }
+pre.cmd { background: var(--bg3); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; overflow-x: auto; margin: 6px 0 0; font-size: 12.5px; }
+.two { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+ul.check { list-style: none; padding: 0; margin: 0; }
+ul.check li { padding: 5px 0 5px 26px; position: relative; color: var(--dim); }
+ul.check li::before { content: ""; position: absolute; left: 4px; top: 12px; width: 10px; height: 6px; border-left: 2px solid var(--ok); border-bottom: 2px solid var(--ok); transform: rotate(-45deg); }
+ul.check li b { color: var(--fg); font-weight: 600; }
+details { background: var(--bg2); border: 1px solid var(--line); border-radius: 10px; padding: 12px 16px; margin-bottom: 10px; }
+details summary { cursor: pointer; font-weight: 600; }
+details p, details ol { color: var(--dim); margin: 10px 0 0; }
+footer { border-top: 1px solid var(--line); padding: 28px 0 40px; color: var(--dim); font-size: 13px; display: flex; flex-wrap: wrap; gap: 8px 20px; }
+footer .sp { flex: 1; }
+@media (max-width: 880px) {
+  .hero { grid-template-columns: 1fr; padding-top: 24px; }
+  .grid, .dl { grid-template-columns: 1fr 1fr; }
+  .two { grid-template-columns: 1fr; }
+  nav a.l.hide { display: none; }
+}
+@media (max-width: 560px) { .grid, .dl { grid-template-columns: 1fr; } .split { display: none; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <nav>
+    <a class="brand" href="/"><svg class="mark" width="32" height="32" viewBox="0 0 128 128" aria-hidden="true"><rect width="128" height="128" rx="28" fill="#C2410C"/><circle cx="64" cy="64" r="44" fill="#FB923C"/><polyline points="48,52 60,64 48,76" stroke="#FFFFFF" stroke-width="10" fill="none" stroke-linecap="round" stroke-linejoin="round"/><rect x="64" y="69" width="20" height="10" rx="5" fill="#FFFFFF"/></svg><span class="wm">melid</span></a>
+    <span class="sp"></span>
+    <a class="l hide" href="#ozellikler">Features</a>
+    <a class="l hide" href="#guvenlik">Security</a>
+    <a class="l" href="#indir">Download</a>
+    <a class="l" href="/?lang=tr" hreflang="tr" lang="tr">Türkçe</a>
+  </nav>
+
+  <div class="hero">
+    <div>
+      <h1>All your servers in one window.</h1>
+      <p class="lead">Melid is an open-source SSH client that brings the terminal, an SFTP file manager and tunnels together. It runs on Linux, Windows, macOS and Android. Your sessions sync across your devices, end-to-end encrypted.</p>
+      <div class="cta">
+        <a class="btn primary" id="heroDl" href="#indir">Download</a>
+        <a class="btn" href="#ozellikler">What can it do?</a>
+        <span class="ver" id="heroVer"></span>
+      </div>
+    </div>
+    <div class="term" aria-hidden="true">
+      <div class="bar"><i></i><i></i><i></i><span>melid</span></div>
+      <div class="tabs"><b class="on">web-01</b><b>db-01</b><b>raspberry</b></div>
+<pre><span class="g">deploy@web-01</span>:<span class="b">~/app</span>$ git pull &amp;&amp; systemctl restart app
+<span class="d">Already up to date.</span>
+<span class="g">deploy@web-01</span>:<span class="b">~/app</span>$ df -h /
+<span class="d">Filesystem  Size  Used Avail Use% Mounted on</span>
+/dev/sda1    80G   31G   46G  <span class="y">41%</span> /
+<span class="g">deploy@web-01</span>:<span class="b">~/app</span>$ <span style="background:#c9d1d9">&nbsp;</span></pre>
+      <div class="split">
+        <div><p><b>This computer</b></p><p>report.pdf<span>2.1 MB</span></p><p>backup.tar.gz<span>840 MB</span></p></div>
+        <div><p><b>web-01:~/app</b></p><p>config.yml<span>3 KB</span></p><p>logs/<span>folder</span></p></div>
+      </div>
+    </div>
+  </div>
+
+  <section id="ozellikler">
+    <h2>Everything you do daily, in one place</h2>
+    <p class="sub">No need to open separate programs for the terminal, file transfers and server management.</p>
+    <div class="grid">
+      <div class="card"><div class="ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M5 8l4 4-4 4M11 16h8"/></svg></div>
+        <h3>Tabbed terminal</h3><p>Tabs, split panes, two groups side by side. Send a command to many servers at once; it reconnects by itself if the connection drops.</p></div>
+      <div class="card"><div class="ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg></div>
+        <h3>SFTP file manager</h3><p>Local and remote panels side by side. Drag and drop, copy and paste, resuming interrupted transfers, folder sync and editing remote files in your own editor.</p></div>
+      <div class="card"><div class="ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 12h4m8 0h4M8 12a4 4 0 0 1 8 0"/><circle cx="12" cy="12" r="1.5"/></svg></div>
+        <h3>Server to server</h3><p>Files are copied directly between two servers without passing through your computer. Jump hosts, -L / -R / -D tunnels and ssh-agent support.</p></div>
+      <div class="card"><div class="ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="4" width="18" height="6" rx="1.5"/><rect x="3" y="14" width="18" height="6" rx="1.5"/><path d="M7 7h.01M7 17h.01"/></svg></div>
+        <h3>Bulk actions</h3><p>Check all your servers in one click: which are reachable, which need a password. Run commands on many servers and see a CPU / RAM / disk summary.</p></div>
+      <div class="card"><div class="ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M7 18a4.5 4.5 0 0 1-.5-9A6 6 0 0 1 18 10a4 4 0 0 1-1 8z"/></svg></div>
+        <h3>Sync across devices</h3><p>Sessions, saved passwords, settings and snippets sync between your computer and your phone. SSH keys too, if you want.</p></div>
+      <div class="card"><div class="ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 3v12m0 0l-4-4m4 4l4-4M5 21h14"/></svg></div>
+        <h3>Easy migration</h3><p>Import your Xshell (with passwords and tunnels), MobaXterm and WindTerm sessions. Your computer's own shell also opens in a tab. Take encrypted backups and restore them.</p></div>
+    </div>
+  </section>
+
+  <section id="guvenlik">
+    <h2>Your data is yours</h2>
+    <p class="sub">Sync is end-to-end encrypted: the encryption key is derived from your account password on your device and is never sent to the server.</p>
+    <div class="two">
+      <div class="card">
+        <h3 style="margin-top:0">What the server sees</h3>
+        <ul class="check">
+          <li><b>Your username and email address.</b> To contact you about your account if needed.</li>
+          <li><b>The size of your encrypted vault and the last sync time.</b></li>
+          <li><b>Which devices you connect from</b> (e.g. "Melid 1.12.1 Windows").</li>
+          <li><b>Usage counts</b>: daily connection and transfer counts, number of saved servers. Numbers only, never content; can be turned off in the app. <a href="/kosullar?lang=en">Details</a></li>
+        </ul>
+      </div>
+      <div class="card">
+        <h3 style="margin-top:0">What the server can't see</h3>
+        <ul class="check">
+          <li><b>Your account password.</b> Only a verification key derived from it reaches the server.</li>
+          <li><b>Server addresses, usernames, passwords and keys.</b> All inside the vault, encrypted.</li>
+          <li><b>What you type in the terminal and the files you transfer.</b> SSH connections go directly from your device to your server.</li>
+        </ul>
+      </div>
+    </div>
+    <p class="sub" style="margin:18px 0 0">If you forget your account password, nobody can open your vault, so create a <b>recovery key</b> in the account window and keep it safe. You can delete your account from the app at any time; your encrypted vault is deleted from the server too. Melid works without an account; sync is optional.</p>
+  </section>
+
+  <section id="indir">
+    <h2>Download</h2>
+    <p class="sub" id="dlSub">Free and open source. The app tells you about new versions itself.</p>
+    <div class="dl" id="dl">
+      <div class="card" data-os="windows"><h3>Windows</h3><div class="files"></div><div class="note">Windows 10 / 11, 64-bit. SmartScreen warns on first launch: "More info" → "Run anyway".</div></div>
+      <div class="card" data-os="mac"><h3>macOS</h3><div class="files"></div><div class="note">arm64 for Apple Silicon (M1–M4), x64 for older Intel Macs. First-time setup below.</div></div>
+      <div class="card" data-os="linux"><h3>Linux</h3><div class="files"></div><div class="note">The AppImage runs on any distribution; pacman package for Arch, CachyOS and Manjaro. Setup below.</div></div>
+      <div class="card" data-os="android"><h3>Android</h3><div class="files"></div><div class="note">Android 8 or newer. Installing asks you to "allow unknown sources".</div></div>
+    </div>
+    <div style="margin-top:22px">
+      <details>
+        <summary>First-time setup on macOS</summary>
+        <p>The app isn't signed by Apple, so the first installation needs these commands in Terminal:</p>
+        <pre class="cmd">tar xzf Melid-*-mac-arm64.tar.gz
+mv Melid.app /Applications/
+xattr -cr /Applications/Melid.app
+codesign --force --deep --sign - /Applications/Melid.app</pre>
+        <p>Then open it from Launchpad. Updates are announced in the app; install new versions with the same steps.</p>
+      </details>
+      <details>
+        <summary>Installing on Linux</summary>
+        <p>The <b>AppImage</b> runs on any distribution and needs no installation:</p>
+        <pre class="cmd">chmod +x Melid-*.AppImage
+./Melid-*.AppImage</pre>
+        <p>If Ubuntu 22.04 or newer reports a "FUSE" error: <code>sudo apt install libfuse2</code> (<code>libfuse2t64</code> on Ubuntu 24.04).</p>
+        <p>On <b>Arch, CachyOS, Manjaro</b> the pacman package adds "Melid" to the app menu and the <code>melid</code> command:</p>
+        <pre class="cmd">sudo pacman -U melid-*.pacman</pre>
+        <p>Saved passwords are encrypted in the system keyring (GNOME Keyring / KWallet); without a keyring, set a master password in Settings. New versions are announced in the app and install in one click (the pacman package asks for the administrator password).</p>
+      </details>
+      <details>
+        <summary>How do I move from Xshell?</summary>
+        <ol>
+          <li>Export your sessions in Xshell: you get an <code>.xts</code> file.</li>
+          <li>In Melid, choose this file with <b>Import</b> → <b>Xshell</b> in the toolbar. Folders, addresses, usernames, passwords and tunnels come along.</li>
+          <li><b>Passwords:</b> decrypted automatically on the same Windows computer with the same user. If you set a master password in Xshell, Melid asks for it. On another computer (Linux, macOS or another Windows), type <code>whoami /user</code> in a command prompt on the Windows computer where Xshell is installed, and enter the username and the SID starting with <code>S-1-5-21-…</code> into the window Melid shows.</li>
+          <li>A result like "91 of 133 passwords decrypted" is not an error: the rest were saved on another computer or with an old master password. Try another master password, or choose <b>Continue without the remaining passwords</b>; the password is asked on first connection.</li>
+        </ol>
+        <p>Private keys in Xshell's own key store are not imported: export them from Xshell and put them in <code>~/.ssh</code>. Xshell import is in the desktop app.</p>
+      </details>
+      <details>
+        <summary>How do I create a sync account?</summary>
+        <ol>
+          <li>Click the cloud (Account) button in the app and choose <b>Create account</b>.</li>
+          <li><code>melid.abdulsamed.net</code> is filled in as the server. Enter a username, email and an account password of at least 10 characters.</li>
+          <li>On your other devices, choose <b>Log in</b> with the same details.</li>
+        </ol>
+      </details>
+      <details>
+        <summary>Can I run my own sync server?</summary>
+        <p>Yes. The server is a single-file Node app with no dependencies and sets up in minutes with Docker. Just replace the server address in the app with yours; the app can even find a server on your local network.</p>
+      </details>
+    </div>
+  </section>
+
+  <footer>
+    <span>Melid · MIT-licensed open-source software</span>
+    <a href="/kosullar?lang=en">Terms of use and privacy</a>
+    <a href="https://github.com/abdulsamedkayaduman/melid">GitHub</a>
+    <span class="sp"></span>
+    <span id="footVer"></span>
+  </footer>
+</div>
+<script>
+(function () {
+  var OS = (function () {
+    var ua = navigator.userAgent || '', p = navigator.platform || '';
+    if (/Android/i.test(ua)) return 'android';
+    if (/Win/i.test(p) || /Windows/i.test(ua)) return 'windows';
+    if (/Mac/i.test(p) || /Mac OS X/i.test(ua)) return 'mac';
+    if (/Linux|X11/i.test(p + ua)) return 'linux';
+    return '';
+  })();
+  var KINDS = {
+    'win-setup': ['windows', 'Installer (.exe)', 1], 'win-portable': ['windows', 'Portable (.exe)', 2],
+    'mac-arm64': ['mac', 'Apple Silicon (arm64)', 1], 'mac-x64': ['mac', 'Intel (x64)', 2],
+    'linux-appimage': ['linux', 'AppImage', 1], 'linux-pacman': ['linux', 'Arch Linux (.pacman)', 2],
+    android: ['android', 'APK', 1],
+  };
+  var OS_NAME = { windows: 'Windows', mac: 'macOS', linux: 'Linux', android: 'Android' };
+  function size(n) { return n >= 1048576 ? Math.round(n / 1048576) + ' MB' : Math.max(1, Math.round(n / 1024)) + ' KB'; }
+  function el(tag, cls, text) { var e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
+
+  if (OS) {
+    var card = document.querySelector('.dl .card[data-os="' + OS + '"]');
+    if (card) { card.classList.add('rec'); card.querySelector('h3').append(el('span', 'rect', 'for you')); card.parentNode.prepend(card); }
+  }
+
+  fetch('/guncelleme/latest.json').then(function (r) { if (!r.ok) throw new Error(); return r.json(); }).then(function (outer) {
+    var bin = atob(outer.payload), bytes = new Uint8Array(bin.length);
+    for (var i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    var info = JSON.parse(new TextDecoder().decode(bytes));
+    var date = info.date ? new Date(info.date).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' }) : '';
+    document.getElementById('heroVer').textContent = 'Version ' + info.version + (date ? ' · ' + date : '');
+    document.getElementById('footVer').textContent = 'Latest version ' + info.version;
+    var list = Object.keys(info.files).filter(function (k) { return KINDS[k]; }).sort(function (a, b) { return KINDS[a][2] - KINDS[b][2]; });
+    var best = null;
+    list.forEach(function (k) {
+      var f = info.files[k], K = KINDS[k];
+      var box = document.querySelector('.dl .card[data-os="' + K[0] + '"] .files');
+      if (!box) return;
+      var a = el('a', 'file'); a.href = f.url; a.setAttribute('download', '');
+      a.append(el('b', null, K[1]), el('span', null, size(f.size)));
+      box.append(a);
+      if (K[0] === OS && !best) best = f;
+    });
+    if (best) {
+      var h = document.getElementById('heroDl');
+      h.href = best.url; h.textContent = 'Download for ' + OS_NAME[OS];
+    }
+  }).catch(function () {
+    document.getElementById('dlSub').textContent = 'Download information is unavailable right now; please try again shortly.';
+  });
+})();
+</script>
+</body>
+</html>

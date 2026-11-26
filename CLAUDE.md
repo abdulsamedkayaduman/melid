@@ -1,7 +1,11 @@
 # Melid — Claude Code notları
 
 Linux, Windows ve macOS için Xshell + Xftp tarzı SSH terminali ve SFTP istemcisi. Electron 44, `ssh2`, `@xterm/xterm` 6.
-Arayüz dili Türkçe; kullanıcıya görünen tüm metinler Türkçe kalmalı.
+Arayüz Türkçe ve İngilizce. Koddaki kullanıcı metinleri Türkçe yazılır; İngilizcesi `src/renderer/locales/en.js`'e
+(Türkçe metin anahtarıyla; değişkenli metin `{0}` kalıbıyla) eklenmeli, yoksa İngilizce arayüzde Türkçe görünür. Çeviri
+ekrana eklenen metinlere kendiliğinden uygulanır (`src/renderer/i18n.js`); terminale yazılan ve ana süreçteki yerel pencere
+metinleri `t()` / `T()` ister. Kullanıcı içeriği gösteren yeni öğeye `translate="no"` ya da i18n.js `NO_TR` sınıfı verin.
+Web sayfaları: `server/pages/*.html` (Türkçe) + `*.en.html`; ikisi birlikte güncellenmeli.
 
 Bekleyen işler için `YAPILACAKLAR.md` (otomatik güncelleme, AUR paketi, electron-updater vb.).
 
