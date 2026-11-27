@@ -1,6 +1,6 @@
 {
   "name": "melid",
-  "version": "1.13.0",
+  "version": "1.13.1",
   "description": "Melid: Linux, Windows, macOS ve Android için SSH terminali ve SFTP dosya yöneticisi",
   "main": "src/main/main.js",
   "scripts": {
