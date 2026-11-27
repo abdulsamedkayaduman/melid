@@ -1,5 +1,5 @@
 import { h, icon, brandIcon, wordmark, parseConnText, debounce, formatSize, IS_MAC, modKey, keyLabel } from './util.js';
-import { modal, promptText, confirmBox, hostKeyDialog, kbdDialog, xshellCredsDialog, contextMenu, toast, sessionEditor, settingsDialog, applyUiTheme } from './dialogs.js';
+import { localDirDialog, modal, promptText, confirmBox, hostKeyDialog, kbdDialog, xshellCredsDialog, contextMenu, toast, sessionEditor, settingsDialog, applyUiTheme } from './dialogs.js';
 import { SessionTab } from './tab.js';
 import { cleanErr } from './filepane.js';
 import { checkDialog } from './conncheck.js';
@@ -7,7 +7,7 @@ import { execDialog, statsDialog } from './bulk.js';
 import { snippetPalette, snippetsEditor, keysDialog, installKeyDialog } from './tools.js';
 import { updateDialog } from './update.js';
 import { accountDialog, STATE_TEXT, syncTimeText } from './account.js';
-import { initI18n } from './i18n.js';
+import { initI18n, t } from './i18n.js';
 
 const api = window.api;
 
@@ -43,6 +43,7 @@ class App {
     this.secrets = d.secrets;
     this.version = d.version;
     this.account = await api.account.status();
+    this.localShells = await api.localShells().catch(() => []);
     applyUiTheme(this.settings.uiTheme);
     initI18n(this.settings.language);
     this.applyTabActivity();
@@ -453,6 +454,7 @@ class App {
       { label: 'Bu gruba yeni oturum', icon: 'plus', action: () => this.newSession({ group: path }) },
       { label: 'Gruptaki tüm oturumlara bağlan', icon: 'play', action: () => { for (const s of this.sessions.filter((s) => s.group === path || (s.group || '').startsWith(path + '/'))) this.openSession(s.id); } },
       ...this.bulkItems(this.sessions.filter((s) => s.group === path || (s.group || '').startsWith(path + '/')).map((s) => s.id), `“${path}”`),
+      { label: 'Yerel başlangıç dizini…', icon: 'folder', action: () => this.groupLocalDir(path) },
       { label: 'Grubu yeniden adlandır…', icon: 'edit', action: async () => {
         const n = await promptText({ title: 'Grubu yeniden adlandır', label: 'Yeni ad (alt grup için / kullanın)', value: path });
         if (n && n.trim() && n.trim() !== path) { this.sessions = await api.sessions.renameGroup(path, n.trim().replace(/^\/+|\/+$/g, '')); this.renderSidebar(); }
@@ -460,6 +462,16 @@ class App {
       '-',
       { label: 'Grubu sil', icon: 'trash', danger: true, action: () => this.deleteGroup(path) },
     ]);
+  }
+
+  /** Gruptaki (ve alt gruplardaki) oturumların SFTP yerel başlangıç dizini; oturumun kendi ayarı önce gelir */
+  async groupLocalDir(path) {
+    const dirs = { ...(this.settings.groupLocalDirs || {}) };
+    const d = await localDirDialog({ title: 'Yerel başlangıç dizini', group: path, value: dirs[path] || '', placeholder: this.settings.localDir || this.home, api });
+    if (d == null) return;
+    if (d) dirs[path] = d; else delete dirs[path];
+    await this.saveSettings({ groupLocalDirs: dirs });
+    toast(d ? `“${path}” grubu: ${d}` : `“${path}” grubunun yerel dizini kaldırıldı`, 'ok');
   }
 
   async deleteGroup(path) {
@@ -565,6 +577,8 @@ class App {
     const r = await settingsDialog(this.settings, {
       logDefaultDir: this.logDefaultDir,
       api,
+      home: this.home,
+      localShells: this.localShells || [],
       onSnippets: () => snippetsEditor(this),
       onKeys: () => keysDialog(this),
       masterEnabled: !!this.settings.masterEnabled,
@@ -716,9 +730,11 @@ class App {
     tab.connect();
   }
 
-  /** Bu bilgisayarın kabuğu (Linux/macOS: $SHELL, Windows: PowerShell) yeni sekmede */
-  openLocalShell() {
-    const tab = new SessionTab(this, { quick: { local: true, name: 'Yerel terminal', host: 'localhost', port: 0, forwards: [] }, title: 'Yerel terminal' });
+  /** Bu bilgisayarın kabuğu yeni sekmede. shellId yoksa Ayarlar > Yerel terminal (varsayılan: $SHELL / PowerShell) */
+  openLocalShell(shellId) {
+    const sh = shellId && (this.localShells || []).find((x) => x.id === shellId);
+    const title = t(sh ? sh.name : 'Yerel terminal'); // sekme başlığı çeviriden hariç (NO_TR): burada çevrilir
+    const tab = new SessionTab(this, { quick: { local: true, shell: shellId || '', name: title, host: 'localhost', port: 0, forwards: [] }, title });
     this.addTab(tab);
     tab.connect();
   }
@@ -966,6 +982,8 @@ class App {
         if (g.active) this.activate(g.active);
         contextMenu(e.clientX, e.clientY, [
           { label: 'Yerel terminal', icon: 'terminal', hint: 'Ctrl+Shift+O', action: () => this.openLocalShell() },
+          ...((this.localShells || []).length > 1 ? this.localShells.map((x) => ({ label: x.name, icon: 'terminal', action: () => this.openLocalShell(x.id) })) : []),
+          '-',
           { label: 'Yeni oturum…', icon: 'plus', hint: 'Ctrl+Shift+N', action: () => this.newSession() },
         ]);
       },

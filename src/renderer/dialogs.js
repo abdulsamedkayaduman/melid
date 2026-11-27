@@ -282,7 +282,7 @@ export async function sessionEditor({ session, sessions, groups, secrets, api })
       field('Başlangıç komutu', input('startupCommand', { placeholder: 'örn. sudo -i  veya  cd /srv/app' })),
       h('div.grid2', null,
         field('Uzak başlangıç dizini (SFTP)', input('remoteDir', { placeholder: 'boşsa ev dizini' })),
-        field('Yerel başlangıç dizini', input('localDir', { placeholder: 'boşsa ev dizini' }))),
+        field('Yerel başlangıç dizini', input('localDir', { placeholder: 'boşsa grup / genel ayar ya da ev dizini' }))),
       field('Keepalive (saniye)', input('keepalive', { placeholder: '30', inputmode: 'numeric' })),
       field('Notlar', f.notes = h('textarea.input', { rows: 3 }, s.notes || ''))),
   ];
@@ -359,6 +359,23 @@ export function applyUiTheme(key) {
   document.documentElement.dataset.ui = UI_THEMES[key] ? key : 'dark';
 }
 
+/** Grup için SFTP yerel başlangıç dizini: '' kaldırır, null vazgeçildi */
+export async function localDirDialog({ title, group, value = '', placeholder = '', api }) {
+  const input = h('input.input', { value, placeholder, spellcheck: false, autofocus: true });
+  const r = await modal({
+    title,
+    width: 480,
+    body: h('div', null,
+      h('p.hint', null, h('span', null, 'Bu gruptaki ve alt gruplarındaki oturumlarda SFTP yerel paneli bu klasörde açılır. Oturumun kendi yerel dizini varsa o kullanılır.'), ' ', h('b', { translate: 'no' }, group)),
+      h('label.field', null, h('span', null, 'Klasör'), h('div.row', null, input,
+        h('button.btn.sm', { type: 'button', onclick: async () => { const d = await api.openDirDialog({ title, defaultPath: input.value || placeholder }); if (d) input.value = d; } }, icon('folder', 13), 'Seç…')))),
+    buttons: [{ label: 'Kaldır', value: 'clear' }, { label: 'Vazgeç', value: null }, { label: 'Kaydet', value: 'ok', primary: true }],
+  });
+  if (r === 'clear') return '';
+  if (r !== 'ok') return null;
+  return input.value.trim();
+}
+
 export async function settingsDialog(settings, ctx = {}) {
   const f = {};
   let uiTheme = UI_THEMES[settings.uiTheme] ? settings.uiTheme : 'dark';
@@ -379,6 +396,10 @@ export async function settingsDialog(settings, ctx = {}) {
   sel('tabActivity', { rainbow: 'Büyüyüp renkli parlasın', blink: 'Yanıp sönsün', off: 'Kapalı' });
   sel('fileDblClick', { open: 'Dosyayı aç', transfer: 'Aktar (indir / yükle)' });
   f.maxTransfers = h('input.input', { type: 'number', min: 1, max: 10, value: settings.maxTransfers || 3 });
+  f.localShell = h('select.input', null, h('option', { value: '' }, 'Varsayılan' + (ctx.localShells?.[0] ? ` (${ctx.localShells[0].name})` : '')),
+    (ctx.localShells || []).map((x) => h('option', { value: x.id, selected: settings.localShell === x.id }, x.name)));
+  f.localDir = h('input.input', { value: settings.localDir || '', placeholder: ctx.home || '', spellcheck: false });
+  const localBrowse = h('button.btn.sm', { type: 'button', onclick: async () => { const d = await ctx.api?.openDirDialog({ title: 'Yerel başlangıç dizini', defaultPath: f.localDir.value || ctx.home }); if (d) f.localDir.value = d; } }, icon('folder', 13), 'Seç…');
   f.logDir = h('input.input', { value: settings.logDir || '', placeholder: ctx.logDefaultDir || '', spellcheck: false });
   const logBrowse = h('button.btn.sm', { type: 'button', onclick: async () => { const d = await ctx.api?.openDirDialog({ title: 'Kayıt klasörü', defaultPath: f.logDir.value || ctx.logDefaultDir }); if (d) f.logDir.value = d; } }, icon('folder', 13), 'Seç…');
   const fh = settings.focusHide || {};
@@ -405,6 +426,9 @@ export async function settingsDialog(settings, ctx = {}) {
       chk('showStats', 'Durum çubuğunda sunucu kaynaklarını göster (CPU, RAM, disk, ağ)'),
       chk('toolbarLabels', 'Araç çubuğunda düğme yazılarını göster'),
       chk('showHidden', 'Dosya panelinde gizli dosyaları göster'),
+      h('label.field', null, h('span', null, 'Yerel terminal'), f.localShell),
+      h('label.field', null, h('span', null, 'SFTP yerel başlangıç dizini (tüm oturumlar)'), h('div.row', null, f.localDir, localBrowse)),
+      h('div.hint', { style: { margin: '-4px 0 10px' } }, 'Boşsa ev dizini. Grup için: kenar çubuğunda gruba sağ tık > Yerel başlangıç dizini. Oturumun kendi ayarı önce gelir.'),
       h('div.field-row', null,
         h('div', null, h('b', null, 'Aynı anda aktarım'), h('div.hint', null, 'Sekme başına en fazla kaç dosya aktarımı birlikte çalışsın; fazlası sıraya girer.')),
         h('div', { style: { width: '80px' } }, f.maxTransfers)),
@@ -466,6 +490,8 @@ export async function settingsDialog(settings, ctx = {}) {
     toolbarLabels: f.toolbarLabels.checked,
     autoUpdate: f.autoUpdate.checked,
     usageStats: f.usageStats.checked,
+    localShell: f.localShell.value,
+    localDir: f.localDir.value.trim(),
     maxTransfers: Math.min(10, Math.max(1, Number(f.maxTransfers.value) || 3)),
     logEnabled: f.logEnabled.checked,
     logStrip: f.logStrip.checked,

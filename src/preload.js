@@ -94,6 +94,7 @@ contextBridge.exposeInMainWorld('api', {
     onTransfer: on('sftp:transfer'),
     onEdit: on('edit:event'),
   },
+  localShells: inv('local:shells'),
   local: {
     list: inv('local:list'),
     mkdir: inv('local:mkdir'),

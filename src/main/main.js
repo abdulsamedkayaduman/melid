@@ -164,6 +164,19 @@ function resolveKey(s) {
 }
 
 const logger = new TermLogger();
+// SFTP yerel panelinin başlangıç dizini: oturumun kendi ayarı > grubun (en yakın üst grup) > tüm oturumlar > ev dizini.
+// Hepsi cihaza özgü; bulunmayan klasör atlanır.
+function startLocalDir(session) {
+  const st = store.settings; const groups = st.groupLocalDirs || {};
+  const cands = [session.localDir];
+  for (let g = session.group || ''; g; g = g.includes('/') ? g.slice(0, g.lastIndexOf('/')) : '') cands.push(groups[g]);
+  cands.push(st.localDir);
+  for (const c of cands) {
+    const p = c && expandHome(String(c).trim());
+    try { if (p && fs.statSync(p).isDirectory()) return p; } catch { /* yok */ }
+  }
+  return undefined;
+}
 const logDir = () => expandHome(store.settings.logDir) || path.join(app.getPath('documents'), 'Melid', 'kayitlar');
 function logShellData(connId, data, sid) {
   if (!store.settings.logEnabled) return;
@@ -767,7 +780,7 @@ function registerIpc() {
 
   // ssh
   h('ssh:connect', async (connId, ref) => {
-    if (ref && ref.session && ref.session.local) return localShells.connect(connId);
+    if (ref && ref.session && ref.session.local) return localShells.connect(connId, ref.session.shell);
     let session;
     if (ref.sessionId) {
       session = resolveKey(store.getSession(ref.sessionId));
@@ -775,7 +788,7 @@ function registerIpc() {
     } else session = { ...ref.session };
     try { await manager.connect(connId, session); } catch (e) { if (!e.cancelled) usage.inc('connectionFailures'); throw e; }
     usage.inc('connections');
-    return { host: session.host, username: session.username, remoteDir: session.remoteDir, localDir: session.localDir };
+    return { host: session.host, username: session.username, remoteDir: session.remoteDir, localDir: startLocalDir(session) };
   });
   // Yerel terminal sekmeleri (local.connect) aynı kanalları kullanır: kabuk pty ile bu bilgisayarda açılır
   h('ssh:shell', (connId, cols, rows, startup, sid) => (localShells.has(connId) ? localShells.open(connId, cols, rows, sid) : manager.openShell(connId, cols, rows, startup, sid)));
@@ -784,6 +797,7 @@ function registerIpc() {
   h('ssh:stats', (connId) => (localShells.has(connId) ? null : manager.stats(connId)));
   ipcMain.on('ssh:write', (_e, connId, data, sid) => (localShells.has(connId) ? localShells.write(connId, data, sid) : manager.write(connId, data, sid)));
   ipcMain.on('ssh:resize', (_e, connId, cols, rows, sid) => (localShells.has(connId) ? localShells.resize(connId, cols, rows, sid) : manager.resize(connId, cols, rows, sid)));
+  h('local:shells', () => localShells.list().map(({ id, name }) => ({ id, name })));
   h('ssh:disconnect', (connId) => { if (localShells.has(connId)) return localShells.disconnect(connId); stopEdits(connId); manager.disconnect(connId); });
   // ---- SFTP ek işleri: uzakta arama, sıkıştırma, arşiv açma (kabuk komutları burada güvenle tırnaklanır)
   const shq = (x) => `'${String(x).replace(/'/g, `'\\''`)}'`;
@@ -1033,20 +1047,47 @@ function createWindow() {
 // ---------- Yerel terminal: bu bilgisayarın kabuğu (pty). Sekme SSH bağlantısı gibi davranır (connId + sid) ----------
 const localShells = {
   conns: new Map(), // connId -> Map(sid -> pty)
+  shellOf: new Map(), // connId -> seçilen kabuk kimliği (boşsa ayar ya da varsayılan)
   pty: null,
   has(connId) { return this.conns.has(connId); },
-  shell() {
+  /** Bu bilgisayarda bulunan kabuklar, varsayılan ilk sırada: [{ id, name, file, args }] */
+  list() {
+    const out = [];
+    const add = (id, name, file, args = []) => { if (file && fs.existsSync(file) && !out.some((x) => x.file.toLowerCase() === file.toLowerCase())) out.push({ id, name, file, args }); };
     if (process.platform === 'win32') {
-      // PowerShell 7 (pwsh) varsa o, yoksa Windows PowerShell
-      for (const p of [path.join(process.env.ProgramFiles || 'C:\\Program Files', 'PowerShell', '7', 'pwsh.exe')]) if (fs.existsSync(p)) return { file: p, args: ['-NoLogo'] };
-      return { file: 'powershell.exe', args: ['-NoLogo'] };
+      const sys = path.join(process.env.SystemRoot || 'C:\\Windows', 'System32');
+      const pf = [process.env.ProgramFiles, process.env['ProgramFiles(x86)'], process.env.ProgramW6432].filter(Boolean);
+      for (const p of pf) add('pwsh', 'PowerShell 7', path.join(p, 'PowerShell', '7', 'pwsh.exe'), ['-NoLogo']);
+      add('powershell', 'Windows PowerShell', path.join(sys, 'WindowsPowerShell', 'v1.0', 'powershell.exe'), ['-NoLogo']);
+      add('cmd', 'Komut İstemi (cmd)', process.env.ComSpec || path.join(sys, 'cmd.exe'));
+      const git = [...pf.map((p) => path.join(p, 'Git')), process.env.LOCALAPPDATA && path.join(process.env.LOCALAPPDATA, 'Programs', 'Git')].filter(Boolean);
+      for (const g of git) add('gitbash', 'Git Bash', path.join(g, 'bin', 'bash.exe'), ['--login', '-i']);
+      add('wsl', 'WSL', path.join(sys, 'wsl.exe'));
+      return out;
     }
-    let sh = process.env.SHELL;
-    if (!sh || !fs.existsSync(sh)) sh = ['/bin/zsh', '/bin/bash', '/bin/sh'].find((x) => fs.existsSync(x)) || '/bin/sh';
-    return { file: sh, args: ['-l'] }; // oturum kabuğu: ~/.profile, ~/.zprofile okunur (macOS Terminal gibi)
+    // Linux / macOS: $SHELL önce, sonra /etc/shells'teki diğerleri (oturum kabuğu: ~/.profile, ~/.zprofile okunur)
+    const cands = [process.env.SHELL];
+    try { cands.push(...fs.readFileSync('/etc/shells', 'utf8').split('\n').map((l) => l.trim()).filter((l) => l.startsWith('/'))); } catch { /* yok */ }
+    cands.push('/bin/zsh', '/bin/bash', '/bin/sh');
+    const seen = new Set();
+    for (const f of cands) {
+      if (!f || /nologin|false|git-shell|rbash|screen|tmux/.test(f)) continue;
+      let real = f; try { real = fs.realpathSync(f); } catch { continue; }
+      const base = path.basename(f);
+      if (seen.has(real) || seen.has(base)) continue;
+      seen.add(real); seen.add(base);
+      add(f, base, f, ['-l']);
+    }
+    return out;
   },
-  connect(connId) {
+  shell(id) {
+    const all = this.list();
+    const pick = all.find((x) => x.id === id) || all.find((x) => x.id === store.settings.localShell) || all[0];
+    return pick || (process.platform === 'win32' ? { file: 'powershell.exe', args: ['-NoLogo'] } : { file: '/bin/sh', args: ['-l'] });
+  },
+  connect(connId, shellId) {
     this.conns.set(connId, new Map());
+    if (shellId) this.shellOf.set(connId, shellId);
     return { host: os.hostname(), username: os.userInfo().username, localDir: os.homedir(), local: true };
   },
   open(connId, cols, rows, sid = 'main') {
@@ -1055,7 +1096,7 @@ const localShells = {
     if (!this.pty) {
       try { this.pty = require('@lydell/node-pty'); } catch (e) { throw new Error(`Yerel terminal başlatılamadı: ${e.message}`); }
     }
-    const { file, args } = this.shell();
+    const { file, args } = this.shell(this.shellOf.get(connId));
     const env = { ...process.env, TERM: 'xterm-256color', COLORTERM: 'truecolor', TERM_PROGRAM: 'Melid' };
     delete env.ELECTRON_RUN_AS_NODE;
     const p = this.pty.spawn(file, args, { name: 'xterm-256color', cols: Math.max(2, cols || 80), rows: Math.max(2, rows || 24), cwd: os.homedir(), env, useConpty: true });
@@ -1086,6 +1127,7 @@ const localShells = {
     const shells = this.conns.get(connId);
     if (!shells) return;
     this.conns.delete(connId);
+    this.shellOf.delete(connId);
     for (const p of shells.values()) try { p.kill(); } catch {}
     send('ssh:status', connId, 'closed', 'Yerel terminal kapandı');
   },

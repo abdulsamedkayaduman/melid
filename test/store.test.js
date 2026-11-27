@@ -103,3 +103,18 @@ assert.equal(r3.withPassword, 0);
 assert.equal(c.getSession(s1).password, undefined);
 assert.equal(c.getSession(s1).name, 'srv1');
 console.log('OK backup export/import');
+
+// --- grup yerel dizinleri: cihaza özgü; grup yeniden adlandırılınca/silinince birlikte değişir ---
+{
+  const g = fresh();
+  g.saveSession({ name: 'a', host: 'h', group: 'Prod/DB' });
+  g.saveSession({ name: 'b', host: 'h', group: 'Test' });
+  g.saveSettings({ groupLocalDirs: { Prod: '/srv', 'Prod/DB': '/db', Test: '/t' }, localDir: '/home/x', localShell: 'pwsh' });
+  g.renameGroup('Prod', 'Canli');
+  assert.deepEqual(g.settings.groupLocalDirs, { Canli: '/srv', 'Canli/DB': '/db', Test: '/t' });
+  g.deleteGroup('Test');
+  assert.deepEqual(g.settings.groupLocalDirs, { Canli: '/srv', 'Canli/DB': '/db' });
+  const out = g.syncSettingsData ? g.syncSettingsData() : null;
+  if (out) for (const k of ['groupLocalDirs', 'localDir', 'localShell']) assert.ok(!(k in out), `${k} eşitlenmemeli`);
+  console.log('OK grup yerel dizinleri');
+}

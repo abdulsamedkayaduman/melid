@@ -77,7 +77,10 @@ src/main/conncheck.js    Toplu işler: ayrı, sormayan SshManager ile oturumlara
 src/main/usage.js        Kullanım sayıları (usage.json, günlük bağlantı/aktarım/tünel); sync.js eşitlemeden sonra saatte bir
                          gönderir (POST /api/usage), ayar usageStats kapatır. Android: app/UsageStats.java. Gizlilik: /kosullar
                          Yerel terminal: main.js localShells (@lydell/node-pty, hazır derlenmiş N-API; asarUnpack). Sekme SSH gibi:
-                         ssh:connect {session:{local:true}} + aynı ssh:shell/write/resize kanalları; tab.isLocal (SFTP/tünel yok).
+                         ssh:connect {session:{local:true, shell}} + aynı ssh:shell/write/resize kanalları; tab.isLocal (SFTP/tünel yok).
+                         Kabuklar localShells.list() (Windows: pwsh, powershell, cmd, Git Bash, WSL; Unix: $SHELL + /etc/shells),
+                         ayar localShell; + düğmesine sağ tık hepsini listeler. SFTP yerel başlangıç dizini startLocalDir():
+                         oturum localDir > groupLocalDirs (en yakın üst grup) > settings.localDir > ev (hepsi cihaza özgü)
                          Mac paketi Linux'ta derlendiği için CI darwin ikililerini ayrıca kurar (derle.yml mac).
 src/main/termlog.js      Oturum kaydı: TermLogger (oturum adına göre klasör, dosya başına kabuk) + parçalı ANSI temizleyici
 src/main/keys.js         ~/.ssh anahtarlarını listeleme, ssh2 utils ile anahtar üretme (OpenSSH biçimi)

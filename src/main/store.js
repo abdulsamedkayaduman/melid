@@ -75,7 +75,7 @@ const DEFAULT_SETTINGS = {
 };
 
 // Hesap eşitlemesine girmeyen, cihaza özgü ayarlar
-const LOCAL_SETTINGS = new Set(['master', 'syncKeys', 'recent', 'logDir', 'logEnabled', 'colWidths', 'hiddenCols', 'autoHideCols', 'paneSplit', 'sftpHeight', 'xferHeight', 'updateSkip', 'updateLastCheck', 'usageStats', 'deviceId', 'language']);
+const LOCAL_SETTINGS = new Set(['master', 'syncKeys', 'recent', 'logDir', 'logEnabled', 'colWidths', 'hiddenCols', 'autoHideCols', 'paneSplit', 'sftpHeight', 'xferHeight', 'updateSkip', 'updateLastCheck', 'usageStats', 'deviceId', 'language', 'localShell', 'localDir', 'groupLocalDirs']);
 // Oturumda cihaza özgü alanlar (yerel klasör yolu başka cihazda/işletim sisteminde geçersiz)
 const LOCAL_SESSION_FIELDS = ['localDir'];
 const TOMBSTONE_TTL = 180 * 24 * 3600 * 1000;
@@ -324,6 +324,12 @@ class Store {
       if (g === from || g.startsWith(from + '/')) { s.group = to + g.slice(from.length); s.mtime = Date.now(); }
     }
     this._touchSessions();
+    const dirs = this.settings.groupLocalDirs;
+    if (dirs && Object.keys(dirs).some((g) => g === from || g.startsWith(from + '/'))) {
+      const next = {};
+      for (const [g, d] of Object.entries(dirs)) next[g === from || g.startsWith(from + '/') ? to + g.slice(from.length) : g] = d;
+      this.saveSettings({ groupLocalDirs: next });
+    }
   }
 
   // Removes every session in a group (and its subgroups); returns how many were deleted.
@@ -331,6 +337,10 @@ class Store {
     const inGroup = (s) => { const g = s.group || ''; return g === group || g.startsWith(group + '/'); };
     const ids = new Set(this.sessions.filter(inGroup).map((s) => s.id));
     if (ids.size) this._removeSessions(ids);
+    const dirs = this.settings.groupLocalDirs;
+    if (dirs && Object.keys(dirs).some((g) => g === group || g.startsWith(group + '/'))) {
+      this.saveSettings({ groupLocalDirs: Object.fromEntries(Object.entries(dirs).filter(([g]) => !(g === group || g.startsWith(group + '/')))) });
+    }
     return ids.size;
   }
 
